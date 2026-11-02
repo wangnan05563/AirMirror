@@ -49,8 +49,9 @@
 
 | 项 | 现状 | 证据 |
 |---|---|---|
-| 归属 | 维持你的裁决：**非挂错，执行时点 = PRD 需求开发完成后**，10 张全部保持 `todo`、`verified=false`、`archived=false` | 逐单回读（`.mtask_tmp/verify.txt` gate 段） |
+| 归属 | 维持你的裁决：**非挂错，执行时点 = PRD 需求开发完成后**。10 张里 **9 张**保持 `todo`、`verified=false`、`archived=false`；只有 T03998 因三条前置同时满足被批准本轮提前执行（见下下条） | 逐单回读（`.mtask_tmp/verify.txt` gate 段）+ `.mtask_tmp/writeback.txt` |
+| T03998 建仓 | **已执行**（你裁定 Q-1=AirMirror、Q-2=开源、并批准公开）：`.gitignore` 按七类分组、`git init`、公开仓 `wangnan05563/AirMirror` 建成并推入 10 文件；标题去掉 `【缺环境·待PRD开发】` 前缀，现为 `done / verified=false / unread` 等你复核 | `https://github.com/wangnan05563/AirMirror`；远端 tree 与本地 tree SHA 相同（`e2575aec3`），10/10 blob 逐一等价 |
 | 4 张正文自称「已完成」的单 | **不收口**。它们描述的是参考基准仓（18_comparePakage / compare一期）里已验证的实现，本项目尚未开发，正文与本项目状态无关；保持 `todo` 才符合「等 PRD 开发完再执行」 | 标题前缀 `【缺环境·待PRD开发】` + 描述首段的执行前置未被动过 |
 | `req_ids=null` | **本轮不补 link**。这 10 张不在任何计划树上，也不是 PRD 204 条需求拆出来的，硬挂一条 reqId 会让矩阵出现假映射；等 PRD 开发完成、真要动工时再按当时候选需求挂 | 需求矩阵 204 条与这 10 张的标题无一一对应 |
-| T03976 的 `minSdkVersion ≥ 21` | 冲突已按 Q-5 裁决消解：PRD v1.3 把「保留 Android 4.4（API 19）」写成已决，并注明若引入要求 minSdk≥21 的三方库必须回到 13.3 的 Q-5 行重签，**不得静默抬高** | PRD `13.3 开放问题` Q-5 行 |
-| WBS 手术 | 与本 10 张正交，归档的 72 张全部来自 `[PRD]` 重复树，这 10 张一张都没被归档 | 计划行 186→114，差值恰为 72 |
+| T03976 的 `minSdkVersion ≥ 21` | 冲突已按 Q-5 裁决消解：PRD v1.4 的 13.3 把「保留 Android 4.4（API 19）」写成已决，若引入要求 minSdk≥21 的三方库必须回到该行重签，**不得静默抬高**。这条裁决已同步写进 T03976 自己的「执行前置」（原正文逐字保留），并给出可行替代：用 ViewPager 或自绘轮播 + `SharedPreferences` 保持 minSdk 19 | PRD Q-5 行 + `.mtask_tmp/writeback.txt` 第 5 行 |
+| WBS 手术 | 与本 10 张正交，归档的 72 张全部来自 `[PRD]` 重复树，这 10 张一张都没被归档 | 计划行 186→114，差值恰为 72；T03804 恢复后可见行回到 115 |
