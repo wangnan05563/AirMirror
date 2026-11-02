@@ -9,13 +9,15 @@ import android.view.SurfaceView
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.TextView
+import io.github.wangnan05563.airmirror.dlna.DlnaServer
 import io.github.wangnan05563.airmirror.receiver.ReceiverSession
 
-/** 接收端：全屏 Surface + 状态浮层，自己广播并被发送端发现。 */
+/** 接收端：全屏 Surface + 状态浮层，自己广播并被发送端发现，同时作为 DLNA 渲染端。 */
 class ReceiverActivity : Activity(), SurfaceHolder.Callback {
 
     private lateinit var status: TextView
     private var session: ReceiverSession? = null
+    private var dlna: DlnaServer? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -51,6 +53,10 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             .also { it.start(name) }
         session = active
         active.attachSurface(holder.surface)
+        val renderer = dlna ?: DlnaServer(this) { text -> runOnUiThread { status.text = text } }
+            .also { dlna = it }
+        renderer.attach(holder)
+        renderer.start(name)
     }
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) = Unit
@@ -58,11 +64,14 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     override fun surfaceDestroyed(holder: SurfaceHolder) {
         // 只摘掉 Surface，会话继续收流；回到前台会重新挂载
         session?.detachSurface()
+        dlna?.detach()
     }
 
     override fun onDestroy() {
         session?.stop()
         session = null
+        dlna?.stop()
+        dlna = null
         super.onDestroy()
     }
 }
