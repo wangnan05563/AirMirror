@@ -1,0 +1,2508 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AirMirror 投屏 · 产品需求文档 v1.1</title>
+<style>
+:root{
+  --bg:#f5f6f8; --panel:#ffffff; --ink:#16181d; --ink-2:#4a4f5a; --ink-3:#858b96;
+  --line:#e3e6eb; --line-2:#eef0f3;
+  --brand:#3556e0; --brand-ink:#22409f; --brand-soft:#edf0ff;
+  --teal:#0d8a7a; --teal-soft:#e7f5f2;
+  --amber:#b46a00; --amber-soft:#fdf2e0;
+  --red:#c33; --red-soft:#fdecec;
+  --dark:#11151f; --dark-2:#1a2030;
+  --radius:12px; --radius-sm:8px;
+  --shadow:0 1px 2px rgba(16,24,40,.05),0 8px 24px -12px rgba(16,24,40,.18);
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:"PingFang SC","Microsoft YaHei","Hiragino Sans GB",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14.5px;line-height:1.72;-webkit-font-smoothing:antialiased}
+/* ---- layout ---- */
+.shell{display:grid;grid-template-columns:264px minmax(0,1fr);min-height:100vh}
+.side{position:sticky;top:0;height:100vh;overflow-y:auto;background:var(--dark);color:#c8cedc;padding:28px 0 40px;border-right:1px solid #0a0d14}
+.side .brand{padding:0 22px 20px;display:flex;align-items:center;gap:10px}
+.side .logo{width:34px;height:34px;border-radius:9px;background:linear-gradient(140deg,#5b7bff,#2fd0b6);display:grid;place-items:center;color:#fff;font-weight:800;font-size:15px;letter-spacing:-.5px}
+.side .brand h1{font-size:15px;margin:0;color:#fff;font-weight:650;letter-spacing:.2px}
+.side .brand p{margin:1px 0 0;font-size:11px;color:#7c869c;letter-spacing:.6px;text-transform:uppercase}
+.side nav{padding:6px 0}
+.side nav a{display:block;padding:6.5px 22px;color:#98a1b4;text-decoration:none;font-size:13px;border-left:2px solid transparent;transition:.15s}
+.side nav a:hover{color:#fff;background:#161b27}
+.side nav a.on{color:#fff;border-left-color:#4f7cff;background:linear-gradient(90deg,rgba(79,124,255,.16),transparent)}
+.side nav .k{padding:16px 22px 6px;font-size:10.5px;letter-spacing:1.4px;color:#5b6479;text-transform:uppercase}
+.side .meta{padding:22px 22px 0;font-size:11.5px;color:#6c768c;line-height:1.9;border-top:1px solid #1d2330;margin-top:14px}
+/* ---- main ---- */
+main{padding:0 0 90px;min-width:0}
+.cover{background:radial-gradient(1200px 500px at 12% -10%,#243a8f 0%,transparent 60%),radial-gradient(900px 420px at 90% 0%,#0e6b60 0%,transparent 55%),var(--dark);color:#fff;padding:64px 56px 52px}
+.cover .eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:11.5px;letter-spacing:2px;color:#9fb0d8;text-transform:uppercase;border:1px solid rgba(255,255,255,.16);padding:5px 11px;border-radius:999px;margin-bottom:22px}
+.cover .dot{width:6px;height:6px;border-radius:50%;background:#35d6a8;box-shadow:0 0 0 4px rgba(53,214,168,.16)}
+.cover h1{font-size:40px;line-height:1.18;margin:0;letter-spacing:-.5px;font-weight:700}
+.cover h1 span{color:#7fe3cf}
+.cover .sub{margin:16px 0 0;max-width:760px;color:#c3cde3;font-size:15.5px;line-height:1.8}
+.cover .facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-top:38px}
+.cover .fact{border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);border-radius:10px;padding:14px 16px}
+.cover .fact b{display:block;font-size:19px;letter-spacing:-.2px}
+.cover .fact small{display:block;color:#8e9cba;font-size:11.5px;margin-top:3px;letter-spacing:.3px}
+.wrap{padding:0 56px;max-width:1180px}
+section{padding-top:56px}
+h2{font-size:24px;margin:0 0 6px;letter-spacing:-.3px;display:flex;align-items:baseline;gap:12px}
+h2 .num{font-family:var(--mono);font-size:12px;color:var(--brand);background:var(--brand-soft);border-radius:6px;padding:3px 8px;font-weight:600;letter-spacing:0}
+h2 + .lead{color:var(--ink-2);margin:8px 0 22px;max-width:820px}
+h3{font-size:16.5px;margin:30px 0 10px;letter-spacing:-.1px}
+h4{font-size:14px;margin:20px 0 8px;color:var(--ink-2)}
+p{margin:0 0 12px}
+ul,ol{margin:0 0 14px;padding-left:22px}
+li{margin:4px 0}
+code{font-family:var(--mono);font-size:12.5px;background:#eef0f4;border:1px solid var(--line);border-radius:5px;padding:1px 5px;color:#2b3340}
+/* ---- components ---- */
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:22px 24px;box-shadow:var(--shadow);margin:16px 0}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+@media(max-width:1100px){.grid4{grid-template-columns:repeat(2,minmax(0,1fr))}.grid3{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:860px){.shell{grid-template-columns:1fr}.side{position:relative;height:auto}.grid2{grid-template-columns:1fr}.wrap,.cover{padding-left:22px;padding-right:22px}}
+.tag{display:inline-block;font-size:11px;font-weight:600;letter-spacing:.4px;padding:2px 8px;border-radius:999px;vertical-align:1px}
+.t-p0{background:var(--brand-soft);color:var(--brand-ink)}
+.t-p1{background:var(--teal-soft);color:var(--teal)}
+.t-p2{background:#f1f2f5;color:var(--ink-3)}
+.t-warn{background:var(--amber-soft);color:var(--amber)}
+.t-risk{background:var(--red-soft);color:var(--red)}
+table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px;margin:14px 0 18px;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+th{background:#f8f9fb;text-align:left;font-weight:650;color:var(--ink-2);font-size:12px;letter-spacing:.3px;padding:10px 13px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:10px 13px;border-bottom:1px solid var(--line-2);vertical-align:top;line-height:1.6}
+tr:last-child td{border-bottom:0}
+tbody tr:hover{background:#fafbff}
+.center{text-align:center}
+.mono{font-family:var(--mono);font-size:12.5px}
+.muted{color:var(--ink-3)}
+.note{border-left:3px solid var(--brand);background:var(--brand-soft);padding:12px 16px;border-radius:0 var(--radius-sm) var(--radius-sm) 0;font-size:13.5px;margin:14px 0}
+.note.warn{border-left-color:#e0a33a;background:var(--amber-soft)}
+.note.risk{border-left-color:#d66;background:var(--red-soft)}
+.note.ok{border-left-color:#1aa08b;background:var(--teal-soft)}
+.note b{color:var(--ink)}
+.chip-row{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 4px}
+.chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:4px 12px;font-size:12.5px;color:var(--ink-2);cursor:pointer;transition:.15s;user-select:none}
+.chip:hover{border-color:#c3cbe0}
+.chip.on{background:var(--brand);border-color:var(--brand);color:#fff;box-shadow:0 2px 8px rgba(53,86,224,.28)}
+.req{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);margin:18px 0;overflow:hidden;box-shadow:var(--shadow)}
+.req .hd{display:flex;align-items:center;gap:10px;padding:14px 20px;border-bottom:1px solid var(--line);background:#fbfcfe;flex-wrap:wrap}
+.req .hd .id{font-family:var(--mono);font-size:11.5px;font-weight:700;color:#fff;background:var(--brand);padding:2px 7px;border-radius:5px}
+.req .hd h3{margin:0;font-size:15px}
+.req .hd .goal{margin-left:auto;font-size:12px;color:var(--ink-3)}
+.req .bd{padding:18px 20px 20px}
+.req dl{display:grid;grid-template-columns:108px minmax(0,1fr);gap:2px 14px;margin:0}
+.req dt{font-size:12.5px;color:var(--ink-3);padding-top:3px;font-weight:600;letter-spacing:.2px}
+.req dd{margin:0 0 9px;font-size:13.5px}
+.req dd ul{margin:2px 0 0;padding-left:18px}
+.kv{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0}
+.kv .box{background:#fbfcfe;border:1px solid var(--line-2);border-radius:8px;padding:12px 14px}
+.kv .box b{display:block;font-size:20px;letter-spacing:-.4px;color:var(--brand-ink)}
+.kv .box small{font-size:11.5px;color:var(--ink-3)}
+/* flow */
+.flow{display:flex;align-items:stretch;gap:0;margin:18px 0;flex-wrap:wrap}
+.step{flex:1;min-width:150px;background:#fff;border:1px solid var(--line);border-radius:9px;padding:12px 13px;cursor:pointer;transition:.18s;position:relative}
+.step:hover{border-color:#b9c3e0;transform:translateY(-1px);box-shadow:var(--shadow)}
+.step.on{border-color:var(--brand);background:var(--brand-soft)}
+.step .n{font-family:var(--mono);font-size:10.5px;color:var(--brand);font-weight:700}
+.step .t{font-size:13px;font-weight:650;margin-top:2px}
+.step .d{font-size:11.5px;color:var(--ink-3);margin-top:3px;line-height:1.5}
+.arrow{display:grid;place-items:center;width:26px;color:#b3bccd;font-size:14px;flex:0 0 26px}
+.flow-detail{margin:14px 0 4px}
+/* state machine */
+.states{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:16px 0}
+@media(max-width:860px){.states{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.st{background:#fff;border:1px solid var(--line);border-left:3px solid var(--line);border-radius:8px;padding:11px 13px}
+.st b{display:block;font-family:var(--mono);font-size:11.5px;letter-spacing:.4px}
+.st span{font-size:11.5px;color:var(--ink-3);display:block;margin-top:3px;line-height:1.5}
+.st.a{border-left-color:#9aa4b8}.st.b{border-left-color:#e0a33a}.st.c{border-left-color:var(--brand)}.st.d{border-left-color:var(--teal)}.st.e{border-left-color:#7a6bd8}.st.f{border-left-color:var(--red)}
+/* matrix */
+.matrix td .mk{font-weight:700}
+.y{color:var(--teal)}.n{color:#c0c6d1}.p{color:var(--amber)}
+/* tv mock */
+.mock-stage{background:linear-gradient(160deg,#0d1220,#141d31);border-radius:14px;padding:22px;border:1px solid #1d2740;box-shadow:inset 0 0 80px rgba(0,0,0,.4)}
+.tv{background:#080b12;border:10px solid #1a1f2b;border-radius:10px;aspect-ratio:16/9;position:relative;overflow:hidden;max-width:760px;margin:0 auto;box-shadow:0 20px 50px -20px rgba(0,0,0,.7)}
+.tv .scr{position:absolute;inset:0;display:flex;flex-direction:column;padding:5.5% 6%}
+.tv .statusbar{display:flex;justify-content:space-between;align-items:center;font-size:10px;color:#8fa0c4;font-family:var(--mono)}
+.tv .tvscreen{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#e8eefc}
+.tv .devname{font-size:clamp(14px,2.4vw,24px);letter-spacing:1px;font-weight:600}
+.tv .qrwrap{display:flex;gap:clamp(10px,2.5vw,26px);align-items:center;margin-top:4%}
+.tv .qr{width:clamp(64px,13vw,120px);aspect-ratio:1;background:conic-gradient(from 0deg,#fff 0 25%,#111 0 50%,#fff 0 75%,#111 0);border-radius:4px;border:4px solid #fff;background-size:100% 100%}
+.tv .qr{background-image:repeating-conic-gradient(#fff 0 8%,#10141d 0 16%);}
+.tv .codebox{text-align:left}
+.tv .codebox small{display:block;font-size:9.5px;color:#7f8db0;letter-spacing:1px}
+.tv .codebox .code{font-family:var(--mono);font-size:clamp(16px,3.4vw,30px);letter-spacing:5px;font-weight:700;color:#7fe3cf}
+.tv .hint{margin-top:4%;font-size:clamp(8px,1.2vw,11.5px);color:#7f8db0;line-height:1.7}
+.tv .playing{flex:1;display:none;align-items:center;justify-content:center;background:radial-gradient(600px 300px at 50% 40%,#1c2c55,#0b1020);border-radius:6px;position:relative}
+.tv .playing .meta{position:absolute;left:0;right:0;bottom:0;padding:10px 14px;background:linear-gradient(0deg,rgba(0,0,0,.72),transparent);text-align:left}
+.tv .playing .meta b{color:#fff;font-size:11px;display:block}
+.tv .playing .meta span{color:#9fb0d4;font-size:9.5px}
+.tv .playing .big{font-size:clamp(18px,4vw,40px);color:#2d4270;font-weight:800;letter-spacing:2px}
+.tv .paused{position:absolute;inset:0;display:none;place-items:center;background:rgba(6,9,16,.55);color:#fff;font-size:12px;letter-spacing:2px}
+.tv.show-play .playing{display:flex}.tv.show-play .tvscreen{display:none}
+.tv.show-pause .paused{display:grid}
+.mock-ctrl{display:flex;gap:8px;justify-content:center;margin-top:16px;flex-wrap:wrap}
+.btn{border:1px solid #2b3550;background:#161f33;color:#b9c6e2;border-radius:7px;padding:6px 13px;font-size:12px;cursor:pointer;transition:.15s;font-family:var(--sans)}
+.btn:hover{border-color:#3d4a6b;color:#fff}
+.btn.on{background:#3556e0;border-color:#3556e0;color:#fff}
+/* phone mock */
+.phone{width:238px;border-radius:26px;border:8px solid #14181f;background:#0f131b;overflow:hidden;box-shadow:0 18px 40px -18px rgba(0,0,0,.55)}
+.phone .p-top{height:22px;display:flex;align-items:center;justify-content:center}
+.phone .p-top i{width:52px;height:5px;border-radius:3px;background:#232a36;display:block}
+.phone .p-scr{background:#f6f7fb;padding:10px 12px 14px;min-height:330px;font-size:11px;color:#2a2f3a}
+.phone .p-h{font-size:12px;font-weight:700;margin-bottom:8px;display:flex;justify-content:space-between}
+.phone .p-h span{color:#6b7280;font-weight:500;font-size:10px}
+.phone .dev{border:1px solid #e3e6eb;background:#fff;border-radius:10px;padding:8px 9px;display:flex;gap:8px;align-items:center;margin-bottom:7px}
+.phone .dev .ic{width:26px;height:26px;border-radius:7px;background:#eef0ff;display:grid;place-items:center;font-size:11px;color:#3556e0;font-weight:700}
+.phone .dev b{display:block;font-size:11px}
+.phone .dev small{color:#8b93a2;font-size:9.5px}
+.phone .dev .s{margin-left:auto;font-size:9px;color:#0d8a7a;background:#e7f5f2;padding:1px 6px;border-radius:999px}
+.phone .p-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:9px 0}
+.phone .pa{border:1px solid #e3e6eb;background:#fff;border-radius:9px;padding:9px 8px;text-align:center;font-size:10px;color:#3a4150}
+.phone .pa b{display:block;font-size:11.5px;margin-bottom:2px}
+/* code */
+pre{background:#0f141e;color:#cfd8ea;border-radius:10px;padding:16px 18px;overflow:auto;font-family:var(--mono);font-size:12px;line-height:1.7;margin:12px 0;border:1px solid #1d2536}
+pre .c{color:#6f7d99}
+pre .k{color:#7fd8c6}
+pre .s{color:#e7c48b}
+.src{font-size:12px;color:var(--ink-3);margin:-6px 0 14px}
+.src a{color:var(--brand);text-decoration:none;border-bottom:1px dotted #b9c4e6}
+.footer{border-top:1px solid var(--line);margin-top:60px;padding-top:22px;font-size:12px;color:var(--ink-3);display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink-2);background:#fff;border:1px solid var(--line);border-radius:999px;padding:3px 10px;margin:0 6px 6px 0}
+.pill i{width:6px;height:6px;border-radius:50%;background:var(--teal);display:block}
+.progress{position:fixed;top:0;left:0;height:2px;background:linear-gradient(90deg,#4f7cff,#2fd0b6);width:0;z-index:99}
+.anchor{position:relative;top:-14px;visibility:hidden}
+/* architecture diagram */
+.arch{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px 26px;box-shadow:var(--shadow);margin:18px 0}
+.arch-layer{display:grid;grid-template-columns:104px minmax(0,1fr);gap:14px;align-items:center}
+.arch-label{font-size:11px;color:var(--ink-3);letter-spacing:.6px;text-align:right;font-weight:650;line-height:1.35}
+.arch-row{display:flex;gap:8px;flex-wrap:wrap}
+.node{flex:1;min-width:104px;border:1px solid #dfe4ec;background:#fbfcff;border-radius:9px;padding:9px 11px;font-size:11.5px;line-height:1.5;color:var(--ink-2)}
+.node b{display:block;font-size:12.5px;color:var(--ink);font-weight:650}
+.node small{color:var(--ink-3);font-size:10.5px}
+.node.hi{background:#eef1ff;border-color:#c9d2f7}
+.node.dark{background:#121826;border-color:#121826;color:#b9c6e2}
+.node.dark b{color:#fff}
+.node.dark small{color:#7f8db0}
+.arch-sep{display:grid;grid-template-columns:104px minmax(0,1fr);gap:14px;margin:5px 0}
+.arch-sep .lbl{text-align:right;color:#c0c7d4;font-size:12px;line-height:1}
+.arch-sep .line{display:flex;align-items:center;gap:10px;color:#98a1b1;font-size:11px;letter-spacing:.6px}
+.arch-sep .line::before,.arch-sep .line::after{content:"";height:1px;background:#e6e9ef;flex:1}
+.sidecar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:12px}
+@media(max-width:860px){.arch-layer,.arch-sep{grid-template-columns:1fr}.arch-label,.arch-sep .lbl{text-align:left}.sidecar{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* feature spec */
+.fs{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);margin:22px 0;overflow:hidden}
+.fs-hd{display:flex;align-items:center;gap:10px;padding:15px 22px;background:linear-gradient(180deg,#fbfcff,#fff);border-bottom:1px solid var(--line);flex-wrap:wrap}
+.fs-hd .fsid{font-family:var(--mono);font-size:11px;font-weight:700;color:#fff;background:#0d8a7a;padding:2px 7px;border-radius:5px;letter-spacing:.4px}
+.fs-hd h3{margin:0;font-size:15.5px}
+.fs-hd .one{margin-left:auto;font-size:12px;color:var(--ink-3);max-width:52%}
+.fs-bd{padding:16px 22px 4px}
+.fs-bd h5{font-size:11px;letter-spacing:1.1px;color:var(--brand);margin:20px 0 6px;font-weight:700;text-transform:uppercase}
+.fs-bd h5:first-child{margin-top:0}
+.fs-bd table{font-size:12.5px;margin:8px 0 14px}
+.fs-bd th{font-size:11.5px;padding:8px 11px}
+.fs-bd td{padding:8px 11px}
+.fs-bd .mono{font-size:11.5px}
+.acc{background:#f6fbf9;border:1px solid #d9efe8;border-radius:10px;padding:2px 14px 10px;margin:10px 0 18px}
+.acc table{background:transparent;border:0;margin:6px 0}
+.acc th{background:transparent;color:#0d8a7a;border-bottom:1px solid #d9efe8}
+.acc td{border-bottom:1px dashed #e3f3ee}
+.acc tr:last-child td{border-bottom:0}
+.acc .hd{font-size:11px;letter-spacing:1.1px;color:#0d8a7a;font-weight:700;padding-top:12px}
+@media(max-width:860px){.fs-hd .one{margin-left:0;max-width:100%}}
+</style>
+</head>
+<body>
+<div class="progress" id="prog"></div>
+<div class="shell">
+<aside class="side">
+  <div class="brand">
+    <div class="logo">AM</div>
+    <div><h1>AirMirror 投屏</h1><p>Product Requirements</p></div>
+  </div>
+  <nav id="nav">
+    <div class="k">概览</div>
+    <a href="#s0">文档信息</a>
+    <a href="#s1">01 背景与问题</a>
+    <a href="#s2">02 产品目标与定位</a>
+    <a href="#s3">03 用户与场景</a>
+    <div class="k">需求</div>
+    <a href="#s4">04 范围与优先级</a>
+    <a href="#s5">05 产品模型与核心旅程</a>
+    <a href="#s6">06 功能需求</a>
+    <a href="#s6spec">06.1 核心功能规格</a>
+    <a href="#s6spec2">06.2 其余功能规格</a>
+    <a href="#s7">07 共享规则与异常</a>
+    <div class="k">方案</div>
+    <a href="#s8">08 技术架构与实现</a>
+    <a href="#s9">09 客户体验提升</a>
+    <a href="#s10">10 功能扩展规划</a>
+    <a href="#s11">11 UI 升级方案</a>
+    <div class="k">调研</div>
+    <a href="#s12">12 开源项目与竞品</a>
+    <a href="#s13">13 风险与开放问题</a>
+    <a href="#s14">14 非功能性需求</a>
+    <a href="#s15">15 里程碑与版本规划</a>
+  </nav>
+  <div class="meta">
+    版本 v1.1 · 2026-10-31<br>
+    状态 评审中<br>
+    文档 Owner 产品团队<br>
+    密级 内部
+  </div>
+</aside>
+<main>
+<header class="cover">
+  <div class="eyebrow"><span class="dot"></span>PRODUCT REQUIREMENTS DOCUMENT · v1.1</div>
+  <h1>AirMirror<br><span>免费、无广告、多协议的家庭投屏底座</span></h1>
+  <p class="sub">让任何一台电视、老盒子、杂牌盒子都能被手机和电脑稳定投上屏——协议齐全、扫码即连、竖屏友好、音画同步、本地直连，不把内容送进任何云端。</p>
+  <div class="facts">
+    <div class="fact"><b>4 类</b><small>AirPlay · DLNA · Cast · 私有通道</small></div>
+    <div class="fact"><b>3 端</b><small>手机 / 电脑 / 电视盒子</small></div>
+    <div class="fact"><b>&lt;150ms</b><small>局域网镜像目标延迟</small></div>
+    <div class="fact"><b>0 广告</b><small>无开屏 / 无贴片 / 无会员墙</small></div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<section id="s0">
+<h2><span class="num">00</span>文档信息</h2>
+<table>
+  <tbody>
+    <tr><td style="width:120px"><b>产品名称</b></td><td>AirMirror 投屏（工作名，最终品牌名 [TBD]）</td></tr>
+    <tr><td><b>文档版本</b></td><td>v1.1，2026-10-31</td></tr>
+    <tr><td><b>变更记录</b></td><td>v1.0 初稿；v1.1 新增 6.1（镜像、视频推送、投屏码、跨网、4K、音画同步）与 6.2（发现配对、竖屏适配、会话控制与接管、断线恢复、隐私边界、老设备降级、安装自启）功能规格，并补充第 14 章非功能性需求与第 15 章里程碑规划</td></tr>
+    <tr><td><b>文档类型</b></td><td>新产品 PRD（含技术架构、体验、扩展与 UI 升级章节）</td></tr>
+    <tr><td><b>读者</b></td><td>产品、设计、客户端/服务端研发、测试、运营</td></tr>
+    <tr><td><b>决策依据</b></td><td>6 款同类产品公开资料 + GitHub 开源投屏项目调研（见第 12 章）+ 用户明确诉求</td></tr>
+    <tr><td><b>标记约定</b></td><td><span class="tag t-warn">[TBD]</span> 未决事项；<span class="tag t-p2">[假设]</span> 为推进需求所做的推断，需验证</td></tr>
+  </tbody>
+</table>
+<div class="note">本文档中的技术章节用于说明<b>产品行为背后的可行性边界</b>，不替代详细技术设计。协议能力均可在公开资料或开源实现中验证；涉及平台限制的部分已单列为风险（见 13 章）。</div>
+</section>
+
+<section id="s1">
+<h2><span class="num">01</span>背景与问题</h2>
+<p class="lead">投屏已经是家庭与办公的高频动作，但主流产品把用户从"看内容"推到了"看广告、买会员、猜协议"。</p>
+
+<h3>问题证据</h3>
+<table>
+  <thead><tr><th style="width:170px">观察到的现象</th><th>受影响的用户与时刻</th><th>对产品的含义</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>主流投屏工具把核心能力放进会员体系</td>
+      <td>乐播自 2025 年 6 月起对全渠道部分功能做收费调整；雨燕投屏采用周/月/年/终身订阅，且 Google Play 标注"包含广告"</td>
+      <td>用户在"想投一次"的时刻被迫做付费决策，投屏变成付费墙后的动作</td>
+    </tr>
+    <tr>
+      <td>广告出现在启动、连接、投屏中</td>
+      <td>海豚星空免费版接收端标注"有广告"，付费版/SDK 才无广告</td>
+      <td>等待连接时的广告直接侵占核心旅程，且出现在大屏上，家庭场景尤为尴尬</td>
+    </tr>
+    <tr>
+      <td>协议不全导致"搜不到设备"</td>
+      <td>当贝、光元素公开能力集中在 AirPlay / DLNA / 华为 Cast+ / 自有 Cast，Miracast 覆盖有限</td>
+      <td>用户无法判断是网络问题、协议问题还是设备问题，只能反复重启</td>
+    </tr>
+    <tr>
+      <td>老盒子、杂牌盒子被排除在兼容列表外</td>
+      <td>大量在用盒子为低配 Android 4.4–9、1GB 内存、armeabi-v7a，系统自带投屏残缺或被抓取广告</td>
+      <td>"兼容性强"不是加分项，而是这类用户唯一的选择理由</td>
+    </tr>
+    <tr>
+      <td>跨网段投屏几乎不可用</td>
+      <td>办公室 VLAN、酒店客房网、双频合一/AP 隔离环境下设备发现失败</td>
+      <td>扫码 + 投屏码是绕过组播发现限制的现实解法（海豚星空即以扫码投屏为主打）</td>
+    </tr>
+    <tr>
+      <td>屏幕内容经过第三方云</td>
+      <td>远程投屏类产品默认中继媒体流</td>
+      <td>家庭相册、会议材料上云是不可接受的风险，需要明确"媒体不上云"</td>
+    </tr>
+  </tbody>
+</table>
+<p class="src">来源：乐播投屏服务调整公告、雨燕投屏官网与 Google Play 页、海豚星空官网/接收端指南、当贝投屏与光元素投屏产品页（详见第 12 章调研表）。</p>
+
+<h3>问题定义</h3>
+<div class="card">
+  <p style="margin:0"><b>当用户想把手机或电脑上的内容放到大屏时，现有方案要求他同时解决四件事：选对协议、装对 App、忍受广告、接受内容出网。</b>其中任何一件失败，投屏就中断。AirMirror 的产品机会在于把四件事收敛为一次扫码或一次点击。</p>
+</div>
+</section>
+
+<section id="s2">
+<h2><span class="num">02</span>产品目标与定位</h2>
+<p class="lead">定位：一款不靠广告和会员变现的、多协议兼容的投屏底座，接收端优先解决老设备，发送端覆盖手机与电脑。</p>
+
+<div class="grid2">
+  <div class="card">
+    <h4 style="margin-top:0">产品承诺（对用户可见）</h4>
+    <ul>
+      <li><b>不打断</b>：从启动到投屏结束，不出现任何广告位、推荐位、会员提示。</li>
+      <li><b>不挑设备</b>：同一局域网内，能装 APK 的盒子就能当接收端；不能装的走系统协议。</li>
+      <li><b>不折腾</b>：同网自动发现；跨网扫码或输入 6 位投屏码。</li>
+      <li><b>不出网</b>：局域网内媒体流点对点直连，不经过任何服务器。</li>
+      <li><b>不糊弄</b>：竖屏、超宽屏、4K 按源比例正确显示，音画对齐。</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4 style="margin-top:0">可观测的成功标准（定性，不编造数值）</h4>
+    <ul>
+      <li>首次使用用户在<b>不阅读说明</b>的情况下完成一次投屏。</li>
+      <li>同一网络下，接收端出现在发送端设备列表中的时间短于用户完成一次下拉刷新。</li>
+      <li>断开后，用户无需重新扫码即可恢复到同一会话。</li>
+      <li>任一失败都有<b>可执行的原因提示</b>（如"手机与电视不在同一网段"），而不是"连接失败，请重试"。</li>
+      <li>投屏过程中，大屏不出现任何非用户内容。</li>
+    </ul>
+  </div>
+</div>
+
+<h3>非目标（本期不做）</h3>
+<ul>
+  <li>不提供影视内容聚合、片源搜索或播放器内容库；AirMirror 只搬运用户已有的内容。</li>
+  <li>不做账号体系与云同步。本地设置随设备保存，卸载即清空。</li>
+  <li>不承诺在未获取系统权限的第三方 App 中实现 Miracast 接收（平台限制，见 13.1）。</li>
+  <li>不做弹幕、礼物、社区、短视频信息流等与投屏无关的运营功能。</li>
+  <li>不以广告、会员、投屏时长/画质解锁作为收入来源。</li>
+</ul>
+
+<div class="note warn"><b>商业模式说明。</b>"免费且无广告"要求成本必须落在别处。可选路径为开源 + 自愿捐赠 + 企业与酒店定制授权（付费的是批量部署、远程管理与品牌定制，而非个人用户的投屏能力）。具体收入模型不在本 PRD 决策范围，标记 <span class="tag t-warn">[TBD]</span>。</div>
+</section>
+
+<section id="s3">
+<h2><span class="num">03</span>用户与场景</h2>
+<p class="lead">产品必须同时满足"家庭一次性使用"和"办公重复使用"两种节奏，二者对可靠性、隐私和操作步数的要求不同。</p>
+
+<h3>角色</h3>
+<table>
+  <thead><tr><th style="width:130px">角色</th><th>定义</th><th>关键诉求</th><th>不希望的</th></tr></thead>
+  <tbody>
+    <tr><td><b>发送端用户</b></td><td>持有手机/平板/电脑、发起投屏的人</td><td>快速找到设备、一次确认、投屏中可继续用手机</td><td>装第二个 App、注册、看广告、反复输入密码</td></tr>
+    <tr><td><b>接收端所有者</b></td><td>电视/盒子的实际控制人（家庭里的年轻人、前台、IT）</td><td>一次安装长期可用、不被陌生人投屏、不占满存储</td><td>后台被杀、自动更新变广告版、被动接受投屏</td></tr>
+    <tr><td><b>访客</b></td><td>临时借用大屏的人（客人、外部讲师、酒店住客）</td><td>不安装任何东西也能投</td><td>需要注册、需要连内网、需要业主帮忙操作</td></tr>
+    <tr><td><b>管理员</b> <span class="tag t-p1">P1</span></td><td>酒店/门店/学校批量部署的维护者</td><td>批量配置设备名、统一开关策略、远程排障</td><td>逐台设置、无法知道设备在线状态</td></tr>
+  </tbody>
+</table>
+
+<h3>典型场景</h3>
+<table>
+  <thead><tr><th style="width:150px">场景</th><th>触发</th><th>约束</th><th>完成标志</th></tr></thead>
+  <tbody>
+    <tr><td><b>家庭观影</b></td><td>手机里有视频 App 的片子，想在大屏看</td><td>老盒子、Wi-Fi 2.4G、可能双频合一</td><td>大屏开始播放且可暂停/继续，手机可退出 App</td></tr>
+    <tr><td><b>相册/短视频分享</b></td><td>一家人围坐，想把手机照片、竖屏短视频放上去</td><td>竖屏内容、比例与电视不匹配</td><td>竖屏内容完整显示，不变形、不裁切关键区域</td></tr>
+    <tr><td><b>手游/直播同屏</b></td><td>想把游戏画面或直播放上大屏</td><td>延迟敏感、需要音画同步</td><td>操作与画面延迟在接受范围内，声音不超前/滞后</td></tr>
+    <tr><td><b>会议演示</b></td><td>笔记本投到会议室电视</td><td>公司网络划分 VLAN、禁止组播</td><td>通过投屏码连接成功，演示中不中断</td></tr>
+    <tr><td><b>酒店/民宿</b></td><td>住客用自己的手机投到房间电视</td><td>客房网络隔离、设备需防误投</td><td>扫码后一次性授权，退房后授权失效</td></tr>
+    <tr><td><b>无网环境</b></td><td>没有外网，仅有路由器或热点</td><td>无法访问云端信令</td><td>局域网发现与投屏仍完全可用</td></tr>
+  </tbody>
+</table>
+
+<div class="note ok"><b>场景收敛结论。</b>P0 只需要覆盖"同一局域网内的家庭观影 + 竖屏分享 + 会议投屏"三条路径；跨网（投屏码/扫码中继）是 P0 的<b>可用性兜底</b>而非主路径，酒店批量管理属于 P1。</div>
+</section>
+
+<section id="s4">
+<h2><span class="num">04</span>范围与优先级</h2>
+<p class="lead">P0 是最小完整旅程：装好接收端 → 发现或扫码 → 确认 → 投放 → 控制 → 结束/恢复。P1、P2 只在 P0 稳定后进入。</p>
+
+<table>
+  <thead><tr><th style="width:70px">优先级</th><th>能力</th><th>为什么在这个层级</th></tr></thead>
+  <tbody>
+    <tr><td><span class="tag t-p0">P0</span></td><td>TV/盒子接收端安装与自启、局域网自动发现、扫码配对、6 位投屏码、屏幕镜像、视频推送、竖屏适配、断线重连、错误自解释、无广告界面</td><td>缺任何一项，核心旅程无法完成或在常见环境下失败</td></tr>
+    <tr><td><span class="tag t-p1">P1</span></td><td>跨网投屏（信令 + 中继）、电脑端发送、文件互传、遥控器/鼠标反控、多设备会话列表、投屏中通知控制、TV 端主题与待机时钟</td><td>提升复用率与办公/酒店场景，但不影响首次成功</td></tr>
+    <tr><td><span class="tag t-p2">P2</span></td><td>多人协作白板、远程协助、批量设备管理后台、浏览器免装投屏、直播源串流、儿童模式、隐私投屏（仅投单窗口）</td><td>依赖 P0/P1 的稳定性与用户规模，过早投入会稀释主线</td></tr>
+  </tbody>
+</table>
+
+<h4>P0 边界内的明确取舍</h4>
+<ul>
+  <li><b>Miracast</b>：不作为 P0 承诺项。普通 APK 在 Android 8.0+ 无法作为 Miracast 接收端；仅在可获取系统权限的合作固件/预装版本中提供，其余环境引导用户使用系统自带投屏并保证 AirPlay/DLNA/Cast 可用。</li>
+  <li><b>iOS 屏幕镜像</b>：不要求用户安装 AirMirror App，直接使用系统"屏幕镜像"走 AirPlay 到接收端。</li>
+  <li><b>跨网</b>：P0 提供投屏码与扫码的<b>连接建立</b>能力；媒体是否中继取决于两端网络条件，中继作为 P1 补齐。</li>
+</ul>
+</section>
+
+<section id="s5">
+<h2><span class="num">05</span>产品模型与核心旅程</h2>
+<p class="lead">所有功能围绕一个对象展开：<b>投屏会话（Cast Session）</b>。设备、协议、画面、音频、控制都挂在会话上，而不是散落在各个页面。</p>
+
+<h3>5.1 对象模型</h3>
+<table>
+  <thead><tr><th style="width:130px">对象</th><th>定义</th><th>关键属性</th><th>生命周期</th></tr></thead>
+  <tbody>
+    <tr><td><b>接收端设备 Device</b></td><td>运行接收端的电视/盒子/电脑</td><td>设备名、设备 ID、支持的协议集、屏幕能力（分辨率/HDR/解码）、局域网地址、在线状态</td><td>安装即注册，卸载即注销；在线状态随心跳变化</td></tr>
+    <tr><td><b>发送端 Sender</b></td><td>发起投屏的手机/平板/电脑/浏览器</td><td>设备名、平台、已授权设备列表、当前会话</td><td>随 App 安装存在；授权记录可清除</td></tr>
+    <tr><td><b>投屏会话 Session</b></td><td>一次从连接到结束的完整投放过程</td><td>会话 ID、协议、来源类型（镜像/媒体）、状态、开始时间、画面参数、控制权归属</td><td>由连接建立创建，由结束/超时/异常销毁</td></tr>
+    <tr><td><b>投屏码 Code</b></td><td>用于人工建立连接的 6 位短码</td><td>码值、所属设备、有效期、剩余尝试次数</td><td>接收端展示时生成，过期或使用后失效</td></tr>
+    <tr><td><b>媒体源 Media</b></td><td>被投放的内容</td><td>类型（屏幕/视频/音频/图片）、时长、分辨率、编码、URL 或流</td><td>随会话结束释放，不落盘、不上传</td></tr>
+  </tbody>
+</table>
+
+<h3>5.2 会话状态机</h3>
+<div class="states">
+  <div class="st a"><b>IDLE</b><span>无会话，接收端展示待连接页（设备名 + 二维码 + 投屏码）</span></div>
+  <div class="st b"><b>PAIRING</b><span>收到连接请求，等待确认或验证码校验；最长 30 秒</span></div>
+  <div class="st c"><b>CONNECTED</b><span>通道已建立，尚未开始传输；协商协议与画质</span></div>
+  <div class="st d"><b>STREAMING</b><span>镜像或媒体正在播放，可暂停/恢复/调节音量</span></div>
+  <div class="st e"><b>PAUSED</b><span>用户主动暂停或系统临时挂起；保留会话与画面最后一帧</span></div>
+  <div class="st f"><b>ERROR / CLOSED</b><span>异常终止或用户结束；释放资源，回到 IDLE 并保留最近设备记录</span></div>
+</div>
+<p class="muted" style="font-size:12.5px;margin-top:-4px">允许的转换：IDLE→PAIRING→CONNECTED→STREAMING⇄PAUSED；任意状态→ERROR/CLOSED。禁止：PAUSED 直接接受第二个发送端（必须先结束或加入会话列表）。</p>
+
+<h3>5.3 核心旅程 A：同网发现（主路径）</h3>
+<div class="flow" id="flowA">
+  <div class="step on" data-k="0"><div class="n">01</div><div class="t">打开接收端</div><div class="d">电视/盒子启动后自动进入待连接页</div></div>
+  <div class="arrow">→</div>
+  <div class="step" data-k="1"><div class="n">02</div><div class="t">手机发现设备</div><div class="d">同一 Wi-Fi 下自动出现在列表首屏</div></div>
+  <div class="arrow">→</div>
+  <div class="step" data-k="2"><div class="n">03</div><div class="t">点击连接</div><div class="d">大屏弹出确认，3 秒内确认或自动允许</div></div>
+  <div class="arrow">→</div>
+  <div class="step" data-k="3"><div class="n">04</div><div class="t">选择投法</div><div class="d">镜像屏幕 / 推送视频 / 传文件</div></div>
+  <div class="arrow">→</div>
+  <div class="step" data-k="4"><div class="n">05</div><div class="t">投放中</div><div class="d">画面出现，可暂停、停止、切回手机</div></div>
+</div>
+<div class="card flow-detail" id="flowA-detail" style="margin-top:8px"></div>
+
+<h3>5.4 核心旅程 B：跨网 / 扫码（兜底路径）</h3>
+<div class="flow" id="flowB">
+  <div class="step on" data-k="0"><div class="n">01</div><div class="t">大屏展示二维码与投屏码</div><div class="d">无需网络也能展示，码每 60 秒刷新</div></div>
+  <div class="arrow">→</div>
+  <div class="step" data-k="1"><div class="n">02</div><div class="t">手机扫码或输码</div><div class="d">扫码自动打开网页/App 深链；输码需 6 位</div></div>
+  <div class="arrow">→</div>
+  <div class="step" data-k="2"><div class="n">03</div><div class="t">建立通道</div><div class="d">同网直连；跨网经信令协商，媒体优先直连</div></div>
+  <div class="arrow">→</div>
+  <div class="step" data-k="3"><div class="n">04</div><div class="t">授权确认</div><div class="d">大屏显示请求方设备名，允许/拒绝</div></div>
+  <div class="arrow">→</div>
+  <div class="step" data-k="4"><div class="n">05</div><div class="t">投放与结束</div><div class="d">结束后授权失效，不保留长期权限</div></div>
+</div>
+<div class="card flow-detail" id="flowB-detail" style="margin-top:8px"></div>
+
+<div class="note"><b>关键设计判断。</b>主路径必须做到"打开即见设备"，扫码是失败兜底而非常规操作。若把扫码做成主路径，家庭用户会在"为什么要扫码"处流失。</div>
+</section>
+<section id="s6">
+<h2><span class="num">06</span>功能需求</h2>
+<p class="lead">本章按模块组织。每个需求给出触发条件、处理规则、结果与状态变化、异常路径；跨模块共用的规则统一放在第 7 章，这里只引用不重复定义。</p>
+
+<div class="req">
+  <div class="hd"><span class="id">FR-01</span><h3>接收端安装与常驻</h3><span class="goal">用户装一次，长期可用</span></div>
+  <div class="bd"><dl>
+    <dt>目的</dt><dd>让非技术用户在电视/盒子上完成一次安装后，开机即可被投屏，无需每次手动启动。</dd>
+    <dt>触发</dt><dd>用户在电视应用市场、U 盘或扫码下载 APK 并安装；或设备预装。</dd>
+    <dt>处理规则</dt>
+    <dd><ul>
+      <li>安装包需覆盖 API 19（Android 4.4）至最新版本，同时提供 armeabi-v7a 与 arm64-v8a 两种 ABI；老盒子默认取 32 位包以减小体积。</li>
+      <li>首次启动引导三步：允许局域网访问 → 允许后台运行/自启 → 设置设备名。每步都可跳过，跳过则使用默认设备名（机型 + 随机两位）。</li>
+      <li>提供"开机自启"开关，默认开启；在无法自启的系统中降级为"最近使用后保活"，并在待连接页提示如何手动恢复。</li>
+      <li>接收端不要求登录、不读取通讯录、不申请与投屏无关的权限。</li>
+    </ul></dd>
+    <dt>结果与状态</dt><dd>安装完成后设备进入 IDLE 状态并开始广播；下次开机直接进入 IDLE，无需用户操作。</dd>
+    <dt>异常</dt>
+    <dd><ul>
+      <li>系统限制自启：待连接页显示"若未自动启动，请从应用列表打开"，并保留上次设备名与设置。</li>
+      <li>存储不足：安装前提示所需空间；运行中缓存超过阈值自动清理（阈值见 7.4）。</li>
+      <li>被系统清理后台：回到前台后 2 秒内恢复广播与监听，已有会话尝试续连（见 FR-11）。</li>
+    </ul></dd>
+  </dl></div>
+</div>
+
+<div class="req">
+  <div class="hd"><span class="id">FR-02</span><h3>局域网设备发现</h3><span class="goal">打开就能看到设备</span></div>
+  <div class="bd"><dl>
+    <dt>目的</dt><dd>同一局域网内，发送端无需任何输入即可看到可投屏设备。</dd>
+    <dt>触发</dt><dd>发送端进入首页、下拉刷新、从后台回到前台、网络切换（Wi-Fi 切换/重连）。</dd>
+    <dt>处理规则</dt>
+    <dd><ul>
+      <li>接收端同时以三种方式广播自身：通用即插即用的设备描述广播、Apple 投屏的发现广播、Google Cast 的发现广播；发送端以多路并行监听，任一路命中即可展示。</li>
+      <li>设备列表按"最近成功连接 → 同网段 → 其他"排序；同一设备被多路发现时合并为一条，展示其最强协议能力。</li>
+      <li>列表展示设备名、协议角标（AirPlay / DLNA / Cast / 私有）、在线状态；不展示 IP 等实现细节。</li>
+      <li>持续发现采用"首屏快速返回 + 后台补齐"：先展示缓存中最近使用的设备，再增量刷新。</li>
+      <li>发现失败时提供"手动输入 IP"入口与"扫码连接"入口，不把用户锁死在自动发现。</li>
+    </ul></dd>
+    <dt>结果与状态</dt><dd>列表出现设备即可点击；点击后会话进入 PAIRING。设备离线时置灰并保留 10 分钟，避免列表闪烁。</dd>
+    <dt>异常</dt>
+    <dd><ul>
+      <li>路由器开启 AP 隔离：列表为空，提示"当前网络禁止设备互访，请关闭 AP 隔离或改用扫码/投屏码"。</li>
+      <li>双频合一导致跨频段不可见：提示"手机与电视可能连在不同频段，建议同一频段"。</li>
+      <li>组播被禁用：自动降级为受控广播/直连探测，仍失败则引导扫码。</li>
+    </ul></dd>
+  </dl></div>
+</div>
+
+<div class="req">
+  <div class="hd"><span class="id">FR-03</span><h3>配对与授权</h3><span class="goal">防误投，不多一步</span></div>
+  <div class="bd"><dl>
+    <dt>目的</dt><dd>避免陌生人或误操作把内容投到别人家的大屏，同时不增加家庭用户的常规操作步数。</dd>
+    <dt>触发</dt><dd>发送端发起连接；或接收端收到未知设备的连接请求。</dd>
+    <dt>处理规则</dt>
+    <dd><ul>
+      <li>首次连接某设备：大屏显示"允许「XX 的手机」投屏？"，接收端可用遥控器确认，也支持 5 秒无操作自动允许（默认开启，可在设置关闭）。</li>
+      <li>已授权设备：在接收端的可信列表内直接进入 CONNECTED，不再弹窗；列表可在接收端"已连接的设备"中移除。</li>
+      <li>扫码/投屏码连接视为一次显式授权：输入正确码即证明持有大屏前的人在场，可直接建立会话，但仍在大屏展示请求方名称。</li>
+      <li>同一时刻只允许一个活动会话；第二台设备发起时提示"电视正在被 XX 投屏"，并提供"请求接管"。</li>
+      <li>授权有效期：家庭模式为长期（可移除）；酒店/访客模式为会话结束即失效（见 P1 酒店模式）。</li>
+    </ul></dd>
+    <dt>结果与状态</dt><dd>PAIRING → CONNECTED；授权写入接收端本地可信列表；大屏在连接成功后展示发送端设备名 3 秒。</dd>
+    <dt>异常</dt>
+    <dd><ul>
+      <li>大屏无人在场（如会议室电视）：默认允许并记录设备名，管理员可开启"必须遥控器确认"。</li>
+      <li>请求被拒绝：发送端提示"电视已拒绝本次投屏"，10 分钟内不重复弹窗同一设备。</li>
+      <li>并发请求：先到先得，后到者进入等待队列并展示排队状态。</li>
+      <li>投屏码错误：连续 5 次错误锁定该码 60 秒，防暴力尝试。</li>
+    </ul></dd>
+  </dl></div>
+</div>
+
+<div class="req">
+  <div class="hd"><span class="id">FR-04</span><h3>屏幕镜像</h3><span class="goal">手机/电脑画面完整上屏</span></div>
+  <div class="bd"><dl>
+    <dt>目的</dt><dd>把发送端当前屏幕（含应用、游戏、相册）实时显示在大屏，并支持竖屏内容。</dd>
+    <dt>触发</dt><dd>发送端在设备卡片中选择"镜像屏幕"；iOS 用户从控制中心选择"屏幕镜像"；电脑端点击"开始镜像"。</dd>
+    <dt>处理规则</dt>
+    <dd><ul>
+      <li>采集：手机端以系统屏幕采集能力获取画面与系统音频；电脑端采集指定屏幕或窗口。默认采集整屏，P2 支持单窗口。</li>
+      <li>编码：优先硬件编码，按接收端解码能力协商编码格式与分辨率；无法硬编时降级软编并降低分辨率。</li>
+      <li>传输：局域网内点对点直连，不经服务器；传输层需支持丢包重传与自适应码率。</li>
+      <li>渲染：接收端按源画面比例显示；竖屏内容按 FR-07 规则处理。</li>
+      <li>镜像期间发送端可锁屏、切后台、继续使用其他 App；发送端通知栏提供"停止投屏"。</li>
+    </ul></dd>
+    <dt>结果与状态</dt><dd>CONNECTED → STREAMING；大屏显示镜像画面；发送端显示"正在投屏到 XX"。</dd>
+    <dt>异常</dt>
+    <dd><ul>
+      <li>发送端无录屏权限：引导开启，并提供"仅推送视频"替代路径。</li>
+      <li>系统不允许采集音频：画面正常投，提示"当前系统限制，声音需从手机播放"。</li>
+      <li>网络抖动：自动降码率/降帧，画面短暂模糊但不黑屏；恢复后 2 秒内回到原画质。</li>
+      <li>发送端断网/锁屏超时：按 FR-11 处理。</li>
+    </ul></dd>
+  </dl></div>
+</div>
+
+<div class="req">
+  <div class="hd"><span class="id">FR-05</span><h3>视频与媒体推送</h3><span class="goal">推链接而不是推屏幕</span></div>
+  <div class="bd"><dl>
+    <dt>目的</dt><dd>把视频/音乐/图片地址直接交给接收端播放，画质更高、功耗更低、手机可离开。</dd>
+    <dt>触发</dt><dd>用户在视频 App 内点系统投屏按钮；或在 AirMirror 内选择本地文件/粘贴链接。</dd>
+    <dt>处理规则</dt>
+    <dd><ul>
+      <li>接收端需能响应标准的媒体投送请求：接收播放地址、设置播放/暂停/进度/音量、回传播放状态。</li>
+      <li>支持常见容器与编码；不支持的编码由接收端提示"该视频编码不被电视支持，可改用镜像播放"。</li>
+      <li>本地文件通过局域网内的临时媒体服务提供地址，仅对当前会话可见，会话结束即关闭。</li>
+      <li>推送后手机可退出 App；接收端独立播放，进度由接收端回报给发送端（若发送端仍在线）。</li>
+      <li>多个推送请求到达时，后到者替换当前媒体并保留会话，不重建连接。</li>
+    </ul></dd>
+    <dt>结果与状态</dt><dd>STREAMING，媒体类型为 video/audio/image；大屏显示标题与进度条（可关闭）。</dd>
+    <dt>异常</dt>
+    <dd><ul>
+      <li>地址失效或防盗链：接收端无法取流，提示"片源限制了投屏，可改用屏幕镜像"。</li>
+      <li>仅支持 HTTPS 的片源而接收端证书过期：提示更新系统时间或改镜像。</li>
+      <li>文件格式不支持：列出支持的格式，并给出镜像入口。</li>
+    </ul></dd>
+  </dl></div>
+</div>
+
+<div class="req">
+  <div class="hd"><span class="id">FR-06</span><h3>投屏码与跨网连接</h3><span class="goal">不同网段也能连上</span></div>
+  <div class="bd"><dl>
+    <dt>目的</dt><dd>当自动发现失败（跨 VLAN、AP 隔离、访客网络）时，用最短的人工输入建立会话。</dd>
+    <dt>触发</dt><dd>用户点击发送端"输入投屏码"或扫描大屏二维码。</dd>
+    <dt>处理规则</dt>
+    <dd><ul>
+      <li>接收端在待连接页常驻展示 6 位数字码与二维码；码每 60 秒轮换，旧码在轮换后 10 秒内仍可校验（容忍输入延迟）。</li>
+      <li>同网段输入码：直接转为局域网直连，不经过任何服务器。</li>
+      <li>跨网段输入码：通过信令服务交换两端的连接信息，优先尝试打洞直连；直连失败且用户已开启"允许中继"时走中继。</li>
+      <li>二维码内容包含设备标识与一次性令牌，扫码后由网页或 App 完成后续连接；令牌一次性有效。</li>
+      <li>码的生成与校验完全在接收端本地完成；仅跨网场景才使用信令服务。</li>
+    </ul></dd>
+    <dt>结果与状态</dt><dd>PAIRING → CONNECTED；大屏展示"XX 已连接"，连接方式标注"直连"或"中继"。</dd>
+    <dt>异常</dt>
+    <dd><ul>
+      <li>码过期：提示"投屏码已更新，请输入电视上的新码"，并自动刷新输入框。</li>
+      <li>无外网且跨网：明确提示"跨网投屏需要两端均可访问互联网，当前只能在同一网络内投屏"。</li>
+      <li>中继未开启或不可用：提示"网络无法直连，可在设置中允许中继"。</li>
+      <li>信令服务不可达：自动回退到局域网发现，并提示可能是网络限制。</li>
+    </ul></dd>
+  </dl></div>
+</div>
+<div class="req">
+  <div class="hd"><span class="id">FR-07</span><h3>竖屏与画面适配</h3><span class="goal">竖屏内容不变形、不裁切</span></div>
+  <div class="bd"><dl>
+    <dt>目的</dt><dd>手机竖屏内容（短视频、聊天记录、竖版海报）在 16:9 电视上仍然可读、完整。</dd>
+    <dt>触发</dt><dd>发送端画面比例变化（横竖屏旋转、折叠屏展开）、投屏中切换到不同比例的内容。</dd>
+    <dt>处理规则</dt>
+    <dd><ul>
+      <li>默认策略为"等比完整显示"：竖屏画面居中，左右留黑边，不做拉伸、不裁切。</li>
+      <li>旋转跟随：发送端旋转后 1 秒内完成方向切换；不闪黑、不残留上一帧方向。</li>
+      <li>提供三种显示模式，可在接收端设置中切换并记住：完整显示（默认）、铺满（允许裁切边缘）、拉伸（不推荐，需二次确认）。</li>
+      <li>超宽屏（21:9）与 4:3 内容同样按等比处理；接收端屏幕比例与内容比例差异过大时，提示可切换显示模式。</li>
+      <li>竖屏镜像时，接收端在大屏角落显示"手机竖屏"小标签，3 秒后消失。</li>
+    </ul></dd>
+    <dt>结果与状态</dt><dd>画面按选定模式渲染；设置在设备本地持久化，下次投屏沿用。</dd>
+    <dt>异常</dt>
+    <dd><ul>
+      <li>旋转过程中收到新帧比例不一致：以最新帧为准，避免反复跳变。</li>
+      <li>老设备渲染性能不足：关闭动画过渡，直接切换，优先保证画面。</li>
+    </ul></dd>
+  </dl></div>
+</div>
+
+<div class="req">
+  <div class="hd"><span class="id">FR-08</span><h3>画质协商与 4K</h3><span class="goal">源、网、屏三方取最优</span></div>
+  <div class="bd"><dl>
+    <dt>目的</dt><dd>在设备与网络允许时给出最高可用画质，在不允许时平稳降级而不中断。</dd>
+    <dt>触发</dt><dd>会话建立时的能力协商；投屏中网络状况变化；用户手动选择画质档位。</dd>
+    <dt>处理规则</dt>
+    <dd><ul>
+      <li>建连时三端协商：发送端可采集上限、网络可用带宽、接收端可解码上限与屏幕输出上限，取三者最小值作为初始档位。</li>
+      <li>档位从高到低为：4K（2160p）→ 1440p → 1080p → 720p → 480p；每档绑定编码格式与码率区间（见 8.6）。</li>
+      <li>4K 仅在接收端屏幕输出、解码芯片、接口带宽均满足时启用；老盒子最高 1080p，不展示不可达的选项。</li>
+      <li>投屏中每秒评估一次丢帧与缓冲水位，连续 3 秒劣化则降一档，连续 10 秒良好则升一档；升降档不重建会话、不黑屏。</li>
+      <li>用户可锁定档位（"固定画质"），锁定后不再自动调整，仅在严重卡顿时提示。</li>
+    </ul></dd>
+    <dt>结果与状态</dt><dd>大屏角落可选显示当前分辨率与码率（默认关闭）；设置持久化。</dd>
+    <dt>异常</dt>
+    <dd><ul>
+      <li>接收端解码器不支持所选编码：自动切换到通用编码，并提示画质可能下降。</li>
+      <li>4K 播放卡顿：自动回落到 1080p，提示"当前网络/设备不足以稳定播放 4K"。</li>
+      <li>带宽骤降：直接跳到可维持的档位，避免逐级试探造成长时间卡顿。</li>
+    </ul></dd>
+  </dl></div>
+</div>
+
+<div class="req">
+  <div class="hd"><span class="id">FR-09</span><h3>音频与音画同步</h3><span class="goal">声音不早不晚</span></div>
+  <div class="bd"><dl>
+    <dt>目的</dt><dd>镜像与视频推送时，声音与画面在同一时刻到达，避免"口型对不上"。</dd>
+    <dt>触发</dt><dd>每次会话开始；播放中发生卡顿、跳转、变速、切歌。</dd>
+    <dt>处理规则</dt>
+    <dd><ul>
+      <li>以音频播放时钟为主时钟，视频按时间戳对齐：早到的帧等待，晚到的帧按策略丢弃或追帧。</li>
+      <li>音频缓冲目标区间为 40–80ms；超出上限触发追帧，低于下限触发轻微拉长，调整幅度单次不超过 10ms，避免可听出的变速。</li>
+      <li>视频推送场景下，若接收端自行解码播放，则以其播放器时钟为准，发送端只做进度同步，不干预音画。</li>
+      <li>音量控制归属：镜像时由接收端统一调节；推送时发送端可调媒体音量，系统音量仍由大屏控制。</li>
+    </ul></dd>
+    <dt>结果与状态</dt><dd>会话内持续保持同步；用户切换音量/暂停后 1 秒内恢复同步。</dd>
+    <dt>异常</dt>
+    <dd><ul>
+      <li>接收端无音频输出设备：画面正常，提示"未检测到扬声器"。 </li>
+      <li>发送端音频采集被系统中断（来电/其他 App 占用）：暂停音频并提示，画面继续。</li>
+      <li>长时间不同步（超过 300ms）：执行一次硬对齐，允许 1 帧内的轻微跳变。</li>
+    </ul></dd>
+  </dl></div>
+</div>
+
+<div class="req">
+  <div class="hd"><span class="id">FR-10</span><h3>会话控制</h3><span class="goal">谁都能停，停得干净</span></div>
+  <div class="bd"><dl>
+    <dt>目的</dt><dd>发送端与接收端都能随时控制会话，且结束后不留残余。</dd>
+    <dt>触发</dt><dd>用户点击暂停/继续/停止/静音；发送端退出 App；接收端按遥控器返回键。</dd>
+    <dt>处理规则</dt>
+    <dd><ul>
+      <li>控制权：发送端拥有播放控制；接收端拥有"结束会话"与"静音"的最终决定权（家庭场景防止被远程锁死）。</li>
+      <li>暂停时保留最后一帧并显示"已暂停"；继续时从暂停点恢复，不重新建连。</li>
+      <li>停止会话：两端同时释放采集、编码、传输与渲染资源；接收端 1 秒内回到 IDLE 待连接页。</li>
+      <li>接收端按返回键：第一次显示"结束投屏？"，第二次确认结束；10 秒无操作自动取消。</li>
+      <li>发送端退出 App 或长时间后台：会话保留 30 秒（见 FR-11），超时后自动结束。</li>
+    </ul></dd>
+    <dt>结果与状态</dt><dd>STREAMING ⇄ PAUSED；结束后 CLOSED → IDLE，会话记录仅在本地保留最近 10 条。</dd>
+    <dt>异常</dt>
+    <dd><ul>
+      <li>停止指令因网络丢失未送达：接收端在 5 秒无数据后判定会话失联并自行结束。</li>
+      <li>接收端被强制断电：发送端在 8 秒内检测到心跳丢失，提示"电视已断开"并回到设备列表。</li>
+    </ul></dd>
+  </dl></div>
+</div>
+
+<div class="req">
+  <div class="hd"><span class="id">FR-11</span><h3>断线与恢复</h3><span class="goal">断一下不用重来</span></div>
+  <div class="bd"><dl>
+    <dt>目的</dt><dd>Wi-Fi 抖动、切后台、锁屏等常见中断不导致用户重新扫码。</dd>
+    <dt>触发</dt><dd>心跳丢失、网络切换、发送端进入后台、接收端进程被回收。</dd>
+    <dt>处理规则</dt>
+    <dd><ul>
+      <li>会话保留窗口为 30 秒：期间接收端保持最后一帧并显示"连接中断，正在恢复"。</li>
+      <li>恢复顺序：优先用原通道重连 → 失败则重新探测同一设备 → 仍失败则提示重新连接。</li>
+      <li>恢复成功后回到 STREAMING，画质从上次档位低一档开始，10 秒内回升。</li>
+      <li>恢复期间接收端不接受新设备接入，避免会话被抢占。</li>
+      <li>发送端切后台不超过 30 秒：恢复后不打断用户，无需任何操作。</li>
+    </ul></dd>
+    <dt>结果与状态</dt><dd>STREAMING → RECOVERING（内部态，UI 表现为"正在恢复"）→ STREAMING；超时则 CLOSED。</dd>
+    <dt>异常</dt>
+    <dd><ul>
+      <li>发送端 IP 变化（切换 Wi-Fi）：用设备标识重新握手，不使用旧地址。</li>
+      <li>接收端重启：会话无法恢复，明确提示"电视已重启，请重新连接"。</li>
+      <li>连续 3 次恢复失败：停止重试，给出原因与下一步操作。</li>
+    </ul></dd>
+  </dl></div>
+</div>
+
+<div class="req">
+  <div class="hd"><span class="id">FR-12</span><h3>隐私与数据边界</h3><span class="goal">内容不出门</span></div>
+  <div class="bd"><dl>
+    <dt>目的</dt><dd>让用户相信投屏内容不会被上传、留存或用于分析。</dd>
+    <dt>触发</dt><dd>任意会话；首次启动；用户查看隐私说明。</dd>
+    <dt>处理规则</dt>
+    <dd><ul>
+      <li>局域网内：画面、音频、文件全部点对点传输，不经过任何服务器，传输内容端到端加密。</li>
+      <li>跨网：仅信令与网络连接信息经过服务端；媒体默认直连，开启中继时媒体经中继但<b>不落盘、不解析</b>，中继节点不记录内容。</li>
+      <li>本地不保存投屏内容：临时缓存仅在会话期间存在，结束即删除；不生成缩略图、不写入相册。</li>
+      <li>诊断数据默认关闭；用户主动开启后仅上报崩溃堆栈与设备型号，不上报画面、文件名、URL。</li>
+      <li>首次启动以一句话说明数据边界，并提供"查看完整说明"入口。</li>
+    </ul></dd>
+    <dt>结果与状态</dt><dd>设置页"隐私"分组可查看与开关；关闭诊断后不再产生任何外发请求（更新检查除外，可关）。</dd>
+    <dt>异常</dt>
+    <dd><ul>
+      <li>用户开启中继但企业网络禁止外联：提示并回退到局域网模式。</li>
+      <li>第三方片源本身携带追踪参数：接收端只在会话内使用地址，不写入日志。</li>
+    </ul></dd>
+  </dl></div>
+</div>
+
+<div class="req">
+  <div class="hd"><span class="id">FR-13</span><h3>老设备与杂牌盒子兼容</h3><span class="goal">能装就能用</span></div>
+  <div class="bd"><dl>
+    <dt>目的</dt><dd>在低配、老旧、非品牌设备上仍能完成核心投屏，而不是"安装成功但无法使用"。</dd>
+    <dt>触发</dt><dd>安装或启动时检测设备能力；运行中检测到性能不足。</dd>
+    <dt>处理规则</dt>
+    <dd><ul>
+      <li>按能力分三级并自动选择运行策略（分级标准见 7.2）：
+        <ul>
+          <li><b>A 级</b>：完整协议 + 4K 协商 + 硬件解码。</li>
+          <li><b>B 级</b>：完整协议 + 最高 1080p + 硬件解码，关闭动画与预览。</li>
+          <li><b>C 级</b>：仅镜像与视频推送 + 最高 720p + 软解兜底，关闭后台预览与日志。</li>
+        </ul>
+      </li>
+      <li>C 级设备减少常驻内存占用：不加载多协议并发，按需启动协议模块，闲置 5 分钟后释放。</li>
+      <li>不支持的设备（无 Wi-Fi 模块、系统被深度裁剪）在安装时给出明确结论，不进入"能装不能用"的状态。</li>
+      <li>设备名默认取系统机型；杂牌设备型号混乱时使用"电视 + 随机两位"，允许用户改名。</li>
+    </ul></dd>
+    <dt>结果与状态</dt><dd>启动时确定级别并展示在设置页；级别变化需重启接收端生效。</dd>
+    <dt>异常</dt>
+    <dd><ul>
+      <li>设备内存不足导致解码失败：自动切软解并降分辨率；仍失败则提示使用视频推送而非镜像。</li>
+      <li>系统时间错误导致证书校验失败：提示校准时间，不影响局域网直连。</li>
+      <li>厂商定制系统拦截后台服务：引导加入白名单，并提示可能需要在每次开机后手动打开。</li>
+    </ul></dd>
+  </dl></div>
+</div>
+<div class="req">
+  <div class="hd"><span class="id">FR-14</span><h3>发送端：手机、电脑与免安装入口</h3><span class="goal">三个平台，一套体验</span></div>
+  <div class="bd"><dl>
+    <dt>目的</dt><dd>覆盖家庭（手机）与办公（电脑）两类主要发送端，并为访客提供不安装也能投的入口。</dd>
+    <dt>触发</dt><dd>用户打开 App、从系统分享菜单选择投屏、或在电脑端启动程序。</dd>
+    <dt>处理规则</dt>
+    <dd><ul>
+      <li>手机端：首页即设备列表，列表下方固定"扫码连接"与"输入投屏码"两个入口；投屏中降为一条悬浮控制条，可上滑收起。</li>
+      <li>电脑端：常驻托盘，主窗口提供设备列表与"镜像这块屏幕"；支持多显示器选择；关闭主窗口不结束会话。</li>
+      <li>免安装入口 <span class="tag t-p1">P1</span>：接收端提供局域网网页地址与二维码，访客用浏览器上传视频或共享标签页，无需安装。</li>
+      <li>三端共用同一套设备发现、配对、会话控制与错误提示文案，避免同一问题在不同平台给出不同解释。</li>
+      <li>发送端不要求登录；设备名默认取系统名称，可在设置中修改。</li>
+    </ul></dd>
+    <dt>结果与状态</dt><dd>发送端与接收端状态同步；任一端结束会话，另一端在 2 秒内反映。</dd>
+    <dt>异常</dt>
+    <dd><ul>
+      <li>电脑端缺少录屏权限（macOS）：引导到系统设置授权，并提供"仅推送文件"替代。</li>
+      <li>手机端被系统省电策略杀掉：投屏中申请前台服务，通知常驻，避免被清理。</li>
+      <li>浏览器不支持所需能力：降级为文件上传 + 大屏播放，并说明限制。</li>
+    </ul></dd>
+  </dl></div>
+</div>
+
+<h3 id="s6spec">6.1 核心功能规格</h3>
+<p>上面的 FR 说明"要做什么"，本节说明六项 P0 能力"做到什么程度、边界在哪、怎样算做完"。六项规格共用第 5 章的会话状态机与第 7 章的共享规则，不重复定义。凡标注"目标"的数值是设计预算，需在真机实测后固化，不作为已达成事实。</p>
+
+<div class="fs">
+  <div class="fs-hd"><span class="fsid">FS-01</span><h3>屏幕镜像</h3><div class="one">把发送端当前屏幕实时显示在大屏，覆盖应用、游戏、相册与竖屏内容</div></div>
+  <div class="fs-bd">
+    <h5>入口与交互</h5>
+    <table>
+      <thead><tr><th style="width:46px">步骤</th><th style="width:210px">用户动作</th><th>系统响应</th><th style="width:190px">界面变化</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">1</td><td>在设备卡片点"镜像屏幕"</td><td>创建会话并协商能力；首次触发系统录屏授权</td><td>卡片进入"授权中"，其他设备不可再发起</td></tr>
+        <tr><td class="mono">2</td><td>在系统弹窗点"开始录制"</td><td>启动屏幕采集与首帧编码</td><td>大屏由待连接页切为画面，发送端收起为控制条</td></tr>
+        <tr><td class="mono">3</td><td>无操作</td><td>进入 STREAMING，持续发送画面与音频</td><td>大屏角落显示发送端名称 3 秒后淡出</td></tr>
+        <tr><td class="mono">4</td><td>点暂停</td><td>停止送帧，保留最后一帧</td><td>大屏覆盖"已暂停"，发送端按钮变"继续"</td></tr>
+        <tr><td class="mono">5</td><td>点停止，或接收端遥控器确认结束</td><td>释放采集、编码、传输与渲染资源</td><td>大屏在 1 秒内回到待连接页</td></tr>
+      </tbody>
+    </table>
+
+    <h5>参数</h5>
+    <table>
+      <thead><tr><th style="width:120px">参数</th><th style="width:90px">默认</th><th style="width:210px">可选值</th><th>规则</th></tr></thead>
+      <tbody>
+        <tr><td>采集范围</td><td>整屏</td><td>整屏 / 单窗口</td><td>单窗口仅电脑端提供；手机端固定整屏</td></tr>
+        <tr><td>方向</td><td>跟随系统</td><td>跟随 / 锁定横屏 / 锁定竖屏</td><td>锁定后不随设备旋转，竖屏内容仍按 FR-07 显示</td></tr>
+        <tr><td>画质</td><td>自动</td><td>自动 / 4K / 1440p / 1080p / 720p / 480p</td><td>不可达档位不展示；手动锁定后停止自动升降</td></tr>
+        <tr><td>帧率</td><td>60fps</td><td>60 / 30 / 15</td><td>连续 3 秒丢帧自动降到 30；恢复 10 秒后回升</td></tr>
+        <tr><td>音频</td><td>开启</td><td>开启 / 关闭</td><td>关闭时大屏静音，画面与同步逻辑不变</td></tr>
+        <tr><td>显示模式</td><td>完整显示</td><td>完整显示 / 铺满 / 拉伸</td><td>在接收端设置，按设备持久化</td></tr>
+      </tbody>
+    </table>
+
+    <h5>状态迁移</h5>
+    <table>
+      <thead><tr><th style="width:130px">当前</th><th style="width:180px">触发</th><th style="width:120px">下一状态</th><th>约束</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">PAIRING</td><td>授权通过</td><td class="mono">CONNECTED</td><td>拒绝则回 IDLE，并在发送端给出可执行提示</td></tr>
+        <tr><td class="mono">CONNECTED</td><td>首帧到达</td><td class="mono">STREAMING</td><td>首帧 5 秒未达判为失败，只重试一次</td></tr>
+        <tr><td class="mono">STREAMING</td><td>用户暂停 / 音频被系统抢占</td><td class="mono">PAUSED</td><td>保留最后一帧；音频恢复后自动继续</td></tr>
+        <tr><td class="mono">STREAMING</td><td>心跳丢失</td><td class="mono">RECOVERING</td><td>30 秒窗口内不接受新设备接入</td></tr>
+        <tr><td class="mono">任意</td><td>停止、超时或接收端结束</td><td class="mono">CLOSED</td><td>两端同时释放资源，不留后台采集</td></tr>
+      </tbody>
+    </table>
+
+    <h5>异常</h5>
+    <table>
+      <thead><tr><th style="width:170px">场景</th><th style="width:190px">判定条件</th><th>提示</th><th style="width:170px">恢复动作</th></tr></thead>
+      <tbody>
+        <tr><td>录屏权限被拒</td><td>系统返回拒绝</td><td>"需要录屏权限才能镜像，也可以只推送视频"</td><td>跳转设置；或改走 FS-02</td></tr>
+        <tr><td>系统禁止采集内部音频</td><td>采集无音频轨</td><td>"当前系统限制，声音从手机播放"</td><td>画面继续，不中断会话</td></tr>
+        <tr><td>来电或音频被占用</td><td>音频轨中断超过 1 秒</td><td>顶部横幅提示</td><td>画面继续；音频通道恢复后自动续传</td></tr>
+        <tr><td>硬件编码不可用</td><td>编码器初始化失败</td><td>"已切换到兼容模式，画质可能下降"</td><td>软编 + 自动降一档分辨率</td></tr>
+        <tr><td>首帧超时</td><td>5 秒无首帧</td><td>"画面传输失败"</td><td>重试一次；仍失败则引导改推送</td></tr>
+        <tr><td>网络抖动</td><td>连续 3 秒丢帧或缓冲超限</td><td>不弹窗，角标显示"网络不稳定"</td><td>自动降档/降帧，恢复后回档</td></tr>
+      </tbody>
+    </table>
+
+    <div class="acc">
+      <div class="hd">验收口径</div>
+      <table>
+        <thead><tr><th style="width:150px">检查项</th><th>通过标准</th><th style="width:210px">验证方式</th></tr></thead>
+        <tbody>
+          <tr><td>端到端延迟</td><td>1080p60、同一 5GHz 网络下，P90 ≤ 150ms（目标）</td><td>双端打点，录屏逐帧比对</td></tr>
+          <tr><td>竖屏切换</td><td>旋转后 ≤1 秒完成方向切换，无黑帧残留、无方向错乱</td><td>连续旋转 10 次</td></tr>
+          <tr><td>断线恢复</td><td>断网 10 秒内自动恢复，画质不高于原档位</td><td>关闭再打开 Wi-Fi</td></tr>
+          <tr><td>资源回收</td><td>停止后接收端 ≤1 秒回待连接页，发送端停止采集</td><td>观察界面与系统采集指示</td></tr>
+          <tr><td>后台可用</td><td>发送端锁屏 30 秒内画面不中断</td><td>手动锁屏并观察大屏</td></tr>
+          <tr><td>老设备长稳</td><td>C 级设备 720p 连续 30 分钟不 OOM、不闪退</td><td>长稳脚本 + 内存曲线</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="fs">
+  <div class="fs-hd"><span class="fsid">FS-02</span><h3>视频与媒体推送</h3><div class="one">把媒体地址交给大屏自己播，画质更高、手机可离开</div></div>
+  <div class="fs-bd">
+    <h5>入口与交互</h5>
+    <table>
+      <thead><tr><th style="width:46px">步骤</th><th style="width:210px">用户动作</th><th>系统响应</th><th style="width:190px">界面变化</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">1</td><td>视频 App 点系统投屏按钮；或在 AirMirror 内选"推送视频"</td><td>接收端收到媒体描述（地址、标题、时长、封面）</td><td>大屏显示加载态，保留待连接页元素</td></tr>
+        <tr><td class="mono">2</td><td>选择本地文件或粘贴链接</td><td>本地文件生成仅当前会话可访问的临时地址</td><td>发送端显示文件卡片与"正在准备"</td></tr>
+        <tr><td class="mono">3</td><td>无操作</td><td>接收端开始取流并播放</td><td>大屏进入播放态；标题与进度条可关闭</td></tr>
+        <tr><td class="mono">4</td><td>暂停 / 拖动进度 / 调音量 / 停止</td><td>指令下发，接收端回报最新播放状态</td><td>两端进度一致，误差在 FS-02 验收范围内</td></tr>
+        <tr><td class="mono">5</td><td>退出 App 或锁屏</td><td>接收端独立播放，不依赖发送端在线</td><td>发送端通知栏保留一条可停止的通知</td></tr>
+      </tbody>
+    </table>
+
+    <h5>参数</h5>
+    <table>
+      <thead><tr><th style="width:120px">参数</th><th style="width:100px">类型</th><th style="width:130px">默认</th><th>规则</th></tr></thead>
+      <tbody>
+        <tr><td>媒体类型</td><td>枚举</td><td>按来源识别</td><td>video / audio / image；图片按 15 秒轮播或手动切换</td></tr>
+        <tr><td>起播位置</td><td>时长</td><td>0</td><td>同一会话内再次推送同一媒体可从上次位置继续</td></tr>
+        <tr><td>标题与封面</td><td>文本 / 图片</td><td>取自媒体元数据</td><td>缺失时显示文件名；不伪造标题</td></tr>
+        <tr><td>循环</td><td>布尔</td><td>关闭</td><td>仅单文件有效；播放列表循环为 P1</td></tr>
+        <tr><td>字幕</td><td>布尔</td><td>跟随媒体</td><td>外挂字幕与字幕选择为 P1</td></tr>
+        <tr><td>临时地址有效期</td><td>时长</td><td>会话期</td><td>会话结束立即失效；旧地址返回不可访问</td></tr>
+      </tbody>
+    </table>
+
+    <h5>状态迁移</h5>
+    <table>
+      <thead><tr><th style="width:130px">当前</th><th style="width:180px">触发</th><th style="width:120px">下一状态</th><th>约束</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">CONNECTED</td><td>收到媒体描述</td><td class="mono">LOADING</td><td>15 秒未就绪判为加载失败</td></tr>
+        <tr><td class="mono">LOADING</td><td>首帧可播</td><td class="mono">STREAMING</td><td>进入播放并回报状态</td></tr>
+        <tr><td class="mono">STREAMING</td><td>暂停 / 用户拖动</td><td class="mono">PAUSED / STREAMING</td><td>进度调整不重建会话</td></tr>
+        <tr><td class="mono">STREAMING</td><td>播放到结尾</td><td class="mono">CLOSED 或循环</td><td>循环开启时回到起点并继续</td></tr>
+        <tr><td class="mono">STREAMING</td><td>收到新的媒体描述</td><td class="mono">LOADING</td><td>替换当前媒体，会话与连接保持不变</td></tr>
+      </tbody>
+    </table>
+
+    <h5>异常</h5>
+    <table>
+      <thead><tr><th style="width:170px">场景</th><th style="width:200px">判定条件</th><th>提示</th><th style="width:150px">恢复动作</th></tr></thead>
+      <tbody>
+        <tr><td>片源限制投屏</td><td>取流返回 403 或防盗链校验失败</td><td>"片源限制了投屏，可改用屏幕镜像"</td><td>一键切换 FS-01</td></tr>
+        <tr><td>编码不被支持</td><td>解码器初始化失败</td><td>列出支持格式，并给出镜像入口</td><td>改推送兼容文件或改镜像</td></tr>
+        <tr><td>证书或系统时间异常</td><td>仅 HTTPS 且证书校验失败</td><td>"请校准电视系统时间后重试"</td><td>校准后可重试</td></tr>
+        <tr><td>本地文件过大</td><td>读取速度低于播放所需码率</td><td>"设备读取较慢，可能卡顿"</td><td>边读边发，必要时降分辨率播放</td></tr>
+        <tr><td>临时地址被外部访问</td><td>非当前会话设备请求</td><td>不提示用户</td><td>返回不可访问；地址与会话绑定</td></tr>
+        <tr><td>推送中手机断网</td><td>心跳丢失</td><td>发送端提示"已断开，大屏继续播放"</td><td>接收端独立播完；重连后同步进度</td></tr>
+      </tbody>
+    </table>
+
+    <div class="acc">
+      <div class="hd">验收口径</div>
+      <table>
+        <thead><tr><th style="width:150px">检查项</th><th>通过标准</th><th style="width:210px">验证方式</th></tr></thead>
+        <tbody>
+          <tr><td>起播速度</td><td>同网推送本地 1080p 视频，≤2 秒出现首帧（目标）</td><td>秒表 + 双端打点</td></tr>
+          <tr><td>脱离手机</td><td>手机退出 App 后，大屏继续播放 ≥10 分钟</td><td>杀掉发送端进程观察</td></tr>
+          <tr><td>进度一致</td><td>两端进度差 ≤1 秒（目标）</td><td>拖动后对比显示值</td></tr>
+          <tr><td>地址隔离</td><td>会话结束后旧地址无法访问</td><td>用另一设备请求旧地址</td></tr>
+          <tr><td>格式兜底</td><td>不支持的格式给出可执行的替代路径，不出现死胡同</td><td>用 HEVC/AV1 样本测试</td></tr>
+          <tr><td>替换播放</td><td>连续推送三个媒体，连接不重建、无多余授权弹窗</td><td>连续操作观察</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="fs">
+  <div class="fs-hd"><span class="fsid">FS-03</span><h3>投屏码</h3><div class="one">自动发现失败时，用 6 位数字完成连接</div></div>
+  <div class="fs-bd">
+    <h5>界面与交互</h5>
+    <table>
+      <thead><tr><th style="width:110px">位置</th><th>元素</th><th>交互规则</th></tr></thead>
+      <tbody>
+        <tr><td>接收端</td><td>6 位数字码 + 二维码 + 环形倒计时</td><td>常驻待连接页；每次轮换有轻微过渡，不闪烁；3 米距离可辨认</td></tr>
+        <tr><td>发送端</td><td>6 格数字输入 + 数字键盘</td><td>进入即聚焦并弹键盘；支持粘贴；填满 6 位自动提交，无需点确认</td></tr>
+        <tr><td>发送端</td><td>错误提示区</td><td>显示剩余尝试次数；锁定后显示倒计时，倒计时期间输入框禁用</td></tr>
+        <tr><td>两端</td><td>连接结果</td><td>成功后大屏显示请求方设备名；失败保留在输入页，不跳回首页</td></tr>
+      </tbody>
+    </table>
+
+    <h5>参数与规则</h5>
+    <table>
+      <thead><tr><th style="width:120px">参数</th><th style="width:110px">值</th><th>规则</th></tr></thead>
+      <tbody>
+        <tr><td>码长度</td><td>6 位</td><td>仅数字 0–9；不使用字母，避免大小写与输入法问题</td></tr>
+        <tr><td>有效期</td><td>60 秒</td><td>到期自动轮换；旧码在轮换后 10 秒内仍可校验，容忍输入延迟</td></tr>
+        <tr><td>使用次数</td><td>1 次</td><td>成功使用即失效；失败不失效但计入错误次数</td></tr>
+        <tr><td>错误上限</td><td>5 次 / 60 秒</td><td>超限锁定该码 60 秒，倒计时结束生成新码</td></tr>
+        <tr><td>生成位置</td><td>接收端本地</td><td>不依赖外网；断网时仍可展示与校验</td></tr>
+        <tr><td>成功后的授权</td><td>一次性</td><td>会话结束即失效，不进入可信列表；用户可主动"记住这台设备"</td></tr>
+      </tbody>
+    </table>
+
+    <h5>状态迁移</h5>
+    <table>
+      <thead><tr><th style="width:120px">当前</th><th style="width:190px">触发</th><th style="width:110px">下一状态</th><th>约束</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">SHOWING</td><td>用户开始输入</td><td class="mono">ENTERING</td><td>码继续倒计时，不因输入暂停</td></tr>
+        <tr><td class="mono">ENTERING</td><td>填满 6 位</td><td class="mono">VERIFYING</td><td>校验期间输入框只读</td></tr>
+        <tr><td class="mono">VERIFYING</td><td>校验通过</td><td class="mono">PAIRING</td><td>进入授权确认或直接连接</td></tr>
+        <tr><td class="mono">VERIFYING</td><td>校验失败</td><td class="mono">ENTERING</td><td>清空最后一位并提示剩余次数</td></tr>
+        <tr><td class="mono">任意</td><td>码过期或错误超限</td><td class="mono">INVALID</td><td>生成新码；已建立会话不受影响</td></tr>
+      </tbody>
+    </table>
+
+    <h5>异常</h5>
+    <table>
+      <thead><tr><th style="width:170px">场景</th><th style="width:190px">判定</th><th>提示</th><th style="width:150px">恢复</th></tr></thead>
+      <tbody>
+        <tr><td>码已过期</td><td>提交时超出有效期加宽限</td><td>"投屏码已更新，请输入电视上的新码"</td><td>自动刷新输入框，不退出页面</td></tr>
+        <tr><td>连续输错</td><td>达到 5 次 / 60 秒</td><td>"尝试次数过多，请 60 秒后再试"</td><td>倒计时结束后重新输入</td></tr>
+        <tr><td>跨网但无外网</td><td>信令不可达且非同网段</td><td>"跨网投屏需要两端都能联网，当前只能在同一网络内投屏"</td><td>回退到局域网发现</td></tr>
+        <tr><td>同网段误用跨网流程</td><td>两端在同一网段</td><td>不提示</td><td>直接本地直连，不发起任何外网请求</td></tr>
+        <tr><td>他人暴力尝试</td><td>同网段异常高频请求</td><td>大屏提示"有设备正在尝试连接"</td><td>接收端可一键拒绝并清空当前码</td></tr>
+      </tbody>
+    </table>
+
+    <div class="acc">
+      <div class="hd">验收口径</div>
+      <table>
+        <thead><tr><th style="width:150px">检查项</th><th>通过标准</th><th style="width:210px">验证方式</th></tr></thead>
+        <tbody>
+          <tr><td>可读性</td><td>3 米距离可准确读出 6 位码</td><td>大屏 3 米目视，5 人测试</td></tr>
+          <tr><td>输入效率</td><td>填满 6 位自动提交，无二次确认按钮</td><td>手动输入计时</td></tr>
+          <tr><td>错误可解释</td><td>每次失败都说明原因与剩余次数</td><td>逐个触发异常场景</td></tr>
+          <tr><td>离线可用</td><td>拔掉外网后仍能展示码并在同网段连接成功</td><td>断网实测</td></tr>
+          <tr><td>轮换不干扰</td><td>码轮换期间已建立的会话不断开</td><td>连接后等待两次轮换</td></tr>
+          <tr><td>授权时效</td><td>会话结束后再次连接需重新输码</td><td>结束会话后立即重连</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<div class="fs">
+  <div class="fs-hd"><span class="fsid">FS-04</span><h3>跨网投屏</h3><div class="one">两端不在同一网段时，仍能建立会话，媒体优先直连</div></div>
+  <div class="fs-bd">
+    <h5>前置条件</h5>
+    <table>
+      <thead><tr><th style="width:150px">条件</th><th>说明</th><th style="width:190px">不满足时</th></tr></thead>
+      <tbody>
+        <tr><td>投屏码可用</td><td>接收端能展示并校验本地生成的码</td><td>无法发起，提示接收端未就绪</td></tr>
+        <tr><td>两端可访问信令</td><td>跨网场景需要能到达信令服务</td><td>只能在同一局域网内投屏，明确告知</td></tr>
+        <tr><td>中继授权（可选）</td><td>打洞失败且用户允许中继</td><td>提示可在设置中允许中继，不静默失败</td></tr>
+      </tbody>
+    </table>
+
+    <h5>连接流程</h5>
+    <table>
+      <thead><tr><th style="width:56px">阶段</th><th style="width:170px">动作</th><th>判定</th><th style="width:170px">失败处理</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">1</td><td>发送端提交投屏码</td><td>码有效且未过期</td><td>按 FS-03 的错误规则提示</td></tr>
+        <tr><td class="mono">2</td><td>判断是否同网段</td><td>同网段直接转局域网直连</td><td>不发起任何外网请求</td></tr>
+        <tr><td class="mono">3</td><td>跨网：信令匹配两端</td><td>15 秒内完成配对</td><td>超时提示"网络较慢，请重试"</td></tr>
+        <tr><td class="mono">4</td><td>交换网络候选并尝试打洞</td><td>15 秒内建立直连</td><td>失败进入中继判断</td></tr>
+        <tr><td class="mono">5</td><td>直连成功或启用中继</td><td>通道建立并完成加密协商</td><td>通道失败回到第 3 步重试一次</td></tr>
+        <tr><td class="mono">6</td><td>大屏确认授权</td><td>用户允许或超时默认允许</td><td>拒绝则结束，10 分钟内静默</td></tr>
+      </tbody>
+    </table>
+
+    <h5>参数</h5>
+    <table>
+      <thead><tr><th style="width:140px">参数</th><th style="width:100px">默认</th><th>规则</th></tr></thead>
+      <tbody>
+        <tr><td>连接方式</td><td>直连优先</td><td>直连不可用时才考虑中继；大屏标注当前方式</td></tr>
+        <tr><td>中继开关</td><td>关闭</td><td>设备级开关；开启时需二次确认，并说明画质与延迟可能下降</td></tr>
+        <tr><td>信令超时</td><td>15 秒</td><td>超时后给出可执行提示，不无限等待</td></tr>
+        <tr><td>授权</td><td>一次性</td><td>会话结束即失效；跨网不保留长期权限</td></tr>
+        <tr><td>媒体加密</td><td>端到端</td><td>密钥仅两端持有；中继无法解密</td></tr>
+      </tbody>
+    </table>
+
+    <h5>状态迁移</h5>
+    <table>
+      <thead><tr><th style="width:130px">当前</th><th style="width:180px">触发</th><th style="width:120px">下一状态</th><th>约束</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">ENTERING</td><td>码校验通过</td><td class="mono">MATCHING</td><td>同网段直接跳到 DIRECT</td></tr>
+        <tr><td class="mono">MATCHING</td><td>两端信息就绪</td><td class="mono">PUNCHING</td><td>开始交换候选地址</td></tr>
+        <tr><td class="mono">PUNCHING</td><td>直连成功</td><td class="mono">DIRECT</td><td>媒体点对点，不经服务器</td></tr>
+        <tr><td class="mono">PUNCHING</td><td>直连失败且允许中继</td><td class="mono">RELAY</td><td>媒体经中继，不落盘</td></tr>
+        <tr><td class="mono">DIRECT / RELAY</td><td>授权通过</td><td class="mono">STREAMING</td><td>进入投放，大屏标注连接方式</td></tr>
+        <tr><td class="mono">任意</td><td>超时、拒绝或通道断开</td><td class="mono">FAILED / CLOSED</td><td>释放候选与中继资源</td></tr>
+      </tbody>
+    </table>
+
+    <h5>异常</h5>
+    <table>
+      <thead><tr><th style="width:180px">场景</th><th style="width:200px">判定</th><th>提示</th><th style="width:150px">恢复</th></tr></thead>
+      <tbody>
+        <tr><td>两端都无法访问外网</td><td>信令不可达且跨网段</td><td>"当前网络无法跨网投屏，请连接同一网络"</td><td>引导回同网发现</td></tr>
+        <tr><td>双方均处于对称 NAT</td><td>打洞 15 秒无可用路径</td><td>"网络限制较严，可开启中继后重试"</td><td>用户允许后走中继</td></tr>
+        <tr><td>企业防火墙拦截</td><td>信令或中继端口被阻断</td><td>"当前网络可能限制了投屏服务"</td><td>建议切换到手机热点</td></tr>
+        <tr><td>信令服务不可用</td><td>连续 3 次请求失败</td><td>"服务暂时不可用，可改用同一网络投屏"</td><td>回退局域网</td></tr>
+        <tr><td>中继带宽不足</td><td>持续缓冲超限</td><td>"中继画质已自动降低"</td><td>降档；仍不足则提示改用直连</td></tr>
+        <tr><td>中途切换网络</td><td>IP 变化导致通道失效</td><td>"网络已切换，正在重新连接"</td><td>用设备标识重新握手</td></tr>
+      </tbody>
+    </table>
+
+    <h5>安全约束</h5>
+    <ul>
+      <li>信令只交换建立连接所需的信息，不传输画面、音频或文件名。</li>
+      <li>中继节点不落盘、不解析内容；运营侧不得留存媒体数据。</li>
+      <li>跨网会话一律为一次性授权，不可升级为长期可信设备。</li>
+      <li>同一投屏码连续失败触发锁定，防止被外部枚举。</li>
+    </ul>
+
+    <div class="acc">
+      <div class="hd">验收口径</div>
+      <table>
+        <thead><tr><th style="width:150px">检查项</th><th>通过标准</th><th style="width:210px">验证方式</th></tr></thead>
+        <tbody>
+          <tr><td>同网不触云</td><td>同网段输码全程无外网请求</td><td>抓包检查信令域名无请求</td></tr>
+          <tr><td>失败可解释</td><td>15 秒内给出原因与下一步，不出现无限转圈</td><td>模拟对称 NAT 与端口封锁</td></tr>
+          <tr><td>中继需同意</td><td>未开启中继时绝不走中继；开启时有二次确认</td><td>关闭开关后验证路径</td></tr>
+          <tr><td>授权时效</td><td>会话结束后立即失效，重连需重新输码</td><td>结束后立即重连</td></tr>
+          <tr><td>媒体不可读</td><td>中继侧抓包无法还原画面或文件名</td><td>中继节点抓包分析</td></tr>
+          <tr><td>切换网络</td><td>发送端 Wi-Fi 切换后 30 秒内恢复</td><td>手动切换网络</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="fs">
+  <div class="fs-hd"><span class="fsid">FS-05</span><h3>4K 与画质协商</h3><div class="one">在设备与网络允许时给出最高可用画质，不允许时平稳降级</div></div>
+  <div class="fs-bd">
+    <h5>判定条件</h5>
+    <p class="muted" style="font-size:12.5px;margin:0 0 6px">四道门全部满足才允许进入 4K 档位；任何一道不满足，该档位在界面上不出现。</p>
+    <table>
+      <thead><tr><th style="width:150px">条件</th><th>要求</th><th style="width:190px">不满足时</th></tr></thead>
+      <tbody>
+        <tr><td>屏幕输出</td><td>面板与系统输出达到 4K</td><td>最高档位止于 1080p</td></tr>
+        <tr><td>解码能力</td><td>支持 H.265 的 4K 硬解</td><td>降为 1440p 或 1080p</td></tr>
+        <tr><td>网络带宽</td><td>稳定可用带宽满足 4K 档位码率</td><td>降至可维持档位</td></tr>
+        <tr><td>接口带宽</td><td>输出接口带宽足以承载 4K</td><td>不启用 4K 档位</td></tr>
+      </tbody>
+    </table>
+
+    <h5>协商与交互</h5>
+    <table>
+      <thead><tr><th style="width:150px">环节</th><th>行为</th></tr></thead>
+      <tbody>
+        <tr><td>建连协商</td><td>取发送端采集上限、网络可用带宽、接收端解码上限、屏幕输出上限的最小值作为初始档位</td></tr>
+        <tr><td>设置页</td><td>显示"本机最高支持 4K / 1080p / 720p"，与实际能力一致；不可达档位不出现</td></tr>
+        <tr><td>投屏中</td><td>每秒评估一次丢帧与缓冲水位；连续 3 秒劣化降一档，连续 10 秒良好升一档</td></tr>
+        <tr><td>手动锁定</td><td>用户可固定档位；锁定后不再自动升降，仅在严重卡顿时提示</td></tr>
+        <tr><td>画面标识</td><td>默认不显示画质信息；用户可开启角标查看当前分辨率与码率</td></tr>
+      </tbody>
+    </table>
+
+    <h5>状态迁移</h5>
+    <table>
+      <thead><tr><th style="width:130px">当前</th><th style="width:180px">触发</th><th style="width:130px">下一状态</th><th>约束</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">CONNECTED</td><td>四道门协商完成</td><td class="mono">4K / 1440p / 1080p…</td><td>只进入可达档位；界面不展示不可达选项</td></tr>
+        <tr><td class="mono">4K</td><td>连续 3 秒劣化</td><td class="mono">1080p</td><td>降一档，不黑屏、不重建会话</td></tr>
+        <tr><td class="mono">1080p</td><td>连续 10 秒良好</td><td class="mono">4K</td><td>升一档；用户锁定时不触发</td></tr>
+        <tr><td class="mono">任意</td><td>用户固定画质</td><td class="mono">锁定档位</td><td>不再自动升降，严重卡顿时仅提示</td></tr>
+        <tr><td class="mono">任意</td><td>解码或接口能力不符</td><td class="mono">兼容档位</td><td>提示画质下降的原因</td></tr>
+      </tbody>
+    </table>
+
+    <h5>异常</h5>
+    <table>
+      <thead><tr><th style="width:170px">场景</th><th style="width:190px">判定</th><th>提示</th><th style="width:150px">恢复</th></tr></thead>
+      <tbody>
+        <tr><td>4K 播放卡顿</td><td>连续 3 秒丢帧或缓冲超限</td><td>"当前网络或设备不足以稳定播放 4K"</td><td>回落到 1080p，不中断会话</td></tr>
+        <tr><td>不支持 H.265 硬解</td><td>解码器初始化失败</td><td>"已切换到兼容编码，画质可能下降"</td><td>改用 H.264 并降档</td></tr>
+        <tr><td>屏幕仅 1080p</td><td>输出能力探测结果</td><td>设置页显示"本机最高支持 1080p"</td><td>不出现 4K 选项</td></tr>
+        <tr><td>接口带宽不足</td><td>输出探测不满足 4K</td><td>同上</td><td>不启用 4K</td></tr>
+        <tr><td>HDR 内容遇非 HDR 屏</td><td>源为 HDR、屏不支持</td><td>"已转换为普通画质，颜色可能不同"</td><td>做色调映射后播放</td></tr>
+        <tr><td>带宽骤降</td><td>可用带宽低于当前档位下限</td><td>不弹窗</td><td>直接跳到可维持档位，避免逐级试探</td></tr>
+      </tbody>
+    </table>
+
+    <div class="acc">
+      <div class="hd">验收口径</div>
+      <table>
+        <thead><tr><th style="width:150px">检查项</th><th>通过标准</th><th style="width:210px">验证方式</th></tr></thead>
+        <tbody>
+          <tr><td>4K 稳定性</td><td>A 级设备 + 5GHz 下，4K 连续播放 10 分钟无中断（目标）</td><td>长稳播放 + 帧率曲线</td></tr>
+          <tr><td>能力一致</td><td>设置页标注的最高档位与实际输出一致</td><td>A/B/C 级设备各测一台</td></tr>
+          <tr><td>降档无感</td><td>降档过程不黑屏、不重建会话、不弹确认</td><td>人为限速观察</td></tr>
+          <tr><td>回档及时</td><td>网络恢复后 10 秒内回到原档位</td><td>限速后解除</td></tr>
+          <tr><td>锁定生效</td><td>锁定档位后 30 分钟内不被自动改动</td><td>固定档位长稳</td></tr>
+          <tr><td>不可达隐藏</td><td>老设备界面中不存在 4K 选项</td><td>截图核对</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="fs">
+  <div class="fs-hd"><span class="fsid">FS-06</span><h3>低延迟与音画同步</h3><div class="one">声音与画面同时到达，卡顿时先保流畅再保清晰</div></div>
+  <div class="fs-bd">
+    <h5>运行时判定</h5>
+    <p class="muted" style="font-size:12.5px;margin:0 0 6px">各阶段预算见 8.6，本节定义运行中用哪些可观测量判断是否达标，以及不达标时按什么顺序取舍。</p>
+    <table>
+      <thead><tr><th style="width:150px">观测量</th><th style="width:150px">采样频率</th><th>达标含义</th><th style="width:170px">不达标时优先动作</th></tr></thead>
+      <tbody>
+        <tr><td>端到端延迟</td><td>每帧</td><td>同网 1080p60 的 P90 不超过预算</td><td>先降帧率，再降分辨率</td></tr>
+        <tr><td>音画偏差</td><td>每秒</td><td>音频时钟与视频呈现时间差在容忍区内</td><td>微调音频缓冲；超阈值才硬对齐</td></tr>
+        <tr><td>音频缓冲水位</td><td>每 100ms</td><td>维持在目标区间内</td><td>高于上限追帧，低于下限轻微拉长</td></tr>
+        <tr><td>丢帧率</td><td>每秒</td><td>连续 3 秒未超阈值</td><td>降码率；仍超则降档</td></tr>
+        <tr><td>首帧时延</td><td>每次起播</td><td>在 FS-01/FS-02 规定的时间内出现首帧</td><td>重试一次，失败给出明确原因</td></tr>
+      </tbody>
+    </table>
+
+    <h5>同步参数</h5>
+    <table>
+      <thead><tr><th style="width:150px">参数</th><th style="width:120px">值</th><th>规则</th></tr></thead>
+      <tbody>
+        <tr><td>主时钟</td><td>音频</td><td>视频按呈现时间戳排队，早到等待、晚到追帧</td></tr>
+        <tr><td>音频缓冲区间</td><td>40–80ms</td><td>超出上限追帧；低于下限轻微拉长</td></tr>
+        <tr><td>单次调整幅度</td><td>≤10ms</td><td>避免产生可听出的变速或顿挫</td></tr>
+        <tr><td>硬对齐阈值</td><td>300ms</td><td>累计偏差超过时执行一次跳变对齐，允许一帧内变化</td></tr>
+        <tr><td>视频晚到策略</td><td>丢非关键帧</td><td>不丢关键帧，避免花屏；连续丢帧时降档</td></tr>
+        <tr><td>暂停/恢复</td><td>重新对齐</td><td>恢复后 1 秒内回到容忍区，不出现追帧突进</td></tr>
+      </tbody>
+    </table>
+
+    <h5>状态迁移</h5>
+    <table>
+      <thead><tr><th style="width:130px">当前</th><th style="width:180px">触发</th><th style="width:120px">下一状态</th><th>约束</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">SYNCED</td><td>偏差进入容忍区边缘</td><td class="mono">MICRO-ADJUST</td><td>只调整音频缓冲，不改档位</td></tr>
+        <tr><td class="mono">MICRO-ADJUST</td><td>偏差回到容忍区</td><td class="mono">SYNCED</td><td>调整停止，记录一次轻微调整</td></tr>
+        <tr><td class="mono">MICRO-ADJUST</td><td>累计偏差超硬对齐阈值</td><td class="mono">HARD-ALIGN</td><td>执行一次跳变，之后必须回到 SYNCED</td></tr>
+        <tr><td class="mono">任意</td><td>暂停、跳转、切歌</td><td class="mono">RESYNC</td><td>1 秒内完成重新对齐</td></tr>
+      </tbody>
+    </table>
+
+    <h5>异常</h5>
+    <table>
+      <thead><tr><th style="width:180px">场景</th><th style="width:190px">判定</th><th>提示</th><th style="width:150px">恢复</th></tr></thead>
+      <tbody>
+        <tr><td>接收端无扬声器</td><td>未检测到音频输出设备</td><td>"未检测到扬声器"</td><td>画面正常，用户可接外放</td></tr>
+        <tr><td>发送端音频被占用</td><td>音频轨中断超过 1 秒</td><td>横幅提示</td><td>画面继续，音频恢复后自动续传</td></tr>
+        <tr><td>长时间偏差</td><td>偏差持续高于硬对齐阈值</td><td>不提示用户</td><td>硬对齐；连续三次则降档</td></tr>
+        <tr><td>丢包 5% 以上</td><td>持续 3 秒超阈值</td><td>角标显示"网络不稳定"</td><td>降码率，不中断会话</td></tr>
+        <tr><td>系统时间跳变</td><td>时间戳回退或大幅前跳</td><td>不提示</td><td>重置时钟基准并重新对齐</td></tr>
+      </tbody>
+    </table>
+
+    <div class="acc">
+      <div class="hd">验收口径</div>
+      <table>
+        <thead><tr><th style="width:150px">检查项</th><th>通过标准</th><th style="width:210px">验证方式</th></tr></thead>
+        <tbody>
+          <tr><td>延迟达标</td><td>1080p60 同网 P90 ≤ 150ms（目标）</td><td>双端时间戳打点</td></tr>
+          <tr><td>同步可感</td><td>音画偏差 ≤ 80ms，人工听测无"口型错位"</td><td>播放对白片段 + 波形比对</td></tr>
+          <tr><td>暂停恢复</td><td>恢复后 1 秒内重新对齐，无突进或倒退</td><td>反复暂停/继续 10 次</td></tr>
+          <tr><td>弱网可用</td><td>丢包 5% 时画面不中断，仅画质下降</td><td>弱网模拟工具</td></tr>
+          <tr><td>长稳不漂移</td><td>连续 30 分钟播放，偏差不累积超出容忍区</td><td>长稳播放 + 周期性打点</td></tr>
+          <tr><td>优先级正确</td><td>拥塞时先降帧率再降分辨率，不出现黑屏</td><td>梯度限速观察</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<h3 id="s6spec2">6.2 其余核心功能规格</h3>
+<p>6.1 覆盖"投放"链路，本节覆盖"找到设备、看得正确、控得住、断得回、不出网、跑得动、装得上"七项配套能力。每项同样是可开发、可验收的粒度，参数与 7.x 共享规则冲突时以 7.x 为准。</p>
+
+<div class="fs">
+  <div class="fs-hd"><span class="fsid">FS-07</span><h3>设备发现与配对</h3><div class="one">打开就能看到设备，首次连接不误投</div></div>
+  <div class="fs-bd">
+    <h5>入口与交互</h5>
+    <table>
+      <thead><tr><th style="width:46px">步骤</th><th style="width:190px">用户动作</th><th>系统响应</th><th style="width:190px">界面变化</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">1</td><td>打开发送端首页</td><td>先展示缓存设备，同时并行监听多路发现广播</td><td>列表即时出现最近使用的设备</td></tr>
+        <tr><td class="mono">2</td><td>下拉刷新</td><td>重新探测，在线设备保持位置，离线设备置灰</td><td>刷新不闪烁、不清空已有结果</td></tr>
+        <tr><td class="mono">3</td><td>点选设备卡片</td><td>首次连接触发大屏确认；已授权设备直接建连</td><td>卡片进入"连接中"，其余设备暂不可点</td></tr>
+        <tr><td class="mono">4</td><td>首次确认</td><td>大屏显示请求方设备名，允许或拒绝</td><td>允许后 3 秒内进入投放选择</td></tr>
+        <tr><td class="mono">5</td><td>列表为空</td><td>展示可能原因与替代入口</td><td>提供"扫码连接""输入投屏码""手动 IP"</td></tr>
+      </tbody>
+    </table>
+
+    <h5>参数</h5>
+    <table>
+      <thead><tr><th style="width:130px">参数</th><th style="width:180px">默认</th><th>规则</th></tr></thead>
+      <tbody>
+        <tr><td>发现方式</td><td>三类广播并行</td><td>通用即插即用、Apple 发现、Cast 发现任一路命中即可展示</td></tr>
+        <tr><td>缓存展示</td><td>开启</td><td>缓存有效期 10 分钟；过期后不再置顶但仍可搜索</td></tr>
+        <tr><td>离线保留</td><td>10 分钟</td><td>置灰显示"上次连接"，不自动删除</td></tr>
+        <tr><td>首次确认</td><td>5 秒无操作自动允许</td><td>可在接收端改为"必须遥控器确认"</td></tr>
+        <tr><td>合并规则</td><td>同设备多路命中合并为一条</td><td>展示其最强协议角标</td></tr>
+        <tr><td>可信设备上限</td><td>32 台</td><td>超出时提示移除，不自动淘汰</td></tr>
+      </tbody>
+    </table>
+
+    <h5>状态与异常</h5>
+    <table>
+      <thead><tr><th style="width:160px">场景</th><th style="width:170px">判定</th><th>提示</th><th style="width:140px">恢复</th></tr></thead>
+      <tbody>
+        <tr><td>列表为空（AP 隔离）</td><td>探测 3 轮无结果</td><td>"当前网络禁止设备互访，可关闭 AP 隔离或改用扫码"</td><td>提供扫码/投屏码入口</td></tr>
+        <tr><td>双频分离</td><td>同网不同频段不可见</td><td>"手机与电视可能不在同一频段"</td><td>建议切换到同一频段</td></tr>
+        <tr><td>组播被禁用</td><td>广播无响应但可直连</td><td>不提示</td><td>自动降级为受控探测</td></tr>
+        <tr><td>未授权设备直接发起</td><td>不在可信列表且未确认</td><td>大屏弹确认</td><td>拒绝后 10 分钟内不再弹窗</td></tr>
+        <tr><td>第二台设备并发</td><td>已有活动会话</td><td>"电视正在被 XX 投屏"</td><td>提供"请求接管"入口</td></tr>
+        <tr><td>设备突然离线</td><td>心跳中断</td><td>卡片置灰</td><td>10 分钟内保留，超时移除</td></tr>
+      </tbody>
+    </table>
+
+    <div class="acc">
+      <div class="hd">验收口径</div>
+      <table>
+        <thead><tr><th style="width:150px">检查项</th><th>通过标准</th><th style="width:200px">验证方式</th></tr></thead>
+        <tbody>
+          <tr><td>首屏出现</td><td>同网正常环境下 3 秒内出现设备（目标）</td><td>计时 10 次取中位数</td></tr>
+          <tr><td>去重合并</td><td>同一设备不出现重复条目</td><td>三种协议同时广播时观察</td></tr>
+          <tr><td>防误投</td><td>未授权设备无法直接上屏</td><td>用新设备发起连接</td></tr>
+          <tr><td>空列表可自救</td><td>空列表必显示原因与至少一个替代入口</td><td>模拟 AP 隔离</td></tr>
+          <tr><td>离线体验</td><td>离线设备 10 分钟内仍可见且置灰</td><td>关闭电视后刷新</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="fs">
+  <div class="fs-hd"><span class="fsid">FS-08</span><h3>竖屏与画面适配</h3><div class="one">竖屏内容完整可读，旋转跟得上</div></div>
+  <div class="fs-bd">
+    <h5>入口与交互</h5>
+    <table>
+      <thead><tr><th style="width:46px">步骤</th><th style="width:190px">用户动作</th><th>系统响应</th><th style="width:190px">界面变化</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">1</td><td>投放竖屏内容</td><td>按等比完整显示，居中留边</td><td>大屏左右留黑边，不裁切</td></tr>
+        <tr><td class="mono">2</td><td>旋转手机</td><td>1 秒内切换方向并重建显示区域</td><td>不闪黑、不残留上一帧方向</td></tr>
+        <tr><td class="mono">3</td><td>打开显示模式设置</td><td>展示三种模式与说明</td><td>当前模式高亮</td></tr>
+        <tr><td class="mono">4</td><td>选择"铺满"或"拉伸"</td><td>立即生效并持久化</td><td>拉伸需二次确认，提示可能变形</td></tr>
+        <tr><td class="mono">5</td><td>比例差异过大</td><td>角落提示可切换模式</td><td>提示 3 秒后消失</td></tr>
+      </tbody>
+    </table>
+
+    <h5>参数</h5>
+    <table>
+      <thead><tr><th style="width:130px">参数</th><th style="width:130px">默认</th><th style="width:180px">可选值</th><th>规则</th></tr></thead>
+      <tbody>
+        <tr><td>显示模式</td><td>完整显示</td><td>完整显示 / 铺满 / 拉伸</td><td>接收端设置，按设备持久化</td></tr>
+        <tr><td>旋转跟随</td><td>开启</td><td>开 / 关</td><td>关闭后固定上次方向</td></tr>
+        <tr><td>旋转响应</td><td>—</td><td>≤1 秒</td><td>超时视为异常，记录一次卡顿</td></tr>
+        <tr><td>竖屏标签</td><td>开启</td><td>开 / 关</td><td>竖屏镜像时角落显示 3 秒</td></tr>
+        <tr><td>最小显示宽度</td><td>屏幕宽度的 25%</td><td>—</td><td>低于该值不再缩小，避免不可读</td></tr>
+      </tbody>
+    </table>
+
+    <h5>状态与异常</h5>
+    <table>
+      <thead><tr><th style="width:170px">场景</th><th style="width:170px">判定</th><th>提示</th><th style="width:140px">恢复</th></tr></thead>
+      <tbody>
+        <tr><td>旋转中新帧比例不一致</td><td>连续两帧方向相反</td><td>不提示</td><td>以最新帧为准，避免反复跳变</td></tr>
+        <tr><td>老设备渲染不足</td><td>切换耗时超过 1 秒</td><td>不提示</td><td>关闭过渡动画，直接切换</td></tr>
+        <tr><td>拉伸导致明显变形</td><td>用户选择拉伸</td><td>二次确认弹窗</td><td>确认后生效，可随时改回</td></tr>
+        <tr><td>超宽屏内容</td><td>比例 21:9</td><td>首次提示可切换铺满</td><td>记住选择</td></tr>
+      </tbody>
+    </table>
+
+    <div class="acc">
+      <div class="hd">验收口径</div>
+      <table>
+        <thead><tr><th style="width:150px">检查项</th><th>通过标准</th><th style="width:200px">验证方式</th></tr></thead>
+        <tbody>
+          <tr><td>竖屏完整</td><td>竖屏视频的文字与人物完整可见，无裁切</td><td>播放含字幕的竖屏样本</td></tr>
+          <tr><td>旋转速度</td><td>10 次旋转全部 ≤1 秒完成</td><td>秒表记录</td></tr>
+          <tr><td>无残留</td><td>切换后不出现上一方向的残帧或黑屏</td><td>逐帧检查录屏</td></tr>
+          <tr><td>设置持久</td><td>重启接收端后显示模式保持</td><td>断电重启</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="fs">
+  <div class="fs-hd"><span class="fsid">FS-09</span><h3>会话控制与接管</h3><div class="one">两端都能停，换人不混乱</div></div>
+  <div class="fs-bd">
+    <h5>入口与交互</h5>
+    <table>
+      <thead><tr><th style="width:46px">步骤</th><th style="width:190px">用户动作</th><th>系统响应</th><th style="width:190px">界面变化</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">1</td><td>发送端点暂停</td><td>停止送帧，保留最后一帧</td><td>两端同步显示"已暂停"</td></tr>
+        <tr><td class="mono">2</td><td>接收端按遥控器返回</td><td>第一次提示"结束投屏？"</td><td>10 秒无操作自动取消</td></tr>
+        <tr><td class="mono">3</td><td>第二次确认</td><td>释放资源并回到待连接页</td><td>1 秒内恢复 IDLE</td></tr>
+        <tr><td class="mono">4</td><td>第二台设备请求接管</td><td>通知当前发送端</td><td>当前端显示"XX 请求接管"，可让出或拒绝</td></tr>
+        <tr><td class="mono">5</td><td>接管被允许</td><td>旧会话结束、新会话建立</td><td>大屏展示新发送端名称</td></tr>
+      </tbody>
+    </table>
+
+    <h5>参数</h5>
+    <table>
+      <thead><tr><th style="width:140px">参数</th><th style="width:220px">默认</th><th>规则</th></tr></thead>
+      <tbody>
+        <tr><td>控制权</td><td>发送端控制播放，接收端控制结束与静音</td><td>接收端拥有最终决定权</td></tr>
+        <tr><td>返回键确认</td><td>二次确认</td><td>第一次提示，第二次执行，10 秒超时取消</td></tr>
+        <tr><td>接管确认</td><td>当前发送端决定</td><td>60 秒无响应视为拒绝</td></tr>
+        <tr><td>会话记录</td><td>10 条</td><td>仅设备名与时间，不含内容</td></tr>
+      </tbody>
+    </table>
+
+    <h5>状态与异常</h5>
+    <table>
+      <thead><tr><th style="width:170px">场景</th><th style="width:170px">判定</th><th>提示</th><th style="width:150px">恢复</th></tr></thead>
+      <tbody>
+        <tr><td>停止指令丢失</td><td>5 秒无数据</td><td>不依赖指令</td><td>接收端自行判定失联并结束</td></tr>
+        <tr><td>接收端断电</td><td>8 秒心跳丢失</td><td>"电视已断开"</td><td>发送端回到设备列表</td></tr>
+        <tr><td>并发停止与接管</td><td>两条指令同时到达</td><td>不提示</td><td>先执行停止，再处理接管请求</td></tr>
+        <tr><td>接管超时</td><td>60 秒无响应</td><td>"对方未响应，已保留当前会话"</td><td>回到原会话</td></tr>
+      </tbody>
+    </table>
+
+    <div class="acc">
+      <div class="hd">验收口径</div>
+      <table>
+        <thead><tr><th style="width:150px">检查项</th><th>通过标准</th><th style="width:200px">验证方式</th></tr></thead>
+        <tbody>
+          <tr><td>状态同步</td><td>任一端操作后另一端 2 秒内反映</td><td>双端观察</td></tr>
+          <tr><td>干净结束</td><td>结束后接收端 1 秒回待连接页，无残留采集</td><td>检查系统采集指示</td></tr>
+          <tr><td>接管有序</td><td>换人后有明确提示，原会话不残留</td><td>连续三次接管</td></tr>
+          <tr><td>误触保护</td><td>返回键不会一次退出投屏</td><td>反复按返回键</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<div class="fs">
+  <div class="fs-hd"><span class="fsid">FS-10</span><h3>断线与恢复</h3><div class="one">短暂中断不重来，超时给结论</div></div>
+  <div class="fs-bd">
+    <h5>入口与交互</h5>
+    <table>
+      <thead><tr><th style="width:46px">步骤</th><th style="width:180px">用户动作</th><th>系统响应</th><th style="width:200px">界面变化</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">1</td><td>网络抖动</td><td>保持最后一帧，后台重连</td><td>大屏显示"连接中断，正在恢复"</td></tr>
+        <tr><td class="mono">2</td><td>发送端切后台</td><td>保留会话，继续监听</td><td>通知栏保留控制条</td></tr>
+        <tr><td class="mono">3</td><td>恢复成功</td><td>回到上次画面，画质低一档起步</td><td>提示取消，10 秒内回档</td></tr>
+        <tr><td class="mono">4</td><td>30 秒未恢复</td><td>结束会话并给出原因</td><td>大屏回待连接页，发送端显示原因</td></tr>
+        <tr><td class="mono">5</td><td>用户主动重试</td><td>重新探测同一设备</td><td>优先命中缓存设备</td></tr>
+      </tbody>
+    </table>
+
+    <h5>参数</h5>
+    <table>
+      <thead><tr><th style="width:140px">参数</th><th style="width:200px">默认</th><th>规则</th></tr></thead>
+      <tbody>
+        <tr><td>保留窗口</td><td>30 秒</td><td>期间拒绝新设备接入</td></tr>
+        <tr><td>重试次数</td><td>3 次</td><td>连续失败后停止并给出结论</td></tr>
+        <tr><td>恢复画质</td><td>上次档位低一档</td><td>10 秒内逐步回升</td></tr>
+        <tr><td>IP 变化</td><td>用设备标识重新握手</td><td>不使用旧地址</td></tr>
+      </tbody>
+    </table>
+
+    <h5>状态与异常</h5>
+    <table>
+      <thead><tr><th style="width:170px">场景</th><th style="width:170px">判定</th><th>提示</th><th style="width:150px">恢复</th></tr></thead>
+      <tbody>
+        <tr><td>切换 Wi-Fi</td><td>IP 变化</td><td>"网络已切换，正在重新连接"</td><td>重新握手</td></tr>
+        <tr><td>接收端重启</td><td>设备标识不变但会话丢失</td><td>"电视已重启，请重新连接"</td><td>提示重新扫码</td></tr>
+        <tr><td>连续三次失败</td><td>重试耗尽</td><td>给出具体原因与下一步</td><td>停止重试，不无限转圈</td></tr>
+        <tr><td>恢复期被抢占</td><td>新设备发起</td><td>"正在恢复中，请稍候"</td><td>保留原会话</td></tr>
+      </tbody>
+    </table>
+
+    <div class="acc">
+      <div class="hd">验收口径</div>
+      <table>
+        <thead><tr><th style="width:150px">检查项</th><th>通过标准</th><th style="width:200px">验证方式</th></tr></thead>
+        <tbody>
+          <tr><td>短断恢复</td><td>断网 10 秒内自动恢复，无需用户操作</td><td>关闭再打开 Wi-Fi</td></tr>
+          <tr><td>超时明确</td><td>30 秒未恢复时给出结论而非持续转圈</td><td>保持断网 40 秒</td></tr>
+          <tr><td>无重复授权</td><td>恢复过程不触发新的授权弹窗</td><td>观察大屏</td></tr>
+          <tr><td>画质回档</td><td>恢复后 10 秒内回到原档位</td><td>观察角标</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="fs">
+  <div class="fs-hd"><span class="fsid">FS-11</span><h3>隐私与数据边界</h3><div class="one">内容不出门，数据不落地</div></div>
+  <div class="fs-bd">
+    <h5>入口与交互</h5>
+    <table>
+      <thead><tr><th style="width:110px">位置</th><th style="width:190px">元素</th><th>规则</th></tr></thead>
+      <tbody>
+        <tr><td>首次启动</td><td>一句话数据边界说明</td><td>不使用长文弹窗；提供"查看完整说明"</td></tr>
+        <tr><td>设置页</td><td>隐私分组</td><td>仅包含诊断开关、缓存清理、隐私说明三项</td></tr>
+        <tr><td>投屏中</td><td>无云端标识</td><td>局域网直连不展示"云"字样；中继时明确标注"中继"</td></tr>
+        <tr><td>卸载</td><td>清理本地数据</td><td>设置、缓存、可信设备列表全部清除</td></tr>
+      </tbody>
+    </table>
+
+    <h5>参数</h5>
+    <table>
+      <thead><tr><th style="width:140px">参数</th><th style="width:120px">默认</th><th>规则</th></tr></thead>
+      <tbody>
+        <tr><td>诊断上传</td><td>关闭</td><td>开启后仅上报崩溃堆栈与设备型号</td></tr>
+        <tr><td>投屏内容留存</td><td>不保存</td><td>会话结束即删除临时缓存</td></tr>
+        <tr><td>日志</td><td>本地 7 天</td><td>不含画面、文件名、URL</td></tr>
+        <tr><td>中继</td><td>关闭</td><td>开启需二次确认，大屏标注</td></tr>
+        <tr><td>账号</td><td>无</td><td>不要求登录、不采集手机号与位置</td></tr>
+      </tbody>
+    </table>
+
+    <h5>状态与异常</h5>
+    <table>
+      <thead><tr><th style="width:180px">场景</th><th style="width:170px">判定</th><th>提示</th><th style="width:150px">恢复</th></tr></thead>
+      <tbody>
+        <tr><td>企业网络禁止外联</td><td>中继或诊断请求失败</td><td>"当前网络禁止外联，已切回局域网模式"</td><td>自动回退</td></tr>
+        <tr><td>片源带追踪参数</td><td>地址含追踪字段</td><td>不提示</td><td>仅在会话内使用，不写日志</td></tr>
+        <tr><td>用户关闭诊断</td><td>开关置关</td><td>不提示</td><td>停止外发请求</td></tr>
+        <tr><td>用户清理缓存</td><td>主动操作</td><td>二次确认</td><td>清空后不影响已授权设备</td></tr>
+      </tbody>
+    </table>
+
+    <div class="acc">
+      <div class="hd">验收口径</div>
+      <table>
+        <thead><tr><th style="width:150px">检查项</th><th>通过标准</th><th style="width:200px">验证方式</th></tr></thead>
+        <tbody>
+          <tr><td>局域网零外传</td><td>同网投屏时抓包无媒体相关外发</td><td>双端抓包</td></tr>
+          <tr><td>卸载即清空</td><td>卸载重装后无历史设备与缓存</td><td>卸载重装</td></tr>
+          <tr><td>中继不可读</td><td>中继侧无法解密或还原内容</td><td>中继抓包</td></tr>
+          <tr><td>诊断可控</td><td>关闭后无外发请求（更新检查除外）</td><td>关闭后抓包</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="fs">
+  <div class="fs-hd"><span class="fsid">FS-12</span><h3>老设备兼容与降级</h3><div class="one">能装就能用，能力如实告知</div></div>
+  <div class="fs-bd">
+    <h5>入口与交互</h5>
+    <table>
+      <thead><tr><th style="width:46px">步骤</th><th style="width:180px">用户动作</th><th>系统响应</th><th style="width:200px">界面变化</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">1</td><td>首次启动</td><td>探测内存、系统版本、解码与输出能力</td><td>设置页显示"本机等级：B"</td></tr>
+        <tr><td class="mono">2</td><td>进入设置</td><td>展示当前等级与最高画质</td><td>不可达档位不出现</td></tr>
+        <tr><td class="mono">3</td><td>运行中性能不足</td><td>自动降级运行策略</td><td>不弹窗，角标提示一次</td></tr>
+        <tr><td class="mono">4</td><td>设备不受支持</td><td>安装后首启即给出结论</td><td>说明原因与替代方案</td></tr>
+      </tbody>
+    </table>
+
+    <h5>分级参数</h5>
+    <table>
+      <thead><tr><th style="width:150px">参数</th><th>A 级</th><th>B 级</th><th>C 级</th></tr></thead>
+      <tbody>
+        <tr><td>最高画质</td><td>4K</td><td>1080p</td><td>720p</td></tr>
+        <tr><td>协议加载</td><td>全部常驻</td><td>全部常驻</td><td>按需加载，闲置 5 分钟释放</td></tr>
+        <tr><td>解码</td><td>硬解 4K</td><td>硬解 1080p</td><td>硬解 720p + 软解兜底</td></tr>
+        <tr><td>常驻内存目标</td><td>&lt;180MB</td><td>&lt;120MB</td><td>&lt;80MB</td></tr>
+        <tr><td>动画与预览</td><td>完整</td><td>关闭过渡</td><td>全部关闭</td></tr>
+      </tbody>
+    </table>
+
+    <h5>状态与异常</h5>
+    <table>
+      <thead><tr><th style="width:180px">场景</th><th style="width:160px">判定</th><th>提示</th><th style="width:150px">恢复</th></tr></thead>
+      <tbody>
+        <tr><td>内存不足导致解码失败</td><td>解码器报错</td><td>"已切换到兼容模式"</td><td>软解 + 降分辨率</td></tr>
+        <tr><td>系统时间错误</td><td>证书校验失败</td><td>"请校准电视时间"</td><td>不影响局域网直连</td></tr>
+        <tr><td>后台被系统清理</td><td>前台服务被杀</td><td>待连接页提示手动打开</td><td>回到前台 2 秒恢复广播</td></tr>
+        <tr><td>等级判定变化</td><td>系统升级或内存变化</td><td>设置页更新</td><td>需重启接收端生效</td></tr>
+      </tbody>
+    </table>
+
+    <div class="acc">
+      <div class="hd">验收口径</div>
+      <table>
+        <thead><tr><th style="width:150px">检查项</th><th>通过标准</th><th style="width:200px">验证方式</th></tr></thead>
+        <tbody>
+          <tr><td>老设备可用</td><td>C 级设备 720p 连续 30 分钟不 OOM</td><td>长稳脚本</td></tr>
+          <tr><td>能力如实</td><td>设置页等级与实测最高画质一致</td><td>A/B/C 各一台</td></tr>
+          <tr><td>不支持明确</td><td>不支持设备首启即告知，不进入半可用状态</td><td>用裁剪系统测试</td></tr>
+          <tr><td>恢复广播</td><td>回到前台 2 秒内重新可见</td><td>手动切后台再回来</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="fs">
+  <div class="fs-hd"><span class="fsid">FS-13</span><h3>接收端安装与自启</h3><div class="one">装一次，开机即用</div></div>
+  <div class="fs-bd">
+    <h5>入口与交互</h5>
+    <table>
+      <thead><tr><th style="width:46px">步骤</th><th style="width:180px">用户动作</th><th>系统响应</th><th style="width:200px">界面变化</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">1</td><td>安装 APK</td><td>校验 ABI 与系统版本</td><td>安装完成后可直接打开</td></tr>
+        <tr><td class="mono">2</td><td>首次启动</td><td>三步引导，每步可跳过</td><td>跳过则使用默认设备名</td></tr>
+        <tr><td class="mono">3</td><td>进入待连接页</td><td>展示设备名、二维码、投屏码</td><td>开始广播</td></tr>
+        <tr><td class="mono">4</td><td>开机重启</td><td>自动拉起并恢复待连接页</td><td>无需用户操作</td></tr>
+        <tr><td class="mono">5</td><td>无法自启</td><td>降级为"最近使用后保活"</td><td>待连接页提示手动打开方式</td></tr>
+      </tbody>
+    </table>
+
+    <h5>参数</h5>
+    <table>
+      <thead><tr><th style="width:150px">参数</th><th style="width:200px">值</th><th>规则</th></tr></thead>
+      <tbody>
+        <tr><td>最低系统</td><td>Android 4.4（API 19）</td><td>低于此版本安装即拒绝并说明</td></tr>
+        <tr><td>ABI</td><td>armeabi-v7a 与 arm64-v8a</td><td>老盒子默认 32 位包</td></tr>
+        <tr><td>安装包体积</td><td>A/B 级 &lt;45MB，C 级 &lt;28MB</td><td>超限不得发布</td></tr>
+        <tr><td>开机自启</td><td>默认开启</td><td>系统禁止时降级并提示</td></tr>
+        <tr><td>首次引导</td><td>3 步可跳过</td><td>不强制授权</td></tr>
+        <tr><td>权限</td><td>仅局域网与前台服务</td><td>不申请通讯录、定位、短信</td></tr>
+      </tbody>
+    </table>
+
+    <h5>状态与异常</h5>
+    <table>
+      <thead><tr><th style="width:170px">场景</th><th style="width:170px">判定</th><th>提示</th><th style="width:150px">恢复</th></tr></thead>
+      <tbody>
+        <tr><td>存储不足</td><td>安装前检查可用空间</td><td>"需要至少 XX MB 空间"</td><td>清理后重试</td></tr>
+        <tr><td>系统禁止自启</td><td>开机未拉起</td><td>待连接页显示手动入口</td><td>用户手动打开</td></tr>
+        <tr><td>被系统清理</td><td>进程消失</td><td>不提示（下次打开恢复）</td><td>回前台 2 秒恢复广播</td></tr>
+        <tr><td>设备名冲突</td><td>同网两台同名</td><td>不提示</td><td>默认追加随机两位区分</td></tr>
+      </tbody>
+    </table>
+
+    <div class="acc">
+      <div class="hd">验收口径</div>
+      <table>
+        <thead><tr><th style="width:150px">检查项</th><th>通过标准</th><th style="width:200px">验证方式</th></tr></thead>
+        <tbody>
+          <tr><td>老盒安装</td><td>Android 4.4、1GB 内存设备可安装并启动</td><td>真机验证</td></tr>
+          <tr><td>包体达标</td><td>实测安装包不超过分级上限</td><td>构建产物核对</td></tr>
+          <tr><td>自启可用</td><td>支持自启的设备重启后 30 秒内可见</td><td>断电重启 3 次</td></tr>
+          <tr><td>首启零阻塞</td><td>全部跳过引导仍可进入待连接页</td><td>逐项跳过</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+</section>
+
+<section id="s7">
+<h2><span class="num">07</span>共享规则与异常</h2>
+<p class="lead">本章定义的规则被多个功能模块引用，只在这里维护一份，功能章节不得重复定义。</p>
+
+<h3>7.1 协议能力矩阵</h3>
+<p>接收端对不同发送方式的支持边界如下。"系统投屏"指发送端不安装 AirMirror 也能发起的系统级投屏。</p>
+<div class="chip-row" id="protoChips">
+  <span class="chip on" data-f="all">全部</span>
+  <span class="chip" data-f="apple">Apple 设备</span>
+  <span class="chip" data-f="android">Android</span>
+  <span class="chip" data-f="pc">电脑</span>
+  <span class="chip" data-f="guest">访客/免装</span>
+</div>
+<table class="matrix" id="protoTable">
+  <thead><tr><th style="width:120px">协议</th><th style="width:96px">典型发送方</th><th>能做什么</th><th style="width:100px">接收端要求</th><th style="width:90px">本项目支持</th></tr></thead>
+  <tbody>
+    <tr data-p="apple android"><td><b>AirPlay</b></td><td>iPhone / iPad / Mac</td><td>屏幕镜像、视频推送、音频播放；系统级入口，无需装 App</td><td>可监听发现广播并处理加密流</td><td><span class="tag t-p0">P0</span></td></tr>
+    <tr data-p="android pc"><td><b>DLNA / UPnP</b></td><td>视频 App、文件管理器、Windows 播放器</td><td>推送视频/音乐/图片地址，控制播放进度</td><td>可响应媒体控制请求</td><td><span class="tag t-p0">P0</span></td></tr>
+    <tr data-p="android pc"><td><b>Google Cast</b></td><td>Chrome、部分视频 App、Android 系统</td><td>推送网页/媒体、镜像（部分设备）</td><td>需模拟 Cast 设备发现与消息通道</td><td><span class="tag t-p0">P0</span> <span class="muted">（兼容模式）</span></td></tr>
+    <tr data-p="android"><td><b>华为 Cast+</b></td><td>华为/荣耀手机</td><td>镜像与推送，系统级入口</td><td>需协议实现与机型适配</td><td><span class="tag t-p1">P1</span> <span class="muted">（按机型灰度）</span></td></tr>
+    <tr data-p="android"><td><b>Miracast / Wi-Fi Display</b></td><td>部分 Android / Windows</td><td>无网直连镜像，系统级</td><td>需系统级 Wi-Fi Direct 与显示权限</td><td><span class="tag t-p2">受限</span> <span class="muted">（见 13.1）</span></td></tr>
+    <tr data-p="apple android pc"><td><b>AirMirror 私有通道</b></td><td>安装 AirMirror 的任意端</td><td>镜像、推送、文件、控制、跨网</td><td>两端均运行本项目</td><td><span class="tag t-p0">P0</span></td></tr>
+    <tr data-p="guest"><td><b>浏览器直连</b></td><td>任意设备的浏览器</td><td>上传文件、共享标签页</td><td>接收端内置网页服务</td><td><span class="tag t-p1">P1</span></td></tr>
+  </tbody>
+</table>
+<p class="src">能力边界参考公开产品资料与开源实现：当贝/光元素支持 AirPlay、DLNA、华为 Cast+；海豚星空以 DLNA 扫码投屏为主；开源侧 UxPlay、castbay、mirrocast、PhairPlay 等已验证 Android 端可做 AirPlay/DLNA/Cast 接收。</p>
+
+<h3>7.2 设备兼容分级标准</h3>
+<table>
+  <thead><tr><th style="width:80px">级别</th><th>判定条件（满足任一即降级）</th><th>运行策略</th><th>最高画质</th></tr></thead>
+  <tbody>
+    <tr><td><b>A 级</b></td><td>Android 10+，内存 ≥ 3GB，支持 4K 硬解与 4K 输出</td><td>全协议常驻，硬件编解码，动画完整</td><td>4K</td></tr>
+    <tr><td><b>B 级</b></td><td>Android 7–9，内存 2–3GB，1080p 硬解</td><td>全协议常驻，关闭预览与过渡动画</td><td>1080p</td></tr>
+    <tr><td><b>C 级</b></td><td>Android 4.4–6，内存 ≤ 1GB，或硬解不可用</td><td>协议按需加载，软解兜底，关闭日志与缩略图</td><td>720p</td></tr>
+    <tr><td><b>不支持</b></td><td>无 Wi-Fi 模块、系统被裁剪无法创建本地服务、存储 &lt; 100MB</td><td>安装时明确告知不可用，并给出替代方案</td><td>—</td></tr>
+  </tbody>
+</table>
+
+<h3>7.3 错误分类与提示规则</h3>
+<p>所有错误提示必须包含<b>发生了什么</b>与<b>下一步怎么做</b>，禁止只显示错误码或"连接失败"。</p>
+<table>
+  <thead><tr><th style="width:130px">类别</th><th>典型原因</th><th>提示原则</th><th>可选动作</th></tr></thead>
+  <tbody>
+    <tr><td><b>网络不可见</b></td><td>AP 隔离、跨网段、组播禁用、双频分离</td><td>说明网络限制，给出扫码/投屏码替代</td><td>扫码连接、手动输入 IP</td></tr>
+    <tr><td><b>配对失败</b></td><td>码过期、码错误次数超限、被拒绝</td><td>指出是码问题还是授权问题</td><td>重新获取码、重新请求</td></tr>
+    <tr><td><b>权限缺失</b></td><td>录屏、局域网、后台运行、悬浮窗</td><td>说明该权限用于哪一步</td><td>跳转设置、使用替代功能</td></tr>
+    <tr><td><b>能力不匹配</b></td><td>编码不支持、分辨率过高、4K 不满足</td><td>说明限制在哪一端</td><td>降档、改推送、改镜像</td></tr>
+    <tr><td><b>会话中断</b></td><td>心跳丢失、设备重启、进程被杀</td><td>说明能否自动恢复</td><td>自动恢复、重新连接</td></tr>
+    <tr><td><b>片源问题</b></td><td>防盗链、地址失效、格式不支持</td><td>区分"片源限制"与"设备限制"</td><td>改用镜像、换片源</td></tr>
+  </tbody>
+</table>
+
+<h3>7.4 资源上限</h3>
+<table>
+  <thead><tr><th>资源</th><th>上限</th><th>超限行为</th></tr></thead>
+  <tbody>
+    <tr><td>本地缓存（临时解码/上传）</td><td>200MB，C 级设备 64MB</td><td>按最早使用顺序清理，会话中的缓存不清理</td></tr>
+    <tr><td>会话历史</td><td>最近 10 条</td><td>覆盖最旧记录，仅存设备名与时间，不存内容</td></tr>
+    <tr><td>可信设备列表</td><td>32 台</td><td>超出时提示移除，不自动删除</td></tr>
+    <tr><td>并发会话</td><td>1 个活动 + 1 个排队</td><td>第三台设备提示稍后重试</td></tr>
+    <tr><td>日志</td><td>7 天，仅本地</td><td>滚动删除；用户可一键清空</td></tr>
+  </tbody>
+</table>
+
+<h3>7.5 权限与可见性</h3>
+<table>
+  <thead><tr><th style="width:170px">能力</th><th>发送端用户</th><th>接收端所有者</th><th>访客</th><th>管理员</th></tr></thead>
+  <tbody>
+    <tr><td>发起投屏</td><td>是（需一次授权）</td><td>是</td><td>仅凭码/扫码</td><td>是</td></tr>
+    <tr><td>结束他人会话</td><td>仅自己的会话</td><td>是（最终决定权）</td><td>否</td><td>是</td></tr>
+    <tr><td>修改设备名/画质/显示模式</td><td>否</td><td>是</td><td>否</td><td>是</td></tr>
+    <tr><td>查看已连接设备列表</td><td>否</td><td>是</td><td>否</td><td>是</td></tr>
+    <tr><td>开启中继</td><td>是（本端发起）</td><td>是（设备级开关）</td><td>否</td><td>是</td></tr>
+    <tr><td>上传诊断数据</td><td>本端开关</td><td>本端开关</td><td>不适用</td><td>统一策略</td></tr>
+  </tbody>
+</table>
+
+<h3>7.6 生命周期规则</h3>
+<ul>
+  <li><b>投屏码</b>：生成后 60 秒轮换；旧码在轮换后 10 秒内有效；成功使用一次即失效；累计 5 次错误锁定 60 秒。</li>
+  <li><b>一次性授权</b>：凭码/扫码建立的会话，在会话结束后授权失效，不进入可信列表；用户可在大屏主动"记住这台设备"。</li>
+  <li><b>可信设备</b>：长期有效，直到用户在接收端移除、接收端恢复出厂设置或卸载。</li>
+  <li><b>会话记录</b>：本地保留最近 10 条，仅用于列表排序，不含内容与地址。</li>
+  <li><b>临时媒体服务</b>：随会话创建，随会话销毁；端口随机，仅接受当前会话发送端的请求。</li>
+</ul>
+
+<h3>7.7 提示与通知规则</h3>
+<ul>
+  <li>接收端待连接页始终展示：设备名、二维码、6 位码、"如何投屏"一行说明。不展示任何推广内容。</li>
+  <li>连接成功：大屏展示发送端设备名 3 秒，不遮挡画面。</li>
+  <li>投屏中：大屏不显示任何常驻水印；仅在用户主动开启时显示画质信息。</li>
+  <li>发送端通知：投屏中常驻一条可停止的通知；结束即消失，不保留历史通知。</li>
+  <li>所有提示语使用同一词汇表：设备、投屏、镜像、推送、投屏码，不混用"投射/同屏/共享"等近义词。</li>
+</ul>
+</section>
+<section id="s8">
+<h2><span class="num">08</span>技术架构与实现方案</h2>
+<p class="lead">本章说明"产品承诺如何被技术兑现"，以及哪些承诺受平台限制必须打折。它约束的是能力边界与关键技术选择，不规定具体代码结构。</p>
+
+<h3>8.1 总体架构</h3>
+<div class="arch">
+  <div class="arch-layer">
+    <div class="arch-label">发送端<br>SENDER</div>
+    <div class="arch-row">
+      <div class="node hi"><b>手机 App</b><small>Android / iOS · 镜像与推送</small></div>
+      <div class="node hi"><b>电脑端</b><small>Windows / macOS · 屏幕与窗口</small></div>
+      <div class="node hi"><b>系统投屏</b><small>iOS 屏幕镜像 / 视频 App 投屏按钮</small></div>
+      <div class="node hi"><b>浏览器</b><small>免安装 · 上传与标签页共享</small></div>
+    </div>
+  </div>
+  <div class="arch-sep"><div class="lbl">↓</div><div class="line">协议适配与传输选择</div></div>
+  <div class="arch-layer">
+    <div class="arch-label">协议层<br>PROTOCOL</div>
+    <div class="arch-row">
+      <div class="node"><b>AirPlay</b><small>Apple 设备系统级</small></div>
+      <div class="node"><b>DLNA / UPnP</b><small>媒体地址推送与控制</small></div>
+      <div class="node"><b>Google Cast</b><small>兼容模式</small></div>
+      <div class="node"><b>私有通道</b><small>自研低延迟传输</small></div>
+      <div class="node"><b>扫码 / 投屏码</b><small>人工建连兜底</small></div>
+    </div>
+  </div>
+  <div class="arch-sep"><div class="lbl">↓</div><div class="line">同一局域网：点对点直连 · 跨网：信令协商 + 可选中继</div></div>
+  <div class="arch-layer">
+    <div class="arch-label">网络层<br>TRANSPORT</div>
+    <div class="arch-row">
+      <div class="node"><b>本地直连</b><small>零上云 · 端到端加密</small></div>
+      <div class="node"><b>发现广播</b><small>多协议并行监听</small></div>
+      <div class="node"><b>信令服务</b><small>仅交换连接信息</small></div>
+      <div class="node"><b>中继（可选）</b><small>媒体不落盘</small></div>
+    </div>
+  </div>
+  <div class="arch-sep"><div class="lbl">↓</div><div class="line">接收端统一接入</div></div>
+  <div class="arch-layer">
+    <div class="arch-label">接收端<br>RECEIVER</div>
+    <div class="arch-row">
+      <div class="node dark"><b>协议适配层</b><small>多协议并行，按需加载</small></div>
+      <div class="node dark"><b>媒体引擎</b><small>硬解优先 · 软解兜底</small></div>
+      <div class="node dark"><b>同步与渲染</b><small>音频主时钟 · 比例适配</small></div>
+      <div class="node dark"><b>本地服务</b><small>临时媒体 / 配对 / 网页</small></div>
+    </div>
+  </div>
+  <div class="sidecar">
+    <div class="node"><b>设备能力探测</b><small>兼容分级 A/B/C</small></div>
+    <div class="node"><b>配对与授权</b><small>可信列表 / 一次性令牌</small></div>
+    <div class="node"><b>TV 界面</b><small>待连接页 · 焦点导航</small></div>
+    <div class="node"><b>设置 / 诊断 / 隐私</b><small>本地存储 · 默认关</small></div>
+  </div>
+</div>
+<p class="src">设计原则：<b>协议层可插拔、媒体引擎共用、网络层可降级</b>。任何协议失败都不应导致接收端整体不可用，而是回落到下一跳（如 AirPlay 失败 → 私有通道 → 扫码直连）。</p>
+
+<h3>8.2 接收端实现要点</h3>
+<table>
+  <thead><tr><th style="width:150px">能力</th><th>实现方式</th><th>关键约束</th></tr></thead>
+  <tbody>
+    <tr><td><b>后台常驻与发现</b></td><td>以前台服务承载广播与监听；开机广播触发自启；系统限制时降级为"打开即广播"</td><td>Android 8.0+ 对后台服务与广播有限制，需引导白名单；部分厂商 ROM 需单独允许自启</td></tr>
+    <tr><td><b>多协议并行</b></td><td>每个协议独立模块与线程，共享设备标识与配对状态；C 级设备改为按需加载</td><td>低内存设备同时跑多协议会 OOM，必须给协议模块设内存上限</td></tr>
+    <tr><td><b>视频解码</b></td><td>优先系统硬件解码器，输出直接到显示层，避免中间拷贝；不支持的编码回落软解</td><td>杂牌盒子的硬件解码器能力表不完整，需以实际探测结果为准，不能只看系统版本</td></tr>
+    <tr><td><b>渲染与比例</b></td><td>按源分辨率与屏幕比例计算显示矩形，保持像素对齐；旋转时重建显示区域</td><td>部分老设备 Surface 缩放质量差，竖屏小窗口更明显，需限制最小显示宽度</td></tr>
+    <tr><td><b>临时媒体服务</b></td><td>会话内启动本地 HTTP 服务提供文件地址，端口随机、仅当前会话可访问</td><td>老设备文件系统读写慢，需边读边发、不做整文件缓存</td></tr>
+    <tr><td><b>待连接页</b></td><td>常驻前台界面展示设备名、二维码、投屏码与连接状态</td><td>部分盒子无遥控器焦点体系，需同时支持触摸与方向键</td></tr>
+  </tbody>
+</table>
+
+<h3>8.3 发送端实现要点</h3>
+<table>
+  <thead><tr><th style="width:120px">平台</th><th>采集</th><th>编码与传输</th><th>限制</th></tr></thead>
+  <tbody>
+    <tr><td><b>Android</b></td><td>系统屏幕录制授权后采集屏幕与系统音频</td><td>硬件编码，私有通道传输；音频单独编码并与视频时间戳对齐</td><td>每次投屏可能需重新授权；部分系统不允许采集内部音频</td></tr>
+    <tr><td><b>iOS</b></td><td>两种路径：系统"屏幕镜像"（AirPlay，无需 App）；App 内录屏（需用户手动开启）</td><td>AirPlay 路径由接收端处理；App 路径走私有通道</td><td>无法静默开始录屏；后台录制受限</td></tr>
+    <tr><td><b>Windows</b></td><td>桌面复制接口采集整屏或指定显示器</td><td>硬件编码优先；窗口模式需持续跟踪窗口位置</td><td>受保护内容（DRM）无法采集</td></tr>
+    <tr><td><b>macOS</b></td><td>系统屏幕录制权限 + 采集接口</td><td>硬件编码；支持 Retina 缩放</td><td>首次需在系统设置授权并重启 App</td></tr>
+    <tr><td><b>浏览器</b></td><td>浏览器屏幕共享能力</td><td>WebRTC 传输；不支持时降级为文件上传</td><td>仅能共享用户明确选择的标签页/窗口</td></tr>
+  </tbody>
+</table>
+<div class="note warn"><b>不做的事。</b>不采用需要开启 USB 调试的采集方案（scrcpy 路线）作为普通用户的默认路径——它技术成熟但不满足"零门槛"的产品承诺，仅可作为专家模式 <span class="tag t-p2">P2</span>。</div>
+
+<h3>8.4 协议实现策略</h3>
+<table>
+  <thead><tr><th style="width:110px">协议</th><th>接收端需要实现</th><th>难点</th><th>策略</th></tr></thead>
+  <tbody>
+    <tr><td><b>AirPlay</b></td><td>发现广播、配对握手、加密流解密、视频/音频解码与渲染、镜像与媒体两种模式</td><td>Apple 的加密与配对流程未公开，需按公开逆向实现跟进；系统升级可能改变握手细节</td><td>以开源实现（UxPlay、airplay2-receiver）为协议参考，独立实现；保留协议版本探测与降级</td></tr>
+    <tr><td><b>DLNA</b></td><td>设备描述、媒体控制、播放状态回报、封面与元数据</td><td>各视频 App 的推流参数差异大；部分片源带防盗链</td><td>标准实现 + 兼容性白名单；防盗链片源明确提示改用镜像</td></tr>
+    <tr><td><b>Google Cast</b></td><td>发现广播、消息通道、媒体命名空间、接收端应用标识</td><td>官方接收端需认证；未认证设备无法被部分官方 App 识别</td><td>兼容模式：优先保证 Chrome 与常见 App 的推送；对强校验 App 明确不支持并给替代路径</td></tr>
+    <tr><td><b>私有通道</b></td><td>配对、鉴权、采集传输、控制消息、心跳与恢复</td><td>跨平台一致性与弱网表现</td><td>自研，作为兜底与最高画质路径；协议需版本化，保证新旧端兼容</td></tr>
+    <tr><td><b>Miracast</b></td><td>Wi-Fi Direct 组网、显示流接收</td><td>Android 8.0+ 起系统限制第三方应用注册为接收端</td><td>不作为普通 APK 能力；仅在系统签名/预装固件中提供</td></tr>
+  </tbody>
+</table>
+
+<h3>8.5 跨网连接与中继</h3>
+<div class="arch" style="padding:18px 22px">
+  <div class="arch-layer">
+    <div class="arch-label">步骤 1</div>
+    <div class="arch-row">
+      <div class="node"><b>大屏展示投屏码</b><small>本地生成，含设备标识与一次性令牌</small></div>
+      <div class="node"><b>发送端提交投屏码</b><small>附带自身网络信息</small></div>
+      <div class="node"><b>信令服务匹配</b><small>仅转发连接信息，不接触媒体</small></div>
+    </div>
+  </div>
+  <div class="arch-sep"><div class="lbl">↓</div><div class="line">尝试直连，失败再考虑中继</div></div>
+  <div class="arch-layer">
+    <div class="arch-label">步骤 2</div>
+    <div class="arch-row">
+      <div class="node"><b>打洞直连</b><small>成功则媒体点对点，质量最优</small></div>
+      <div class="node"><b>同网段</b><small>直接局域网直连，不经信令</small></div>
+      <div class="node"><b>中继</b><small>仅用户允许时启用，媒体不落盘</small></div>
+    </div>
+  </div>
+  <div class="arch-sep"><div class="lbl">↓</div><div class="line">无论哪种路径，配对与加密规则一致</div></div>
+  <div class="arch-layer">
+    <div class="arch-label">安全</div>
+    <div class="arch-row">
+      <div class="node"><b>一次性令牌</b><small>扫码/投屏码使用即失效</small></div>
+      <div class="node"><b>端到端加密</b><small>密钥仅两端持有</small></div>
+      <div class="node"><b>拒绝即失效</b><small>不保留跨网长期授权</small></div>
+    </div>
+  </div>
+</div>
+<p><b>成本与体验的取舍：</b>中继会带来带宽成本与画质下降，因此默认关闭，仅在直连失败时由用户明确允许；中继不得成为默认路径，否则"本地传输不上云"的承诺失效。</p>
+
+<h3>8.6 延迟预算与音画同步</h3>
+<p>镜像的端到端延迟由五段构成。产品目标是在 1080p60、同一 Wi-Fi 下稳定在 <b>150ms 以内</b>；超出时优先牺牲分辨率而非流畅度。</p>
+<table>
+  <thead><tr><th style="width:130px">阶段</th><th style="width:150px">典型耗时</th><th>控制手段</th><th>不可压缩的部分</th></tr></thead>
+  <tbody>
+    <tr><td>屏幕采集</td><td>16–33ms</td><td>按显示刷新率采集，避免重复帧入队</td><td>系统合成周期</td></tr>
+    <tr><td>编码</td><td>10–30ms</td><td>硬件编码、低延迟模式、关闭 B 帧</td><td>编码器内部流水线</td></tr>
+    <tr><td>传输</td><td>5–40ms</td><td>局域网直连、小分片、丢包重传只重传关键片</td><td>Wi-Fi 空口调度</td></tr>
+    <tr><td>解码</td><td>10–30ms</td><td>硬件解码、输出直达显示层</td><td>解码器启动与首帧</td></tr>
+    <tr><td>显示</td><td>16–33ms</td><td>按屏幕刷新对齐，避免三缓冲排队</td><td>面板响应时间</td></tr>
+    <tr><td><b>合计</b></td><td><b>60–170ms</b></td><td>目标 &lt;150ms；超出则降档或降帧</td><td>—</td></tr>
+  </tbody>
+</table>
+<p><b>同步机制：</b>音频时钟为主时钟，视频帧按呈现时间戳排队；音频缓冲维持 40–80ms。视频早到则等待，晚到超过一帧则丢弃非关键帧追进度；累计偏差超过 300ms 时执行一次硬对齐。该规则与 FR-09 一致，实现细节由媒体引擎统一封装，镜像与推送共用。</p>
+
+<h3>8.7 画质档位与编码策略</h3>
+<table>
+  <thead><tr><th style="width:90px">档位</th><th style="width:120px">分辨率</th><th style="width:130px">编码</th><th style="width:130px">码率区间</th><th>适用条件</th></tr></thead>
+  <tbody>
+    <tr><td><b>4K</b></td><td>3840×2160</td><td>H.265 / HEVC Main</td><td>20–40 Mbps</td><td>A 级设备 + 5GHz Wi-Fi 5/6 + 4K 输出</td></tr>
+    <tr><td><b>1440p</b></td><td>2560×1440</td><td>H.265 / H.264 High</td><td>12–20 Mbps</td><td>A 级设备 + 稳定 5GHz</td></tr>
+    <tr><td><b>1080p60</b></td><td>1920×1080</td><td>H.264 High / H.265</td><td>6–12 Mbps</td><td>B 级及以上，默认档位</td></tr>
+    <tr><td><b>720p30</b></td><td>1280×720</td><td>H.264 Main</td><td>2.5–5 Mbps</td><td>C 级设备或 2.4GHz 网络</td></tr>
+    <tr><td><b>480p</b></td><td>854×480</td><td>H.264 Baseline</td><td>0.8–2 Mbps</td><td>网络严重拥塞时的保底档</td></tr>
+  </tbody>
+</table>
+<p class="muted" style="font-size:12.5px">编码选择顺序：接收端硬解支持 H.265 且带宽充足时优先 H.265；否则 H.264。关闭 B 帧、GOP 控制在 1 秒内，以保证首帧与恢复速度。DRM 保护内容不采集，直接提示不支持。</p>
+
+<h3>8.8 老设备性能策略</h3>
+<table>
+  <thead><tr><th style="width:150px">资源</th><th>A 级</th><th>B 级</th><th>C 级</th></tr></thead>
+  <tbody>
+    <tr><td>常驻内存目标</td><td>&lt; 180MB</td><td>&lt; 120MB</td><td>&lt; 80MB</td></tr>
+    <tr><td>安装包体积</td><td>&lt; 45MB</td><td>&lt; 45MB</td><td>&lt; 28MB（32 位精简包）</td></tr>
+    <tr><td>协议模块</td><td>全部常驻</td><td>全部常驻</td><td>按需加载，闲置释放</td></tr>
+    <tr><td>解码</td><td>硬解 4K</td><td>硬解 1080p</td><td>硬解 720p + 软解兜底</td></tr>
+    <tr><td>动画 / 预览</td><td>完整</td><td>关闭过渡动画</td><td>关闭动画、缩略图与预览</td></tr>
+    <tr><td>日志</td><td>本地 7 天</td><td>本地 3 天</td><td>仅崩溃日志</td></tr>
+  </tbody>
+</table>
+<div class="note"><b>为什么把体积写进需求。</b>老盒子的可用存储常低于 200MB，安装包超过 50MB 会直接安装失败；这是"兼容性强"承诺的硬约束，不是优化项。</div>
+
+<h3>8.9 安全与隐私实现</h3>
+<ul>
+  <li><b>配对</b>：首次连接使用一次性令牌 + 设备指纹；令牌由接收端本地生成，不依赖云端。</li>
+  <li><b>传输</b>：局域网媒体流使用端到端加密（密钥在配对阶段协商，仅两端持有）；中继节点无法解密。</li>
+  <li><b>防滥用</b>：投屏码错误次数限流；单设备连接请求频率限制；拒绝后短时静默。</li>
+  <li><b>最小权限</b>：接收端不申请通讯录、定位、短信等权限；发送端仅在镜像时需要录屏权限。</li>
+  <li><b>数据留存</b>：不保存画面、文件名、URL；崩溃日志默认关闭且可清除。</li>
+</ul>
+
+<h3>8.10 开源复用与许可边界</h3>
+<p>以下项目用于<b>协议学习、架构参考与可复用组件</b>，实际采用需逐个核对许可证，避免把强传染性许可的代码链接进闭源/半开源产品。</p>
+<table>
+  <thead><tr><th style="width:200px">项目</th><th style="width:110px">定位</th><th>可借鉴 / 可复用</th><th style="width:130px">许可与风险</th></tr></thead>
+  <tbody>
+    <tr><td><b>Genymobile/scrcpy</b></td><td>Android 镜像与控制</td><td>低延迟采集与传输思路、设备端服务形态；<b>不作为普通用户路径</b></td><td>Apache-2.0，可参考；依赖 USB 调试</td></tr>
+    <tr><td><b>barry-ran/QtScrcpy</b></td><td>桌面图形化封装</td><td>桌面端设备管理与快捷键交互</td><td>Apache-2.0</td></tr>
+    <tr><td><b>antimof/UxPlay</b></td><td>AirPlay 镜像接收</td><td>AirPlay 发现、握手、GStreamer 解码链路</td><td>GPL-3.0，<b>仅作协议参考，不链接</b></td></tr>
+    <tr><td><b>openairplay/airplay2-receiver</b></td><td>AirPlay 2 接收</td><td>AirPlay 2 配对与加密流程</td><td>许可证需核对；仅参考</td></tr>
+    <tr><td><b>alexballas/go2tv</b></td><td>DLNA / Cast 推送</td><td>设备发现、媒体控制、播放状态回报</td><td>MIT，可复用协议实现思路</td></tr>
+    <tr><td><b>weenas/castbay</b></td><td>Android 大屏 AirPlay+DLNA 接收</td><td>Android 端多协议共存、TV 界面组织</td><td>许可证 <span class="tag t-warn">[TBD]</span></td></tr>
+    <tr><td><b>tffinder/mirrocast</b></td><td>Android TV 镜像接收</td><td>老设备上的 AirPlay/Miracast/DLNA 组合</td><td>许可证 <span class="tag t-warn">[TBD]</span></td></tr>
+    <tr><td><b>mazer666/PhairPlay</b></td><td>免费开源无广告多协议接收</td><td>与本产品形态最接近的对照实现</td><td>许可证 <span class="tag t-warn">[TBD]</span></td></tr>
+    <tr><td><b>F-e-n-y-x/airplay-dlna-receiver</b></td><td>Android TV 9–16 接收</td><td>新版本 Android 的兼容处理</td><td>许可证 <span class="tag t-warn">[TBD]</span></td></tr>
+    <tr><td><b>warren-bank/Android-ExoPlayer-AirPlay-Receiver</b></td><td>盒子端 AirPlay 媒体接收</td><td>最小可用的媒体推送实现</td><td>许可证 <span class="tag t-warn">[TBD]</span></td></tr>
+    <tr><td><b>albfan/miraclecast</b></td><td>Linux Miracast 实现</td><td>Wi-Fi Display 协议流程参考</td><td>LGPL，<b>不可直接移植到 Android 第三方 App</b></td></tr>
+    <tr><td><b>pavlobu/deskreen</b></td><td>浏览器屏幕共享</td><td>网页端共享与配对体验</td><td>AGPL，仅参考交互</td></tr>
+  </tbody>
+</table>
+<p class="src">项目定位来自 GitHub 仓库描述与公开文档；许可证一栏中未在本次调研核实的一律标记 TBD，进入开发前必须完成法务核对。</p>
+</section>
+<section id="s9">
+<h2><span class="num">09</span>客户体验提升</h2>
+<p class="lead">体验提升不是形容词清单，而是"原来的哪一步痛，改成了什么行为"。下表每一行都可以在验收时观察。</p>
+
+<table>
+  <thead><tr><th style="width:120px">体验点</th><th>现状痛点</th><th>本产品的具体行为</th><th>可观测结果</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><b>零等待</b></td>
+      <td>打开 App 先看开屏广告，等数秒</td>
+      <td>启动直接进入设备列表；有缓存设备时先展示缓存再刷新</td>
+      <td>从点击图标到看到设备，不等广告、不分页</td>
+    </tr>
+    <tr>
+      <td><b>零输入</b></td>
+      <td>需要输入 IP 或翻找设备名</td>
+      <td>同网自动发现并置顶最近使用设备</td>
+      <td>首次使用无需任何文字输入</td>
+    </tr>
+    <tr>
+      <td><b>防误投</b></td>
+      <td>邻居或同事误投到你的电视</td>
+      <td>首次连接需大屏确认；可信设备免确认；可一键移除</td>
+      <td>未授权设备无法直接上屏</td>
+    </tr>
+    <tr>
+      <td><b>失败可诊断</b></td>
+      <td>只提示"连接失败，请重试"</td>
+      <td>按 7.3 分类给出原因与下一步操作</td>
+      <td>用户能自己判断是网络、权限还是片源问题</td>
+    </tr>
+    <tr>
+      <td><b>断线不重来</b></td>
+      <td>Wi-Fi 抖一下就回到首页重新扫码</td>
+      <td>保留 30 秒会话并自动恢复，保持最后一帧</td>
+      <td>短暂掉线后画面自行恢复，无需操作</td>
+    </tr>
+    <tr>
+      <td><b>竖屏不憋屈</b></td>
+      <td>竖屏内容被拉伸或裁掉一半</td>
+      <td>默认等比完整显示，可切铺满/拉伸，旋转 1 秒内跟随</td>
+      <td>竖屏视频的关键文字与人物完整可见</td>
+    </tr>
+    <tr>
+      <td><b>手机不绑架</b></td>
+      <td>投屏时手机不能锁屏、不能切 App</td>
+      <td>镜像期间可锁屏、切后台；通知栏可停止</td>
+      <td>投屏中手机可正常使用其他功能</td>
+    </tr>
+    <tr>
+      <td><b>大屏不打扰</b></td>
+      <td>投屏中弹出会员推荐、片尾广告</td>
+      <td>接收端无任何推广位；仅显示必要状态</td>
+      <td>投屏全程大屏只出现用户内容</td>
+    </tr>
+    <tr>
+      <td><b>访客不折腾</b></td>
+      <td>客人来家里投屏要先装 App、注册</td>
+      <td>扫码后可用浏览器投文件；iOS 直接用系统镜像</td>
+      <td>访客在 1 分钟内完成一次投屏</td>
+    </tr>
+    <tr>
+      <td><b>老设备不放弃</b></td>
+      <td>老盒子装了也白装</td>
+      <td>按 A/B/C 分级降级运行，明确告知能力边界</td>
+      <td>C 级设备仍能完成镜像与视频推送</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>9.1 关键体验场景走查</h3>
+<div class="grid2">
+  <div class="card">
+    <h4 style="margin-top:0">家庭：老人自己投</h4>
+    <p style="margin-bottom:6px">老人不会输码，也不想装第二个 App。子女提前把接收端装好并命名"客厅电视"，手机 App 打开即见，点一下即投。若误连到邻居电视，对方大屏会弹确认，不会直接上屏。</p>
+    <p class="muted" style="margin:0;font-size:12.5px">设计依赖：FR-01 自启、FR-02 发现、FR-03 确认。</p>
+  </div>
+  <div class="card">
+    <h4 style="margin-top:0">办公：会议室投屏</h4>
+    <p style="margin-bottom:6px">公司网络禁止组播，自动发现为空。用户抬头看到电视上的 6 位码，输入即连；跨 VLAN 时由信令协商，直连失败才提示开启中继。</p>
+    <p class="muted" style="margin:0;font-size:12.5px">设计依赖：FR-06 投屏码、8.5 跨网、7.3 错误提示。</p>
+  </div>
+  <div class="card">
+    <h4 style="margin-top:0">酒店：住客投屏</h4>
+    <p style="margin-bottom:6px">客房网络隔离且设备共用。住客扫码后一次性授权，退房/结束会话即失效；下一位住客不会继承上一位的投屏权限。酒店可换背景与设备名（P1）。</p>
+    <p class="muted" style="margin:0;font-size:12.5px">设计依赖：FR-03 一次性授权、7.6 生命周期、P1 酒店模式。</p>
+  </div>
+  <div class="card">
+    <h4 style="margin-top:0">无网：露营/出租屋</h4>
+    <p style="margin-bottom:6px">只有路由器、没有外网。局域网发现与直连完全不依赖云端；扫码仍可用，因为码由接收端本地生成。跨网能力明确不可用，并告知原因。</p>
+    <p class="muted" style="margin:0;font-size:12.5px">设计依赖：FR-12 本地优先、FR-06 异常分支。</p>
+  </div>
+</div>
+</section>
+
+<section id="s10">
+<h2><span class="num">10</span>功能扩展规划</h2>
+<p class="lead">扩展项只在 P0 的核心旅程稳定后进入。以下按优先级给出，不承诺时间表。</p>
+
+<table>
+  <thead><tr><th style="width:70px">优先级</th><th style="width:150px">扩展能力</th><th>用户价值</th><th>依赖</th><th>风险 / 备注</th></tr></thead>
+  <tbody>
+    <tr><td><span class="tag t-p1">P1</span></td><td><b>电脑端发送</b></td><td>办公演示、远程会议</td><td>FR-14、8.3</td><td>macOS 权限流程复杂，需专门引导</td></tr>
+    <tr><td><span class="tag t-p1">P1</span></td><td><b>文件互传</b></td><td>手机与电视双向传文件，替代 U 盘</td><td>临时媒体服务</td><td>大文件与老设备读写速度</td></tr>
+    <tr><td><span class="tag t-p1">P1</span></td><td><b>反向控制</b></td><td>用遥控器/鼠标控制手机画面，或手机当遥控器</td><td>私有通道</td><td>需要输入事件注入权限，Android 限制较多</td></tr>
+    <tr><td><span class="tag t-p1">P1</span></td><td><b>多会话与接管</b></td><td>多人轮流投，不用每次重新连接</td><td>FR-03 排队</td><td>需明确"谁是当前画面"避免混乱</td></tr>
+    <tr><td><span class="tag t-p1">P1</span></td><td><b>TV 端待机时钟/相册</b></td><td>不投屏时大屏不闲置</td><td>接收端 UI</td><td>不得变成广告位或内容推荐</td></tr>
+    <tr><td><span class="tag t-p1">P1</span></td><td><b>酒店 / 企业模式</b></td><td>批量命名、统一策略、远程排障</td><td>管理端</td><td>需额外的管理后台与授权体系</td></tr>
+    <tr><td><span class="tag t-p2">P2</span></td><td><b>浏览器免装投屏</b></td><td>访客零安装</td><td>网页服务</td><td>WebRTC 兼容性与性能</td></tr>
+    <tr><td><span class="tag t-p2">P2</span></td><td><b>多人白板协作</b></td><td>会议批注、共同标注</td><td>会话 + 输入</td><td>与"投屏"主线关联弱，谨慎投入</td></tr>
+    <tr><td><span class="tag t-p2">P2</span></td><td><b>隐私投屏（单窗口）</b></td><td>只投某个窗口，避免暴露桌面</td><td>采集能力</td><td>移动端系统限制，主要面向电脑端</td></tr>
+    <tr><td><span class="tag t-p2">P2</span></td><td><b>直播源与串流</b></td><td>把直播地址直接交给大屏</td><td>媒体引擎</td><td>涉及内容合规，需单独评估</td></tr>
+  </tbody>
+</table>
+
+<div class="note warn"><b>扩展纪律。</b>任何扩展都不得引入广告位、内容推荐、账号强制登录或把投屏能力拆成付费档。这是产品定位的底线，不应在迭代中被稀释。</div>
+</section>
+<section id="s11">
+<h2><span class="num">11</span>UI 升级方案</h2>
+<p class="lead">三端不是同一套界面的缩放，而是三种使用姿势：电视用遥控器、手机用拇指、电脑用鼠标。共同点是"只保留完成投屏所需要的东西"。</p>
+
+<h3>11.1 设计原则</h3>
+<div class="grid3">
+  <div class="card" style="margin:0">
+    <h4 style="margin-top:0">大屏优先信息</h4>
+    <p style="margin:0">电视端只回答三个问题：这是哪台电视、怎么投、现在投的是谁。字号按 3 米观看距离设定，不出现小于 24px 的正文。</p>
+  </div>
+  <div class="card" style="margin:0">
+    <h4 style="margin-top:0">零广告位</h4>
+    <p style="margin:0">界面中没有 banner、推荐卡片、运营入口。待连接页的留白就是设计的一部分，不用"内容"填补。</p>
+  </div>
+  <div class="card" style="margin:0">
+    <h4 style="margin-top:0">状态可见</h4>
+    <p style="margin:0">任何时刻用户都能看出：未连接 / 连接中 / 正在投 / 已暂停 / 出错。状态变化有明确反馈，不靠猜。</p>
+  </div>
+</div>
+
+<h3>11.2 电视端：待连接页与投屏态</h3>
+<p>下图是接收端在三种状态下的界面行为，可切换查看。实际实现需支持遥控器方向键焦点与触摸。</p>
+<div class="mock-stage">
+  <div class="tv" id="tvMock">
+    <div class="scr">
+      <div class="statusbar"><span>AirMirror</span><span id="tvStatus">等待连接</span></div>
+      <div class="tvscreen">
+        <div class="devname">客厅电视</div>
+        <div class="qrwrap">
+          <div class="qr"></div>
+          <div class="codebox">
+            <small>手机扫码，或输入投屏码</small>
+            <div class="code" id="tvCode">4 8 2 7 1 5</div>
+          </div>
+        </div>
+        <div class="hint">iPhone：控制中心 → 屏幕镜像 → 客厅电视<br>Android：打开 AirMirror → 选择客厅电视</div>
+      </div>
+      <div class="playing">
+        <div class="big">正在投屏</div>
+        <div class="meta"><b id="tvSender">小林的 iPhone</b><span>镜像 · 1080p · 直连</span></div>
+      </div>
+      <div class="paused">已暂停 · 按遥控器继续</div>
+    </div>
+  </div>
+  <div class="mock-ctrl">
+    <button class="btn on" data-tv="idle">待连接</button>
+    <button class="btn" data-tv="play">投屏中</button>
+    <button class="btn" data-tv="pause">已暂停</button>
+  </div>
+</div>
+<table>
+  <thead><tr><th style="width:130px">区域</th><th>内容</th><th>规则</th></tr></thead>
+  <tbody>
+    <tr><td><b>设备名</b></td><td>用户可改的电视名称</td><td>默认取机型；过长时截断并保留可辨识前缀</td></tr>
+    <tr><td><b>二维码</b></td><td>一次性连接令牌</td><td>随投屏码同步轮换；不可被截图后长期复用</td></tr>
+    <tr><td><b>投屏码</b></td><td>6 位数字，字距加大</td><td>3 米外可读；轮换时有轻微过渡，不闪烁</td></tr>
+    <tr><td><b>引导文案</b></td><td>iOS / Android 两行最短路径</td><td>不写"下载 App"以外的营销语；不用二维码替代说明</td></tr>
+    <tr><td><b>投屏中</b></td><td>发送端名称 + 协议 + 画质</td><td>3 秒后淡出，不遮挡内容</td></tr>
+  </tbody>
+</table>
+
+<h3>11.3 手机端：设备列表与投屏控制</h3>
+<div class="grid2" style="align-items:start">
+  <div style="display:flex;justify-content:center;padding:6px 0">
+    <div class="phone">
+      <div class="p-top"><i></i></div>
+      <div class="p-scr">
+        <div class="p-h">投屏<span>同一 Wi-Fi</span></div>
+        <div class="dev"><div class="ic">TV</div><div><b>客厅电视</b><small>AirPlay · DLNA · 直连</small></div><div class="s">在线</div></div>
+        <div class="dev"><div class="ic">TV</div><div><b>卧室盒子</b><small>DLNA · 1080p</small></div><div class="s">在线</div></div>
+        <div class="dev" style="opacity:.55"><div class="ic">TV</div><div><b>书房投影</b><small>上次连接 · 离线</small></div></div>
+        <div class="p-actions">
+          <div class="pa"><b>镜像屏幕</b>手机画面</div>
+          <div class="pa"><b>推送视频</b>选文件/链接</div>
+        </div>
+        <div style="display:flex;gap:7px">
+          <div class="pa" style="flex:1"><b>扫码连接</b>扫电视二维码</div>
+          <div class="pa" style="flex:1"><b>投屏码</b>输入 6 位数字</div>
+        </div>
+        <div style="margin-top:10px;font-size:9.5px;color:#8b93a2;text-align:center">无广告 · 不上传内容 · 局域网直连</div>
+      </div>
+    </div>
+  </div>
+  <div>
+    <h4 style="margin-top:0">交互要点</h4>
+    <ul>
+      <li>首页即列表，不做启动引导页；权限申请在真正用到时才弹出，并说明用途。</li>
+      <li>设备卡片点击后展开两个动作："镜像屏幕"与"推送视频"，避免先连再选的二次决策。</li>
+      <li>投屏中列表收起，底部保留一条控制条：暂停 / 停止 / 声音；上滑可展开详情。</li>
+      <li>离线设备置灰并显示"上次连接"，点击时提示可能的原因（换网、电视关机、AP 隔离）。</li>
+      <li>设置入口放在右上角，只包含设备名、画质、显示模式、隐私、关于五组。</li>
+    </ul>
+    <div class="note" style="margin-top:14px"><b>不做的交互：</b>开屏广告、签到、积分、任务中心、内容推荐流、强制登录、投屏前 5 秒倒计时。</div>
+  </div>
+</div>
+
+<h3>11.4 电脑端</h3>
+<table>
+  <thead><tr><th style="width:120px">区域</th><th>行为</th></tr></thead>
+  <tbody>
+    <tr><td><b>托盘常驻</b></td><td>关闭主窗口不退出；右键菜单提供"投屏到最近设备""停止投屏"</td></tr>
+    <tr><td><b>主窗口</b></td><td>设备列表 + "镜像这块屏幕" + 多显示器下拉；窗口可缩到 360px 宽</td></tr>
+    <tr><td><b>投屏中</b></td><td>主窗口收起为迷你条，显示设备名、时长、停止按钮；可恢复完整窗口</td></tr>
+    <tr><td><b>快捷键</b></td><td>开始/停止镜像、暂停、切换显示器；冲突时提示用户改键</td></tr>
+  </tbody>
+</table>
+
+<h3>11.5 视觉与可用性规范</h3>
+<table>
+  <thead><tr><th style="width:130px">项目</th><th>规范</th><th>原因</th></tr></thead>
+  <tbody>
+    <tr><td><b>主色</b></td><td>深蓝 + 青绿点缀；大屏以深色背景为主</td><td>电视多为暗环境观看，深色减少眩光；青绿用于"已连接"状态</td></tr>
+    <tr><td><b>字号</b></td><td>TV 正文 ≥ 24px，标题 ≥ 40px；手机正文 ≥ 14px</td><td>3 米观看距离与遥控器操作的舒适区</td></tr>
+    <tr><td><b>焦点</b></td><td>TV 焦点态必须有 2px 高对比描边 + 轻微放大</td><td>遥控器无鼠标，焦点丢失是最常见的使用障碍</td></tr>
+    <tr><td><b>动效</b></td><td>连接成功 200ms 淡入；C 级设备关闭动效</td><td>老设备掉帧会让用户误以为卡死</td></tr>
+    <tr><td><b>文案</b></td><td>动词开头、单句、不超过 18 字</td><td>大屏远距离阅读，长句无法一次读完</td></tr>
+    <tr><td><b>空状态</b></td><td>明确说明"为什么没有设备"与"怎么办"</td><td>空列表是投屏失败的第一现场</td></tr>
+  </tbody>
+</table>
+</section>
+<section id="s12">
+<h2><span class="num">12</span>开源项目与竞品调研</h2>
+<p class="lead">调研目的不是罗列功能，而是回答三个问题：别人已经证明了什么、哪些坑是平台级的、我们靠什么做出差异。</p>
+
+<h3>12.1 六款同类产品的能力与商业方式</h3>
+<table>
+  <thead><tr><th style="width:110px">产品</th><th style="width:130px">广告 / 收费</th><th>协议与能力</th><th>对本项目的启示</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><b>乐播投屏</b></td>
+      <td>有广告；2025 年 6 月起对部分功能做分层收费</td>
+      <td>覆盖广、生态合作多、私有协议成熟，企业与会议场景有专门版本</td>
+      <td>证明"协议全 + 生态广"是壁垒，但收费分层把轻度用户推走，正是本产品的机会</td>
+    </tr>
+    <tr>
+      <td><b>当贝投屏</b></td>
+      <td>对外宣称完全免费、无广告</td>
+      <td>AirPlay、DLNA、当贝 Cast、华为 Cast+；宣称支持 4K、超低延迟、整合三十余款视频平台</td>
+      <td>证明"免费无广告 + 多协议"可以成立；但对非当贝生态设备与老盒子的覆盖仍有限</td>
+    </tr>
+    <tr>
+      <td><b>海豚星空</b></td>
+      <td>免费版接收端标注"有广告"；无广告需付费版或 SDK</td>
+      <td>以 DLNA 扫码投屏为特色，支持投屏码、倍速、局域网媒体共享、酒店组网</td>
+      <td>扫码 + 投屏码是跨网/隔离网络的有效解法；但广告出现在大屏，与本产品定位直接冲突</td>
+    </tr>
+    <tr>
+      <td><b>雨燕投屏</b></td>
+      <td>Google Play 标注"包含广告、应用内购"；周/月/年/终身订阅</td>
+      <td>镜像、文件传输、浏览器投屏、电子相册；仅发送端需要订阅</td>
+      <td>功能外延（文件互传、浏览器）值得借鉴；订阅制说明"免费"必须是产品结构而非促销</td>
+    </tr>
+    <tr>
+      <td><b>光元素投屏</b></td>
+      <td>主打无广告</td>
+      <td>AirPlay、DLNA、华为 Cast+；宣称 4K；自动搜索一键连接；原为投影仪配套工具</td>
+      <td>验证"无广告 + 自动发现 + 4K"的产品叙事；配套工具的定位限制了通用性</td>
+    </tr>
+    <tr>
+      <td><b>傲软投屏</b></td>
+      <td>免费版有限制，会员解锁更多</td>
+      <td>跨平台（手机/电脑）、远程投屏、录屏与反向控制</td>
+      <td>跨端与远程能力是办公场景刚需；付费墙与"免费"诉求相斥</td>
+    </tr>
+  </tbody>
+</table>
+<p class="src">来源：乐播官网服务调整公告；当贝投屏产品页与媒体报道；海豚星空官网与接收端指南；雨燕投屏官网及 Google Play 页面；光元素投屏官网与下载站描述；傲软为公开产品印象，具体权益以官方为准 <span class="tag t-warn">[TBD]</span>。</p>
+
+<h4>竞品结论</h4>
+<ul>
+  <li><b>没有一家同时做到</b>"完全免费 + 完全无广告 + 多协议 + 老盒子兼容 + 本地不上云"。这是可以站住的组合位，而不是单点功能。</li>
+  <li><b>扫码与投屏码</b>已被证明是跨网场景的主要解法，但多数产品把它当作主入口；本产品把它定位为兜底，主路径仍是自动发现。</li>
+  <li><b>4K 宣传普遍存在</b>，但实际受盒子输出、解码与网络限制；本产品选择"按能力协商、不展示不可达选项"，用可信度换口碑。</li>
+  <li><b>广告是竞品的主要收入来源</b>，因此本产品必须提前明确替代成本模型，否则"无广告"不可持续。</li>
+</ul>
+
+<h3>12.2 GitHub 同类实现</h3>
+<p>以下项目均已公开可查，覆盖了本项目所需的主要技术路径。详细复用边界见 8.10。</p>
+<table>
+  <thead><tr><th style="width:210px">仓库</th><th style="width:150px">方向</th><th>关键信息</th><th style="width:90px">参考价值</th></tr></thead>
+  <tbody>
+    <tr><td><b>Genymobile/scrcpy</b></td><td>Android 镜像与控制</td><td>通过 USB/TCP 镜像 Android 画面与音频并可控；低延迟、高可配置；Apache-2.0</td><td>★★★★★</td></tr>
+    <tr><td><b>barry-ran/QtScrcpy</b></td><td>桌面图形化</td><td>把 scrcpy 封装为桌面应用，设备管理与快捷键成熟</td><td>★★★★</td></tr>
+    <tr><td><b>antimof/UxPlay</b></td><td>AirPlay 接收</td><td>在 Unix 上接收 iOS/macOS 镜像与音频，基于 GStreamer 解码</td><td>★★★★★</td></tr>
+    <tr><td><b>openairplay/airplay2-receiver</b></td><td>AirPlay 2 接收</td><td>Python 实现，适合研究 AirPlay 2 配对与加密</td><td>★★★★</td></tr>
+    <tr><td><b>alexballas/go2tv</b></td><td>DLNA / Cast 推送</td><td>把本地媒体投到电视与 Chromecast，Go 实现，MIT</td><td>★★★★★</td></tr>
+    <tr><td><b>weenas/castbay</b></td><td>Android 大屏接收</td><td>面向电视/盒子的 AirPlay + DLNA 接收，含镜像与音乐歌词</td><td>★★★★★</td></tr>
+    <tr><td><b>tffinder/mirrocast</b></td><td>Android TV 接收</td><td>AirPlay / Miracast / DLNA 三协议接收端</td><td>★★★★★</td></tr>
+    <tr><td><b>mazer666/PhairPlay</b></td><td>多协议接收</td><td>自称免费、开源、无广告的 AirPlay 2 / Miracast / Google Cast 接收端</td><td>★★★★★</td></tr>
+    <tr><td><b>zitlem/AirShow</b></td><td>跨平台接收</td><td>AirPlay / Google Cast / Miracast / DLNA 的跨平台接收实现</td><td>★★★★</td></tr>
+    <tr><td><b>F-e-n-y-x/airplay-dlna-receiver</b></td><td>Android TV 接收</td><td>面向 Android 9–16，支持手机投电视与电视投手机</td><td>★★★★</td></tr>
+    <tr><td><b>meta-tabchen/MoonCast</b></td><td>单 App 双向</td><td>一个 App 同时做发送与接收，含 AirPlay/DLNA/串流</td><td>★★★★</td></tr>
+    <tr><td><b>warren-bank/Android-ExoPlayer-AirPlay-Receiver</b></td><td>盒子端媒体接收</td><td>以 ExoPlayer 播放被投送的视频地址，最小实现</td><td>★★★</td></tr>
+    <tr><td><b>albfan/miraclecast</b></td><td>Linux Miracast</td><td>Wi-Fi Display 的开源实现，证明协议可行但平台受限</td><td>★★★</td></tr>
+    <tr><td><b>pavlobu/deskreen</b></td><td>浏览器投屏</td><td>把电脑屏幕共享到任意浏览器，访客零安装</td><td>★★★</td></tr>
+  </tbody>
+</table>
+
+<div class="note ok"><b>调研结论（直接影响需求的四条）：</b>
+<ol style="margin:8px 0 0">
+  <li>Android 大屏做 AirPlay / DLNA / Cast 接收已被多个开源项目验证，<b>可作为 P0</b>。</li>
+  <li>Android 8.0+ 第三方 App 无法注册为 Miracast 接收端，<b>Miracast 必须从 P0 承诺中移除</b>，否则会出现"装了就废"的口碑反噬。</li>
+  <li>scrcpy 路线依赖 USB 调试，不能作为普通用户的默认采集方案。</li>
+  <li>AirPlay 相关实现多为 GPL/AGPL，<b>只能参考协议、不能直接链接</b>，否则开源许可会限制产品形态。</li>
+</ol></div>
+</section>
+
+<section id="s13">
+<h2><span class="num">13</span>风险与开放问题</h2>
+
+<h3>13.1 平台级限制（必须写进承诺边界）</h3>
+<table>
+  <thead><tr><th style="width:150px">限制</th><th>影响</th><th>应对</th><th style="width:110px">风险等级</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><b>Miracast 接收受限</b></td>
+      <td>Android 8.0+ 起第三方应用无法调用 Wi-Fi Display 接收端接口，普通 APK 做不了 Miracast 接收</td>
+      <td>不承诺；仅在预装/系统签名固件中提供；其余环境引导系统自带投屏，保证 AirPlay/DLNA/Cast 可用</td>
+      <td><span class="tag t-risk">高</span></td>
+    </tr>
+    <tr>
+      <td><b>Google Cast 认证</b></td>
+      <td>非认证接收端无法被部分官方 App 识别</td>
+      <td>兼容模式覆盖 Chrome 与常见 App；对强校验应用明确提示改用镜像</td>
+      <td><span class="tag t-warn">中</span></td>
+    </tr>
+    <tr>
+      <td><b>AirPlay 协议不公开</b></td>
+      <td>握手与加密随系统升级可能变化，存在"某版本突然投不上"的风险</td>
+      <td>协议版本探测 + 快速回归 + 降级到私有通道；建立机型与系统版本的兼容矩阵</td>
+      <td><span class="tag t-risk">高</span></td>
+    </tr>
+    <tr>
+      <td><b>厂商后台策略</b></td>
+      <td>定制系统杀后台、限制自启，导致"装了但没运行"</td>
+      <td>引导白名单；提供桌面常驻提示；C 级设备降级为"打开即用"</td>
+      <td><span class="tag t-warn">中</span></td>
+    </tr>
+    <tr>
+      <td><b>4K 实际可达性</b></td>
+      <td>老盒子输出上限 1080p，4K 宣传易失真</td>
+      <td>能力协商，不展示不可达档位；设置页明确标注当前设备上限</td>
+      <td><span class="tag t-warn">中</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>13.2 产品与商业风险</h3>
+<table>
+  <thead><tr><th style="width:150px">风险</th><th>说明</th><th>缓解</th></tr></thead>
+  <tbody>
+    <tr><td><b>无广告的可持续性</b></td><td>服务器（信令/中继）、协议维护与兼容测试都需要成本</td><td>开源 + 捐赠 + 企业与酒店定制；个人核心能力永久免费，付费只买"管理与定制"</td></tr>
+    <tr><td><b>兼容测试成本</b></td><td>杂牌盒子型号极多，无法穷举</td><td>建立"已知设备库"与用户自助上报；按 A/B/C 分级而非逐型号适配</td></tr>
+    <tr><td><b>安全口碑</b></td><td>投屏类应用常被质疑偷看屏幕、上传内容</td><td>本地优先 + 默认关闭诊断 + 开源可审计 + 隐私说明用一句话讲清</td></tr>
+    <tr><td><b>协议实现的法律风险</b></td><td>AirPlay/Cast 为私有协议，逆向实现存在争议</td><td>参考公开开源实现，独立开发；不内置任何厂商商标；上架前做法律评估</td></tr>
+  </tbody>
+</table>
+
+<h3>13.3 开放问题</h3>
+<table>
+  <thead><tr><th style="width:70px">编号</th><th>问题</th><th>为什么必须先决</th><th style="width:110px">状态</th></tr></thead>
+  <tbody>
+    <tr><td>Q-1</td><td>最终产品名与域名是什么？</td><td>影响安装包标识、发现广播中的设备类型、品牌露出</td><td><span class="tag t-warn">[TBD]</span></td></tr>
+    <tr><td>Q-2</td><td>是否开源？采用何种许可证？</td><td>决定能否复用 GPL 组件、决定收入模型与社区策略</td><td><span class="tag t-warn">[TBD]</span></td></tr>
+    <tr><td>Q-3</td><td>P0 是否包含自研 iOS 发送端？</td><td>若系统 AirPlay 已覆盖，iOS App 的优先级可下调</td><td><span class="tag t-warn">[TBD]</span></td></tr>
+    <tr><td>Q-4</td><td>跨网中继由谁承担带宽成本？</td><td>决定中继是否默认开启、是否限速</td><td><span class="tag t-warn">[TBD]</span></td></tr>
+    <tr><td>Q-5</td><td>最低支持到 Android 4.4 是否值得？</td><td>4.4 设备占比与维护成本需评估；影响包体与兼容层设计</td><td><span class="tag t-warn">[TBD]</span></td></tr>
+    <tr><td>Q-6</td><td>是否需要应用商店上架？</td><td>电视应用市场对投屏类应用审核严格，可能要求资质</td><td><span class="tag t-warn">[TBD]</span></td></tr>
+  </tbody>
+</table>
+</section>
+
+<section id="s14">
+<h2><span class="num">14</span>非功能性需求</h2>
+<p class="lead">本章把散落在各功能里的性能、兼容、可靠、安全要求收拢成可验收的指标。标"目标"的数值是设计预算，需真机实测后固化。</p>
+
+<h3>14.1 性能</h3>
+<table>
+  <thead><tr><th style="width:180px">指标</th><th>目标</th><th style="width:200px">验证方式</th></tr></thead>
+  <tbody>
+    <tr><td>镜像端到端延迟</td><td>1080p60 同网 5GHz，P90 ≤150ms</td><td>双端打点 + 录屏比对</td></tr>
+    <tr><td>视频推送起播</td><td>同网本地 1080p，≤2 秒出现首帧</td><td>秒表 10 次取中位数</td></tr>
+    <tr><td>设备发现首屏</td><td>同网正常环境 ≤3 秒出现设备</td><td>计时 10 次取中位数</td></tr>
+    <tr><td>投屏码校验</td><td>提交到结果 ≤1 秒</td><td>双端打点</td></tr>
+    <tr><td>冷启动</td><td>点击图标到待连接页 ≤2 秒（A/B 级）</td><td>冷启动计时</td></tr>
+    <tr><td>接收端常驻内存</td><td>A 级 &lt;180MB，B 级 &lt;120MB，C 级 &lt;80MB</td><td>内存曲线 30 分钟</td></tr>
+    <tr><td>发送端 CPU</td><td>1080p60 镜像时 ≤单核 25%（目标）</td><td>性能工具采样</td></tr>
+    <tr><td>安装包体积</td><td>A/B 级 &lt;45MB，C 级 &lt;28MB</td><td>构建产物核对</td></tr>
+  </tbody>
+</table>
+
+<h3>14.2 兼容性</h3>
+<table>
+  <thead><tr><th style="width:110px">维度</th><th>要求</th><th style="width:200px">不满足时</th></tr></thead>
+  <tbody>
+    <tr><td>系统版本</td><td>接收端 Android 4.4–16；发送端 Android 8+ / iOS 13+ / Windows 10+ / macOS 11+</td><td>安装时明确告知，不进入半可用状态</td></tr>
+    <tr><td>ABI</td><td>armeabi-v7a 与 arm64-v8a 双包</td><td>老盒子取 32 位包</td></tr>
+    <tr><td>屏幕比例</td><td>16:9 / 4:3 / 21:9 / 竖屏</td><td>按 FS-08 等比显示</td></tr>
+    <tr><td>网络</td><td>2.4GHz 与 5GHz；双频合一；AP 隔离环境</td><td>给出原因并引导扫码/投屏码</td></tr>
+    <tr><td>协议</td><td>AirPlay / DLNA / Google Cast / 私有通道</td><td>Miracast 明确列为受限</td></tr>
+    <tr><td>外设</td><td>无扬声器、无遥控器（仅触摸）</td><td>画面可用，提示音频与外设限制</td></tr>
+  </tbody>
+</table>
+
+<h3>14.3 可靠性与稳定性</h3>
+<table>
+  <thead><tr><th style="width:130px">指标</th><th>要求</th><th style="width:200px">验证方式</th></tr></thead>
+  <tbody>
+    <tr><td>连续投屏</td><td>8 小时不崩溃、不内存持续增长</td><td>长稳脚本</td></tr>
+    <tr><td>单次会话</td><td>4K 连续 10 分钟、1080p 连续 30 分钟不中断</td><td>长稳播放</td></tr>
+    <tr><td>断线恢复</td><td>30 秒窗口内自动恢复；超时给出结论</td><td>断网测试</td></tr>
+    <tr><td>异常退出</td><td>崩溃后可自恢复，不残留采集与前台服务</td><td>强杀进程</td></tr>
+    <tr><td>崩溃率</td><td>目标值 <span class="tag t-warn">[TBD]</span>，首版上线前由实测确定</td><td>诊断统计（用户开启时）</td></tr>
+  </tbody>
+</table>
+
+<h3>14.4 隐私与安全</h3>
+<table>
+  <thead><tr><th style="width:140px">要求</th><th>具体规则</th><th style="width:180px">验证方式</th></tr></thead>
+  <tbody>
+    <tr><td>局域网零外传</td><td>同网投屏不产生媒体相关外发请求</td><td>双端抓包</td></tr>
+    <tr><td>端到端加密</td><td>媒体流密钥仅两端持有，中继不可解密</td><td>中继抓包</td></tr>
+    <tr><td>最小权限</td><td>接收端不申请通讯录、定位、短信；发送端仅录屏权限</td><td>权限清单核对</td></tr>
+    <tr><td>无账号</td><td>不要求登录，不采集手机号、位置、设备通讯录</td><td>安装即用验证</td></tr>
+    <tr><td>数据留存</td><td>不保存画面、文件名、URL；日志本地 7 天且可清空</td><td>卸载重装</td></tr>
+    <tr><td>防暴力配对</td><td>投屏码 5 次/60 秒限流，锁定 60 秒</td><td>连续错误输入</td></tr>
+  </tbody>
+</table>
+
+<h3>14.5 可维护性</h3>
+<table>
+  <thead><tr><th style="width:140px">要求</th><th>具体规则</th></tr></thead>
+  <tbody>
+    <tr><td>可诊断</td><td>错误提示必须包含原因与下一步，禁止只给错误码</td></tr>
+    <tr><td>本地日志</td><td>保留 7 天，按级别过滤，用户可一键导出与清空</td></tr>
+    <tr><td>能力可见</td><td>设置页展示设备等级、最高画质、当前连接方式（直连/中继）</td></tr>
+    <tr><td>协议版本化</td><td>私有通道协议带版本号，新旧端可协商降级</td></tr>
+    <tr><td>灰度与回滚</td><td>接收端更新可回退到上一版本；协议变更需两端兼容期</td></tr>
+  </tbody>
+</table>
+</section>
+
+<section id="s15">
+<h2><span class="num">15</span>里程碑与版本规划</h2>
+<p class="lead">规划只定义阶段目标与完成条件（DoD），不承诺日历时间。每个阶段必须满足 DoD 才能进入下一阶段。</p>
+
+<table>
+  <thead><tr><th style="width:110px">阶段</th><th style="width:130px">目标</th><th style="width:130px">进入条件</th><th>完成标志（DoD）</th><th style="width:150px">明确不包含</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><b>M0 协议验证</b></td>
+      <td>证明目标设备可做接收端</td>
+      <td>选定 3 台代表设备（A/B/C 级各一）</td>
+      <td>AirPlay 镜像、DLNA 推送、Cast 推送在 3 台设备上各跑通一次</td>
+      <td>正式 UI、账号、跨网</td>
+    </tr>
+    <tr>
+      <td><b>M1 最小可用</b></td>
+      <td>家庭同网可完成一次投屏</td>
+      <td>M0 通过</td>
+      <td>安装即用；发现→配对→镜像/推送→结束全链路可用；投屏码可连；无广告界面</td>
+      <td>4K、断线恢复、竖屏适配打磨</td>
+    </tr>
+    <tr>
+      <td><b>M2 P0 完整</b></td>
+      <td>达到 PRD 的 P0 承诺</td>
+      <td>M1 通过</td>
+      <td>6.1 与 6.2 的全部验收口径通过；A/B/C 三级策略生效；错误提示可执行</td>
+      <td>跨网中继、电脑端、文件互传</td>
+    </tr>
+    <tr>
+      <td><b>M3 P1</b></td>
+      <td>覆盖办公与酒店场景</td>
+      <td>M2 稳定运行</td>
+      <td>电脑端、跨网中继、文件互传、接管、酒店模式按各自规格验收</td>
+      <td>浏览器免装、白板、批量后台</td>
+    </tr>
+    <tr>
+      <td><b>M4 P2</b></td>
+      <td>访客零安装与协作</td>
+      <td>M3 通过</td>
+      <td>浏览器投屏、单窗口隐私投屏、批量管理后台按规格验收</td>
+      <td>直播源等合规待评估项</td>
+    </tr>
+  </tbody>
+</table>
+<p class="muted" style="font-size:12.5px">版本号建议：M2 产出 v1.0，M3 产出 v1.1，M4 产出 v1.2。协议或字段发生破坏性变更时提升主版本号，并在 8.4 的协议版本化机制内保留兼容期。</p>
+</section>
+
+<div class="footer">
+  <span>AirMirror 投屏 · 产品需求文档 v1.1 · 2026-10-31</span>
+  <span>本文件为内部评审稿，技术章节不替代详细技术设计</span>
+</div>
+</div>
+</main>
+</div>
+<script>
+(function(){
+  var prog=document.getElementById('prog');
+  var navLinks=[].slice.call(document.querySelectorAll('#nav a'));
+  var sections=[].slice.call(document.querySelectorAll('main section'));
+  function onScroll(){
+    var st=window.scrollY||document.documentElement.scrollTop;
+    var h=document.documentElement.scrollHeight-window.innerHeight;
+    prog.style.width=(h>0?(st/h*100):0)+'%';
+    var cur=sections[0]&&sections[0].id;
+    sections.forEach(function(s){ if(s.getBoundingClientRect().top<=160) cur=s.id; });
+    navLinks.forEach(function(a){ a.classList.toggle('on',a.getAttribute('href')==='#'+cur); });
+  }
+  window.addEventListener('scroll',onScroll,{passive:true});
+  onScroll();
+
+  // 核心旅程步骤
+  var details={
+    A:[
+      '接收端安装后进入待连接页，展示设备名、二维码与 6 位投屏码；开始以三种方式广播自身（通用即插即用、AirPlay 发现、Cast 发现）。',
+      '发送端进入首页即并行监听多路广播；同一设备被多路发现时合并为一条，最近成功连接的设备排在最前。若列表为空，按 7.3 给出网络原因并引导扫码。',
+      '首次连接的设备在大屏弹出确认；已授权设备直接进入 CONNECTED。5 秒无操作默认允许，可在设置改为必须遥控器确认。',
+      '用户选择"镜像屏幕"或"推送视频"。镜像走屏幕采集与私有通道；推送把媒体地址交给接收端自行播放。',
+      '画面出现后进入 STREAMING。发送端可锁屏、切后台；接收端可用遥控器结束；任一端结束后接收端 1 秒内回到待连接页。'
+    ],
+    B:[
+      '接收端本地生成二维码与 6 位码，每 60 秒轮换，旧码在 10 秒内仍有效；无外网也可展示。',
+      '扫码通过一次性令牌建立；输码则由接收端本地校验，5 次错误锁定 60 秒。',
+      '同网段直接局域网直连，不经过任何服务器；跨网段经信令交换连接信息，优先打洞直连，失败且用户允许时才走中继。',
+      '大屏展示请求方设备名，接收端可拒绝；拒绝后 10 分钟内不重复弹窗。',
+      '会话结束后一次性授权失效，不进入可信列表；用户可主动选择"记住这台设备"。'
+    ]
+  };
+  function bindFlow(id){
+    var box=document.getElementById(id);
+    var detail=document.getElementById(id+'-detail');
+    if(!box||!detail) return;
+    var steps=[].slice.call(box.querySelectorAll('.step'));
+    function show(i){
+      steps.forEach(function(s,idx){ s.classList.toggle('on',idx===i); });
+      var key=id.replace('flow','');
+      detail.innerHTML='<b style="font-size:12.5px;color:var(--brand-ink)">步骤 '+(i+1)+' 的处理规则</b><p style="margin:6px 0 0;font-size:13px;color:var(--ink-2)">'+details[key][i]+'</p>';
+    }
+    steps.forEach(function(s){
+      s.addEventListener('click',function(){ show(parseInt(s.dataset.k,10)); });
+    });
+    show(0);
+  }
+  bindFlow('flowA'); bindFlow('flowB');
+
+  // 协议筛选
+  var chips=[].slice.call(document.querySelectorAll('#protoChips .chip'));
+  var rows=[].slice.call(document.querySelectorAll('#protoTable tbody tr'));
+  chips.forEach(function(c){
+    c.addEventListener('click',function(){
+      chips.forEach(function(x){ x.classList.remove('on'); });
+      c.classList.add('on');
+      var f=c.dataset.f;
+      rows.forEach(function(r){
+        r.style.display=(f==='all'||r.dataset.p.indexOf(f)>-1)?'':'none';
+      });
+    });
+  });
+
+  // TV mock 状态
+  var tv=document.getElementById('tvMock');
+  var tvs=document.getElementById('tvStatus');
+  var btns=[].slice.call(document.querySelectorAll('[data-tv]'));
+  btns.forEach(function(b){
+    b.addEventListener('click',function(){
+      btns.forEach(function(x){ x.classList.remove('on'); });
+      b.classList.add('on');
+      var m=b.dataset.tv;
+      tv.classList.remove('show-play','show-pause');
+      tvs.textContent = m==='idle'?'等待连接' : (m==='play'?'正在投屏':'已暂停');
+      if(m==='play') tv.classList.add('show-play');
+      if(m==='pause'){ tv.classList.add('show-play','show-pause'); }
+    });
+  });
+})();
+</script>
+</body>
+</html>
