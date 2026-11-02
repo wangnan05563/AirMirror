@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- 仅 debug 包允许 adb 直接拉起发送端做联调；release 包保持不导出 -->
+    <application>
+        <activity
+            android:name=".ui.SenderActivity"
+            android:exported="true"
+            tools:node="merge"
+            tools:replace="android:exported" />
+
+        <activity
+            android:name=".ui.ReceiverActivity"
+            android:exported="true"
+            tools:node="merge"
+            tools:replace="android:exported" />
+    </application>
+
+</manifest>
