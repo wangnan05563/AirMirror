@@ -21,6 +21,7 @@ import io.github.wangnan05563.airmirror.protocol.Auth
 import io.github.wangnan05563.airmirror.protocol.Handshake
 import io.github.wangnan05563.airmirror.protocol.Limit
 import io.github.wangnan05563.airmirror.protocol.Protocol
+import io.github.wangnan05563.airmirror.protocol.Resume
 import io.github.wangnan05563.airmirror.protocol.SessionControl
 import java.io.IOException
 import java.net.ServerSocket
@@ -46,6 +47,8 @@ class ReceiverSession(
     private val onNotice: (String) -> Unit = onStatus,
     /** 新编码配置的宽高：大屏据此等比摆放画面并跟随手机旋转（PRD FS-08）。 */
     private val onVideoSize: (Int, Int) -> Unit = { _, _ -> },
+    /** 断线保留窗口的开关：true 显示「连接中断，正在恢复」，恢复或收口后收起（PRD FS-10）。 */
+    private val onRecovery: (Boolean) -> Unit = {},
 ) {
     /** 首次连接的大屏确认请求；界面必须在 [autoAllowAt] 之前调用 [ReceiverSession.resolve]。 */
     data class Prompt(val deviceId: String, val deviceName: String, val autoAllowAt: Long)
@@ -102,6 +105,17 @@ class ReceiverSession(
     @Volatile
     private var paused = false
 
+    /** 断线后的 30 秒保留窗口（PRD FS-10）：其间拒绝新设备，只接受原设备续会 */
+    private val recovery = RecoveryWindow()
+
+    /** 大屏按「结束投屏」时置位：随后的断开属于主动收尾，不能进保留窗口 */
+    @Volatile
+    private var endRequested = false
+
+    /** 是否真的上过屏（收到过 CONFIG）：没出过画面的连接断开不该弹恢复提示 */
+    @Volatile
+    private var hasCast = false
+
     fun start(advertisedName: String) {
         if (running) return
         running = true
@@ -117,7 +131,10 @@ class ReceiverSession(
                             .onFailure { if (running) Log.w(TAG, "connection failed: ${it.message}") }
                             .getOrNull()
                         clients.remove(socket)
-                        if (served != null && !handoverInProgress) onStatus("$served 连接结束，继续等待")
+                        // 保留窗口内不提示「连接结束」，大屏该显示「正在恢复」
+                        if (served != null && !handoverInProgress && recovery.active() == null) {
+                            onStatus("$served 连接结束，继续等待")
+                        }
                     }
                 }
             } catch (e: Exception) {
@@ -138,6 +155,9 @@ class ReceiverSession(
     fun endActiveSession() {
         val conn = activeConn ?: return
         Log.i(TAG, "end requested on screen")
+        endRequested = true
+        recovery.close()
+        onRecovery(false)
         runCatching { conn.send(Protocol.Frame(Protocol.Type.BYE)) }
         conn.close()
     }
@@ -161,13 +181,19 @@ class ReceiverSession(
     private fun handle(socket: Socket): String? {
         StreamConnection(socket).use { conn ->
             val hello = conn.acceptAsServer(Build.MODEL, Handshake.Capability.VIDEO_H264)
-            val deviceId = authorize(conn, socket, hello.deviceName) ?: return null
+            val request = readAuth(conn, socket) ?: run {
+                refuse(conn, "缺少授权")
+                return null
+            }
+            val deviceId = admit(conn, request, hello.deviceName) ?: return null
             val done = CountDownLatch(1)
             sessionDone = done
             activeConn = conn
             activeDeviceId = deviceId
+            endRequested = false
             var received = 0
             var decoded = 0
+            var byeReceived = false
             try {
                 while (running) {
                     val frame = conn.receive()
@@ -178,6 +204,7 @@ class ReceiverSession(
                     when (frame.type) {
                         Protocol.Type.VIDEO -> {
                             if (frame.flags and Protocol.Flags.CONFIG != 0) {
+                                hasCast = true
                                 pendingConfig = frame.payload
                                 runCatching { H264.unpackConfig(frame.payload) }
                                     .onSuccess { onVideoSize(it.width, it.height) }
@@ -229,7 +256,10 @@ class ReceiverSession(
                                 else -> Unit
                             }
                         }
-                        Protocol.Type.BYE -> return hello.deviceName
+                        Protocol.Type.BYE -> {
+                            byeReceived = true
+                            return hello.deviceName
+                        }
                         else -> Unit
                     }
                 }
@@ -238,15 +268,24 @@ class ReceiverSession(
             } finally {
                 // 接管时旧线程可能晚于新会话收尾，只有仍属于自己才清空共享状态并撤回投屏态
                 val owns = activeConn === conn
+                val dropped = owns && running && !byeReceived && !endRequested && !handoverInProgress &&
+                    activeDeviceId != null && hasCast
                 if (owns) {
                     activeConn = null
-                    activeDeviceId = null
                     paused = false
                 }
-                // 解码器跟 Surface 同寿：会话结束时保留，下一次连接的 CONFIG 会重新配置，
-                // 否则第二台设备连进来会因 decoder 已被置空而无法上屏
-                pairing.trust.releaseSession(deviceId)
-                if (owns) onCasting(false, "")
+                if (dropped) {
+                    // PRD FS-10：短暂中断不重来，保留最后一帧并等原设备在 30 秒内回来
+                    startRecovery(activeDeviceId ?: deviceId, hello.deviceName)
+                } else {
+                    if (owns) {
+                        activeDeviceId = null
+                        endRequested = false
+                        hasCast = false
+                    }
+                    pairing.trust.releaseSession(deviceId)
+                    if (owns) onCasting(false, "")
+                }
                 done.countDown()
                 if (sessionDone === done) sessionDone = null
             }
@@ -254,17 +293,76 @@ class ReceiverSession(
         }
     }
 
-    /** 未授权设备不上屏：HELLO 之后必须先过 AUTH，过不了就直接回错误并断开。 @return 放行后的设备标识 */
-    private fun authorize(conn: StreamConnection, socket: Socket, senderName: String): String? {
-        val request = readAuth(conn, socket) ?: run {
-            refuse(conn, "缺少授权")
+    /**
+     * HELLO 之后的第一道判定（PRD FS-10）：恢复请求只认保留窗口内的原设备；
+     * 窗口期内其他设备一律「正在恢复中，请稍候」，避免断线一瞬被抢占。
+     */
+    private fun admit(conn: StreamConnection, request: Auth.Request, senderName: String): String? {
+        val window = recovery.active()
+        if (request.resume) {
+            if (window == null || window.deviceId != request.deviceId) {
+                Log.i(TAG, "resume refused for ${request.deviceId}, window=${window?.deviceId}")
+                refuse(conn, Resume.REASON_LOST)
+                onStatus("$senderName 恢复失败，需要重新连接")
+                return null
+            }
+            return resumeSession(conn, window, senderName)
+        }
+        if (window != null && window.deviceId != request.deviceId) {
+            Log.i(TAG, "recovery busy, ${request.deviceId} denied")
+            refuse(conn, Resume.REASON_BUSY)
+            onStatus("$senderName 连接被拒绝：正在恢复中")
             return null
         }
-        val verdict = pairing.gate.authorize(request.first, senderName, request.second)
+        return authorize(conn, request, senderName)
+    }
+
+    /** 原设备在保留窗口内回来：不弹授权、不重发投屏码，直接续上会话。 */
+    private fun resumeSession(conn: StreamConnection, window: RecoveryWindow.Holder, senderName: String): String {
+        Log.i(TAG, "session resumed by ${window.deviceId}")
+        grant(conn, senderName, permanent = false, window.deviceId)
+        onStatus("$senderName 已恢复投屏")
+        onNotice("$senderName 已恢复投屏")
+        return window.deviceId
+    }
+
+    /**
+     * 连接意外中断：开 30 秒保留窗口，期间大屏保持最后一帧、拒绝新设备；
+     * 到点仍未续会则收口并给出结论（PRD FS-10 步骤 4）。
+     */
+    private fun startRecovery(deviceId: String, deviceName: String) {
+        val window = recovery.open(deviceId, deviceName)
+        Log.i(TAG, "link lost, holding ${window.deadline - System.currentTimeMillis()}ms for $deviceId")
+        onRecovery(true)
+        onStatus("连接中断，正在恢复")
+        thread(name = "airmirror-recovery") {
+            while (running) {
+                val entry = recovery.peek() ?: return@thread
+                if (entry.deviceId != deviceId) return@thread
+                val left = entry.deadline - System.currentTimeMillis()
+                if (left <= 0) break
+                Thread.sleep(minOf(left, RECOVERY_POLL_MS))
+            }
+            if (!running) return@thread
+            // 已被续会或主动收尾时 expire 返回 false，不能误判成超时
+            if (!recovery.expire(deviceId)) return@thread
+            Log.i(TAG, "recovery window expired for $deviceId")
+            activeDeviceId = null
+            hasCast = false
+            pairing.trust.releaseSession(deviceId)
+            onRecovery(false)
+            onCasting(false, "")
+            onStatus("断线超过 30 秒，已结束投屏")
+        }
+    }
+
+    /** 未授权设备不上屏：HELLO 之后必须先过 AUTH，过不了就直接回错误并断开。 @return 放行后的设备标识 */
+    private fun authorize(conn: StreamConnection, request: Auth.Request, senderName: String): String? {
+        val verdict = pairing.gate.authorize(request.deviceId, senderName, request.credential)
         return when (verdict) {
             is AuthGate.Verdict.Authorized -> {
-                grant(conn, verdict.deviceName, verdict.permanent, request.first)
-                request.first
+                grant(conn, verdict.deviceName, verdict.permanent, request.deviceId)
+                request.deviceId
             }
             is AuthGate.Verdict.PendingPrompt -> {
                 onPrompt(Prompt(verdict.deviceId, verdict.deviceName, verdict.autoAllowAt))
@@ -383,6 +481,10 @@ class ReceiverSession(
 
     private fun grant(conn: StreamConnection, deviceName: String, permanent: Boolean, deviceId: String) {
         if (permanent) pairing.persistTrusted()
+        // 正常授权 / 恢复成功都代表窗口结束，收掉大屏上的恢复提示
+        recovery.close()
+        onRecovery(false)
+        endRequested = false
         conn.send(Protocol.Frame(Protocol.Type.AUTH_RESULT, payload = Auth.result(true, if (permanent) "trusted" else "")))
         sendCeiling(conn)
         onStatus("$deviceName 已连接")
@@ -425,15 +527,12 @@ class ReceiverSession(
         runCatching { conn.send(Protocol.Frame(Protocol.Type.AUTH_RESULT, payload = Auth.result(false, reason))) }
     }
 
-    private fun readAuth(conn: StreamConnection, socket: Socket): Pair<String, String>? {
+    private fun readAuth(conn: StreamConnection, socket: Socket): Auth.Request? {
         runCatching { socket.soTimeout = AUTH_TIMEOUT_MS }
         return try {
             while (running) {
                 val frame = conn.receive() ?: return null
-                if (frame.type == Protocol.Type.AUTH) {
-                    val request = Auth.parseRequest(frame.payload)
-                    return request.deviceId to request.credential
-                }
+                if (frame.type == Protocol.Type.AUTH) return Auth.parseRequest(frame.payload)
             }
             null
         } catch (e: IOException) {
@@ -457,6 +556,8 @@ class ReceiverSession(
         running = false
         decision.offer(false)
         takeoverAnswers.offer(false)
+        recovery.close()
+        endRequested = false
         runCatching { server.close() }
         clients.toList().forEach { socket -> runCatching { socket.close() } }
         clients.clear()
@@ -477,6 +578,7 @@ class ReceiverSession(
         const val TAKEOVER_TIMEOUT_MS = 60_000L
         const val TAKEOVER_STOP_WAIT_MS = 3_000L
         const val TAKEOVER_POLL_MS = 200L
+        const val RECOVERY_POLL_MS = 200L
         const val PREFERRED_PORT = 41523
     }
 }

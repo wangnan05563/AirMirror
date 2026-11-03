@@ -8,21 +8,26 @@ import io.github.wangnan05563.airmirror.pairing.PairingLink
 object Auth {
     private const val KEY_ID = "id"
     private const val KEY_CRED = "cred"
+    private const val KEY_RESUME = "resume"
     private const val KEY_OK = "ok"
     private const val KEY_REASON = "reason"
 
-    class Request(val deviceId: String, val credential: String)
+    /** [resume] 为真表示断线后凭设备标识续会（PRD FS-10），不再消耗投屏码。 */
+    class Request(val deviceId: String, val credential: String, val resume: Boolean = false)
 
     class Result(val accepted: Boolean, val reason: String)
 
-    fun request(deviceId: String, credential: String): ByteArray =
-        "$KEY_ID=${PairingLink.escape(deviceId)}&$KEY_CRED=${PairingLink.escape(credential)}"
-            .toByteArray(Charsets.UTF_8)
+    fun request(deviceId: String, credential: String, resume: Boolean = false): ByteArray =
+        (
+            "$KEY_ID=${PairingLink.escape(deviceId)}&$KEY_CRED=${PairingLink.escape(credential)}" +
+                if (resume) "&$KEY_RESUME=1" else ""
+            ).toByteArray(Charsets.UTF_8)
 
     fun result(accepted: Boolean, reason: String = ""): ByteArray =
         "$KEY_OK=${if (accepted) 1 else 0}&$KEY_REASON=${PairingLink.escape(reason)}".toByteArray(Charsets.UTF_8)
 
-    fun parseRequest(payload: ByteArray): Request = Request(field(payload, KEY_ID), field(payload, KEY_CRED))
+    fun parseRequest(payload: ByteArray): Request =
+        Request(field(payload, KEY_ID), field(payload, KEY_CRED), field(payload, KEY_RESUME) == "1")
 
     fun parseResult(payload: ByteArray): Result =
         Result(field(payload, KEY_OK) == "1", field(payload, KEY_REASON))

@@ -39,6 +39,19 @@ class AuthTest {
     }
 
     @Test
+    fun resumeRequestsAreMarkedAndKeepTheDeviceId() {
+        val request = Auth.parseRequest(Auth.request("am-1", "", resume = true))
+        assertEquals("am-1", request.deviceId)
+        assertEquals("", request.credential)
+        assertTrue(request.resume)
+    }
+
+    @Test
+    fun aNormalRequestIsNotAResume() {
+        assertFalse(Auth.parseRequest(Auth.request("am-1", "123456")).resume)
+    }
+
+    @Test
     fun aPayloadWithoutTheExpectedKeysDecodesToBlanks() {
         val request = Auth.parseRequest("garbage".toByteArray(Charsets.UTF_8))
         assertEquals("", request.deviceId)

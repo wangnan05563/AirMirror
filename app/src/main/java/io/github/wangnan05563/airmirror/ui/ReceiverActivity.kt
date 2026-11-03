@@ -52,6 +52,8 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     private lateinit var gradeText: TextView
     private lateinit var overlayName: TextView
     private lateinit var noticeOverlay: TextView
+    /** 断线保留窗口内的常驻提示：与 3 秒浮层不同，要一直显示到恢复或 30 秒收口（PRD FS-10）。 */
+    private lateinit var recoveryBar: TextView
     private lateinit var cornerHint: TextView
     private lateinit var settingsPanel: LinearLayout
     private lateinit var settingsEntry: TextView
@@ -131,6 +133,12 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             FrameLayout.LayoutParams.WRAP_CONTENT,
             Gravity.TOP or Gravity.CENTER_HORIZONTAL,
         ).apply { topMargin = Theme.dp(this@ReceiverActivity, 72) })
+        // 断线恢复提示放屏幕正中：最后一帧仍在，用户要一眼看出是网络在恢复而不是卡死
+        root.addView(buildRecoveryBar(), FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            Gravity.CENTER,
+        ))
         root.addView(buildCornerHint(), FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
             FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -303,6 +311,27 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     }
 
     private val hideNotice = Runnable { noticeOverlay.visibility = View.GONE }
+
+    private fun buildRecoveryBar(): TextView {
+        recoveryBar = TextView(this).apply {
+            text = "连接中断，正在恢复"
+            textSize = Theme.BODY_SP
+            maxLines = 1
+            setTextColor(Theme.TEXT_PRIMARY)
+            setBackgroundColor(0xE60B1F3A.toInt())
+            setPadding(
+                Theme.dp(this@ReceiverActivity, 20), Theme.dp(this@ReceiverActivity, 12),
+                Theme.dp(this@ReceiverActivity, 20), Theme.dp(this@ReceiverActivity, 12),
+            )
+            visibility = View.GONE
+        }
+        return recoveryBar
+    }
+
+    private fun showRecovery(active: Boolean) {
+        Log.i(TAG, "recovery banner=$active")
+        recoveryBar.visibility = if (active) View.VISIBLE else View.GONE
+    }
 
     /** 角落提示：竖屏标签与「比例不同可切换模式」都只出现 3 秒（PRD FS-08 步骤 5）。 */
     private fun buildCornerHint(): TextView {
@@ -596,6 +625,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             onPrompt = { prompt -> runOnUiThread { showPrompt(prompt) } },
             onCasting = { casting, sender -> runOnUiThread { onCasting(casting, sender) } },
             onNotice = { text -> runOnUiThread { showNotice(text) } },
+            onRecovery = { active -> runOnUiThread { showRecovery(active) } },
             onVideoSize = { width, height -> runOnUiThread { onVideoSize(width, height) } },
         ).also { it.start(name) }
         session = active
@@ -657,6 +687,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             main.removeCallbacks(hideNotice)
             main.removeCallbacks(hideCornerHint)
             noticeOverlay.visibility = View.GONE
+            recoveryBar.visibility = View.GONE
             cornerHint.visibility = View.GONE
             cancelEndConfirm()
         }

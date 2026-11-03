@@ -21,14 +21,18 @@ import io.github.wangnan05563.airmirror.device.NetworkBand
 import io.github.wangnan05563.airmirror.device.QualityNote
 import io.github.wangnan05563.airmirror.device.QualityTier
 import io.github.wangnan05563.airmirror.device.QualityTiers
+import io.github.wangnan05563.airmirror.dlna.localIpv4
 import io.github.wangnan05563.airmirror.error.ErrorNotice
 import io.github.wangnan05563.airmirror.media.VideoEncoder
+import io.github.wangnan05563.airmirror.net.ServiceLocator
 import io.github.wangnan05563.airmirror.net.StreamConnection
 import io.github.wangnan05563.airmirror.protocol.Auth
 import io.github.wangnan05563.airmirror.protocol.Handshake
 import io.github.wangnan05563.airmirror.protocol.Limit
 import io.github.wangnan05563.airmirror.protocol.Protocol
+import io.github.wangnan05563.airmirror.protocol.Resume
 import io.github.wangnan05563.airmirror.protocol.SessionControl
+import java.io.IOException
 import java.io.InterruptedIOException
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -94,7 +98,19 @@ class CaptureService : Service() {
     private var projection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var encoder: VideoEncoder? = null
+    @Volatile
     private var connection: StreamConnection? = null
+
+    /** 对端读线程发现断链后置位，主循环据此进入 30 秒恢复流程（PRD FS-10） */
+    @Volatile
+    private var peerGone = false
+
+    /** 重连后的画质回档：先低一档，10 秒内回到协商档位 */
+    private val recoveryQuality = RecoveryQuality()
+
+    /** 发现时的服务名与本次会话的本地地址：切换 Wi-Fi 后要按服务名重新解析，不能用旧地址硬连 */
+    private var serviceName = ""
+    private var sessionLocalIp = ""
 
     /** 采集源尺寸与 dpi，重建编码器时要用，不能只在首次开流时记住 */
     private var sourceWidth = 0
@@ -157,7 +173,10 @@ class CaptureService : Service() {
         running = true
         val deviceId = intent.getStringExtra(EXTRA_DEVICE_ID).orEmpty()
         val credential = intent.getStringExtra(EXTRA_CREDENTIAL).orEmpty()
-        worker = thread(name = "airmirror-capture") { runSession(host, port, resultCode, resultData, deviceId, credential) }
+        val serviceName = intent.getStringExtra(EXTRA_SERVICE_NAME).orEmpty()
+        worker = thread(name = "airmirror-capture") {
+            runSession(host, port, resultCode, resultData, deviceId, credential, serviceName)
+        }
         return START_NOT_STICKY
     }
 
@@ -185,6 +204,7 @@ class CaptureService : Service() {
         resultData: Intent,
         deviceId: String,
         credential: String,
+        serviceName: String,
     ) {
         try {
             SenderReport.last = ""
@@ -192,14 +212,15 @@ class CaptureService : Service() {
             SenderControl.paused = false
             SenderControl.clearTakeover()
             yielded = false
+            peerGone = false
+            recoveryQuality.stop()
+            this.serviceName = serviceName
             // 先握手、先授权，通过后才开始采集屏幕：被拒时不该已经在录屏（PRD 14.4 最小采集）
-            val socket = Socket()
-            socket.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
-            val conn = StreamConnection(socket)
+            var conn = openConnection(host, port, deviceId, credential)
             connection = conn
-            val ack = conn.connectAsClient(Build.MODEL, Handshake.Capability.VIDEO_H264)
-            if (!authorize(conn, deviceId, credential)) return
-            Log.i(TAG, "connected to $host:$port version=${ack.chosenVersion}")
+            sessionLocalIp = localIpv4().orEmpty()
+            var currentHost = host
+            var currentPort = port
 
             val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
             val mediaProjection = manager.getMediaProjection(resultCode, resultData)
@@ -237,32 +258,49 @@ class CaptureService : Service() {
 
             var sentFrames = 0
             var lastOutputAt = System.currentTimeMillis()
-            var pauseApplied = false
+            var pauseApplied = SenderControl.paused
             while (running) {
+                // 断链后先续会再继续送帧；续不上已经把结论文案写好，直接收尾
+                if (peerGone) {
+                    val resumed = recover(conn, currentHost, currentPort, deviceId) ?: break
+                    conn = resumed.conn
+                    connection = conn
+                    currentHost = resumed.host
+                    currentPort = resumed.port
+                    watchPeer(conn)
+                    pauseApplied = SenderControl.paused
+                    if (pauseApplied) {
+                        sendOrGone(conn, Protocol.Frame(Protocol.Type.CONTROL, payload = SessionControl.pause()))
+                    }
+                    continue
+                }
                 // 用户在大屏外的手机界面上选择了让出/拒绝（PRD FS-09 步骤 4）
                 SenderControl.takeTakeoverAnswer()?.let { allow ->
                     Log.i(TAG, "takeover answer allow=$allow")
-                    runCatching {
-                        conn.send(Protocol.Frame(Protocol.Type.CONTROL, payload = SessionControl.takeoverResult(allow)))
-                    }.onFailure { Log.w(TAG, "takeover answer not delivered: ${it.message}") }
+                    sendOrGone(conn, Protocol.Frame(Protocol.Type.CONTROL, payload = SessionControl.takeoverResult(allow)))
                     if (allow) {
                         yielded = true
                         SenderReport.quality = "已让出投屏"
                     } else {
-                        SenderReport.quality = qualityNote().text()
+                        SenderReport.quality = qualityText()
                     }
                 }
                 if (SenderControl.paused != pauseApplied) {
                     pauseApplied = SenderControl.paused
                     val payload = if (pauseApplied) SessionControl.pause() else SessionControl.resume()
-                    runCatching { conn.send(Protocol.Frame(Protocol.Type.CONTROL, payload = payload)) }
+                    sendOrGone(conn, Protocol.Frame(Protocol.Type.CONTROL, payload = payload))
                     SenderReport.quality = if (pauseApplied) {
                         "已暂停投屏 · 大屏保留最后一帧"
                     } else {
-                        qualityNote().text()
+                        qualityText()
                     }
                     // 恢复后解码器需要关键帧才能继续出画，否则会等下一个自然 IDR
                     if (!pauseApplied) runCatching { encoder?.requestKeyFrame() }
+                }
+                if (recoveryQuality.tick()) {
+                    Log.i(TAG, "recovery quality restored to ${recoveryQuality.fullTier().label}")
+                    SenderReport.quality = qualityNote().text()
+                    reconfigure.set(true)
                 }
                 if (reconfigure.getAndSet(false)) restartEncoder()
                 val videoEncoder = encoder
@@ -283,6 +321,7 @@ class CaptureService : Service() {
                 lastOutputAt = System.currentTimeMillis()
                 // 暂停期间继续取帧但丢弃，避免编码器缓冲堆满、恢复时一次性涌出
                 if (pauseApplied) continue
+                var delivered = true
                 for (frame in frames) {
                     val flags = when {
                         frame.config -> Protocol.Flags.CONFIG
@@ -290,7 +329,10 @@ class CaptureService : Service() {
                         else -> 0
                     }
                     val type = Protocol.Type.VIDEO
-                    conn.send(Protocol.Frame(type, flags = flags, ptsUs = frame.ptsUs, payload = frame.data))
+                    if (!sendOrGone(conn, Protocol.Frame(type, flags = flags, ptsUs = frame.ptsUs, payload = frame.data))) {
+                        delivered = false
+                        break
+                    }
                     sentFrames++
                     if (sentFrames == 1 || sentFrames % 60 == 0) {
                         Log.i(
@@ -300,6 +342,7 @@ class CaptureService : Service() {
                     }
                 }
                 if (!running) break
+                if (!delivered) continue
             }
         } catch (e: Exception) {
             Log.w(TAG, "capture session ended: ${e.message}")
@@ -308,6 +351,169 @@ class CaptureService : Service() {
             cleanup()
             stopSelf()
         }
+    }
+
+    /** 首次接入：握手 + 授权。被拒时 [authorize] 已把原因写进界面。 */
+    private fun openConnection(
+        host: String,
+        port: Int,
+        deviceId: String,
+        credential: String,
+    ): StreamConnection {
+        val socket = Socket()
+        socket.tcpNoDelay = true
+        socket.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
+        val conn = StreamConnection(socket)
+        val ack = runCatching { conn.connectAsClient(Build.MODEL, Handshake.Capability.VIDEO_H264) }
+            .getOrElse {
+                conn.close()
+                throw it
+            }
+        Log.i(TAG, "connected to $host:$port version=${ack.chosenVersion}")
+        if (!authorize(conn, deviceId, credential)) {
+            conn.close()
+            throw IllegalStateException("authorization refused")
+        }
+        return conn
+    }
+
+    private class ResumedLink(val conn: StreamConnection, val host: String, val port: Int)
+
+    private sealed interface ResumeAttempt {
+        class Ok(val conn: StreamConnection) : ResumeAttempt
+        object Failed : ResumeAttempt
+
+        /** 接收端会话已丢失（重启 / 保留窗口过期），再试也没用，要让用户重新连接 */
+        object Restarted : ResumeAttempt
+    }
+
+    /**
+     * PRD FS-10 断线恢复：保留窗口内最多 3 次续会，凭设备标识重新握手、不重走投屏码。
+     * 切换 Wi-Fi 后旧地址不可达，先按服务名重新解析；失败给出可执行结论，不无限转圈。
+     */
+    private fun recover(
+        dead: StreamConnection,
+        host: String,
+        port: Int,
+        deviceId: String,
+    ): ResumedLink? {
+        val lostAt = System.currentTimeMillis()
+        if (connection === dead) connection = null
+        runCatching { dead.close() }
+        peerReader?.join(500)
+        peerReader = null
+        peerGone = false
+        Log.i(TAG, "link lost, entering ${RecoverySchedule.WINDOW_MS}ms recovery window")
+        SenderReport.quality = "连接中断，正在恢复"
+        updateNotification("连接中断，正在恢复")
+
+        var targetHost = host
+        var targetPort = port
+        val currentIp = localIpv4().orEmpty()
+        if (sessionLocalIp.isNotEmpty() && currentIp.isNotEmpty() && currentIp != sessionLocalIp) {
+            // IP 变了旧地址不可达：按设备标识所在的服务名重新解析（PRD FS-10 场景「切换 Wi-Fi」）
+            Log.i(TAG, "local ip $sessionLocalIp -> $currentIp, relocating $serviceName")
+            SenderReport.quality = "网络已切换，正在重新连接"
+            updateNotification("网络已切换，正在重新连接")
+            ServiceLocator(this).locate(serviceName)?.let {
+                targetHost = it.host
+                targetPort = it.port
+            }
+        }
+
+        var attempt = 0
+        while (running && attempt < RecoverySchedule.ATTEMPTS) {
+            val wait = lostAt + RecoverySchedule.delayFor(attempt) - System.currentTimeMillis()
+            if (wait > 0) idle(wait)
+            if (!running) return null
+            attempt++
+            SenderReport.quality = "正在恢复连接（$attempt/${RecoverySchedule.ATTEMPTS}）"
+            updateNotification("正在恢复连接（$attempt/${RecoverySchedule.ATTEMPTS}）")
+            when (val result = tryResume(targetHost, targetPort, deviceId)) {
+                is ResumeAttempt.Ok -> {
+                    sessionLocalIp = localIpv4().orEmpty()
+                    recoveryQuality.start(negotiatedTier())
+                    Log.i(
+                        TAG,
+                        "resumed at $targetHost:$targetPort, quality ${recoveryQuality.tier().label} until ${recoveryQuality.fullTier().label}",
+                    )
+                    SenderReport.quality = recoveryQuality.text()
+                    updateNotification("已恢复投屏")
+                    // 恢复后按低一档重开编码器，关键帧让大屏立刻续上而不是等自然 IDR
+                    restartEncoder()
+                    return ResumedLink(result.conn, targetHost, targetPort)
+                }
+                ResumeAttempt.Restarted -> {
+                    Log.i(TAG, "receiver session lost, resume refused")
+                    SenderReport.quality = ""
+                    SenderReport.last = ErrorNotice.textFor(ErrorNotice.Cause.PEER_RESTARTED)
+                    return null
+                }
+                ResumeAttempt.Failed -> Log.w(TAG, "resume attempt $attempt failed")
+            }
+        }
+        if (running) {
+            val elapsed = System.currentTimeMillis() - lostAt
+            SenderReport.quality = ""
+            SenderReport.last = ErrorNotice.textFor(RecoverySchedule.exhaustedCause(elapsed))
+            Log.i(TAG, "recovery gave up after $attempt attempts (elapsed=${elapsed}ms)")
+        }
+        return null
+    }
+
+    /** 续会握手：HELLO → AUTH(resume=1)，接收端认保留窗口里的设备标识，不再弹授权。 */
+    private fun tryResume(host: String, port: Int, deviceId: String): ResumeAttempt {
+        val socket = Socket()
+        return try {
+            socket.tcpNoDelay = true
+            socket.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
+            val conn = StreamConnection(socket)
+            conn.connectAsClient(Build.MODEL, Handshake.Capability.VIDEO_H264)
+            conn.send(Protocol.Frame(Protocol.Type.AUTH, payload = Auth.request(deviceId, "", resume = true)))
+            conn.setReadTimeout(AUTH_WAIT_MS)
+            val reply = try {
+                conn.receive()
+            } finally {
+                runCatching { conn.setReadTimeout(0) }
+            }
+            if (reply == null || reply.type != Protocol.Type.AUTH_RESULT) {
+                conn.close()
+                return ResumeAttempt.Failed
+            }
+            val result = Auth.parseResult(reply.payload)
+            if (!result.accepted) {
+                conn.close()
+                return if (result.reason == Resume.REASON_LOST) ResumeAttempt.Restarted else ResumeAttempt.Failed
+            }
+            peerCeiling = awaitCeiling(conn)
+            ResumeAttempt.Ok(conn)
+        } catch (e: Exception) {
+            Log.w(TAG, "resume to $host:$port failed: ${e.message}")
+            runCatching { socket.close() }
+            ResumeAttempt.Failed
+        }
+    }
+
+    /** 恢复等待期间编码器还在出帧，持续取走丢弃，避免输入 Surface 堆满后卡住屏幕采集。 */
+    private fun idle(millis: Long) {
+        val until = System.currentTimeMillis() + millis
+        while (running && System.currentTimeMillis() < until) {
+            runCatching { encoder?.drain() }
+            try {
+                Thread.sleep(RECOVERY_IDLE_STEP_MS)
+            } catch (e: InterruptedException) {
+                return
+            }
+        }
+    }
+
+    private fun sendOrGone(conn: StreamConnection, frame: Protocol.Frame): Boolean = try {
+        conn.send(frame)
+        true
+    } catch (e: IOException) {
+        Log.w(TAG, "send failed: ${e.message}")
+        if (connection === conn) peerGone = true
+        false
     }
 
     /**
@@ -373,8 +579,13 @@ class CaptureService : Service() {
                         else -> Unit
                     }
                 }
+                // 读不出来且没有收过 BYE：属于意外断链，交给主循环进入恢复流程
+                if (running && connection === conn) peerGone = true
             } catch (e: Exception) {
-                if (running) Log.i(TAG, "peer reader ended: ${e.message}")
+                if (running) {
+                    Log.i(TAG, "peer reader ended: ${e.message}")
+                    if (connection === conn) peerGone = true
+                }
             }
         }
     }
@@ -386,7 +597,9 @@ class CaptureService : Service() {
         val after = negotiatedTier()
         if (after != before) {
             Log.i(TAG, "tier ${before.label} -> ${after.label}")
-            SenderReport.quality = qualityNote().text()
+            SenderReport.quality = qualityText()
+            // 恢复期收到新上限，回档目标也跟着改，但计时从头算，仍然是「先低一档」
+            if (recoveryQuality.active) recoveryQuality.start(after)
             reconfigure.set(true)
         }
     }
@@ -405,8 +618,11 @@ class CaptureService : Service() {
         return QualityTiers.note(negotiatedTier(), ownCeiling, peer, band)
     }
 
+    private fun qualityText(): String =
+        if (recoveryQuality.active) recoveryQuality.text() else qualityNote().text()
+
     private fun currentProfile(): EncodeProfile {
-        val profile = QualityTiers.profile(negotiatedTier(), sourceWidth, sourceHeight)
+        val profile = QualityTiers.profile(recoveryQuality.tier(), sourceWidth, sourceHeight)
         Log.i(TAG, "encode ${profile.width}x${profile.height}@${profile.fps} tier=${profile.tier.label} br=${profile.bitRateKbps}kbps")
         return profile
     }
@@ -445,6 +661,8 @@ class CaptureService : Service() {
 
     private fun cleanup() {
         running = false
+        peerGone = false
+        recoveryQuality.stop()
         SenderReport.quality = ""
         SenderControl.paused = false
         SenderControl.clearTakeover()
@@ -482,7 +700,7 @@ class CaptureService : Service() {
         }
     }
 
-    private fun buildNotification(): Notification {
+    private fun buildNotification(text: String = "私有通道传输中"): Notification {
         val builder = if (Build.VERSION.SDK_INT >= 26) {
             val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
             if (manager.getNotificationChannel(CHANNEL_ID) == null) {
@@ -497,10 +715,16 @@ class CaptureService : Service() {
         }
         return builder
             .setContentTitle("AirMirror 正在投屏")
-            .setContentText("私有通道传输中")
+            .setContentText(text)
             .setSmallIcon(android.R.drawable.stat_sys_upload)
             .setOngoing(true)
             .build()
+    }
+
+    /** 断线恢复期间通知栏也要能看出状态（PRD FS-10 步骤 2：切后台保留控制条）。 */
+    private fun updateNotification(text: String) {
+        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        runCatching { manager.notify(NOTIFICATION_ID, buildNotification(text)) }
     }
 
     companion object {
@@ -510,12 +734,15 @@ class CaptureService : Service() {
         const val EXTRA_RESULT_DATA = "resultData"
         const val EXTRA_DEVICE_ID = "deviceId"
         const val EXTRA_CREDENTIAL = "credential"
+        const val EXTRA_SERVICE_NAME = "serviceName"
         const val ACTION_STOP = "io.github.wangnan05563.airmirror.STOP_CAPTURE"
         private const val TAG = "AirMirrorCapture"
         private const val CHANNEL_ID = "airmirror-capture"
         private const val NOTIFICATION_ID = 1
         private const val CONNECT_TIMEOUT_MS = 5_000
+        private const val AUTH_WAIT_MS = 4_000
         private const val CEILING_WAIT_MS = 1_500
         private const val TAKEOVER_WINDOW_MS = 60_000L
+        private const val RECOVERY_IDLE_STEP_MS = 50L
     }
 }

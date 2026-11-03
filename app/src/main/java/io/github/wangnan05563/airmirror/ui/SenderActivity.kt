@@ -389,6 +389,8 @@ class SenderActivity : Activity() {
             putExtra(CaptureService.EXTRA_RESULT_DATA, data)
             putExtra(CaptureService.EXTRA_DEVICE_ID, store.deviceId())
             putExtra(CaptureService.EXTRA_CREDENTIAL, pendingCredential)
+            // 断线后按服务名重新解析：IP 变了才能找到同一台设备（PRD FS-10）
+            putExtra(CaptureService.EXTRA_SERVICE_NAME, target.name)
         }
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent) else startService(intent)
         status.text = "正在投屏到 ${target.name}"

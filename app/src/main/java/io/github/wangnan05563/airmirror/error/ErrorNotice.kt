@@ -69,6 +69,7 @@ object ErrorNotice {
         PEER_RESTARTED,
         SESSION_ENDED,
         RECONNECT_EXHAUSTED,
+        RECOVERY_TIMEOUT,
         SOURCE_FORBIDDEN,
         SOURCE_NOT_FOUND,
         SOURCE_FORMAT,
@@ -150,6 +151,10 @@ object ErrorNotice {
         ),
         Cause.RECONNECT_EXHAUSTED to Notice(
             Category.SESSION, "恢复失败已停止", "三次重连都没成功，请检查网络后重新发起投屏。",
+            listOf(Action.RECONNECT, Action.ENTER_CODE),
+        ),
+        Cause.RECOVERY_TIMEOUT to Notice(
+            Category.SESSION, "断线超过 30 秒", "已结束这次投屏，请确认两台设备在同一网络后重新连接。",
             listOf(Action.RECONNECT, Action.ENTER_CODE),
         ),
         Cause.SOURCE_FORBIDDEN to Notice(
