@@ -2,7 +2,6 @@ package io.github.wangnan05563.airmirror.ui
 
 import android.app.Activity
 import android.app.AlertDialog
-import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -20,13 +19,14 @@ import android.widget.ScrollView
 import android.widget.TextView
 import io.github.wangnan05563.airmirror.device.DisplayFit
 import io.github.wangnan05563.airmirror.device.DisplayMode
-import io.github.wangnan05563.airmirror.dlna.DlnaServer
 import io.github.wangnan05563.airmirror.dlna.localIpv4
 import io.github.wangnan05563.airmirror.device.DeviceProbe
 import io.github.wangnan05563.airmirror.pairing.CastCode
 import io.github.wangnan05563.airmirror.pairing.DeviceStore
 import io.github.wangnan05563.airmirror.pairing.Pairing
 import io.github.wangnan05563.airmirror.protocol.ProtocolBoundary
+import io.github.wangnan05563.airmirror.receiver.ReceiverHost
+import io.github.wangnan05563.airmirror.receiver.ReceiverService
 import io.github.wangnan05563.airmirror.receiver.ReceiverSession
 
 /**
@@ -37,8 +37,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
 
     private lateinit var store: DeviceStore
     private lateinit var pairing: Pairing
-    private var session: ReceiverSession? = null
-    private var dlna: DlnaServer? = null
+    private lateinit var host: ReceiverHost
 
     private lateinit var root: FrameLayout
     private lateinit var surfaceView: SurfaceView
@@ -66,6 +65,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     private val modeRows = LinkedHashMap<DisplayMode, TextView>()
     private lateinit var rotationRow: TextView
     private lateinit var labelRow: TextView
+    private lateinit var autoStartRow: TextView
 
     private var displayMode = DisplayMode.FIT
     private var followRotation = true
@@ -94,8 +94,9 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        store = DeviceStore(this)
-        pairing = Pairing(store)
+        host = ReceiverHost.get(this)
+        store = host.store
+        pairing = host.pairing
         displayMode = store.displayMode()
         followRotation = store.followRotation()
         portraitLabel = store.portraitLabel()
@@ -176,6 +177,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         deviceNameText.text = receiverName()
         startSessions(receiverName())
         main.post(ticker)
+        Log.i(TAG, "activity attached to host casting=${host.casting} recovering=${host.recovering}")
     }
 
     private fun fullScreen() = FrameLayout.LayoutParams(
@@ -275,6 +277,14 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             setTextColor(Theme.OFFLINE)
             gravity = Gravity.CENTER
             setPadding(0, Theme.dp(this@ReceiverActivity, 16), 0, 0)
+        }, matchWidth())
+        // FS-13 降级提示：系统禁止自启时，用户至少知道从应用列表手动打开
+        waiting.addView(TextView(this).apply {
+            text = "电视重启后若未自动打开，请从应用列表打开"
+            textSize = Theme.BODY_SP
+            setTextColor(Theme.OFFLINE)
+            gravity = Gravity.CENTER
+            setPadding(0, Theme.dp(this@ReceiverActivity, 6), 0, 0)
         }, matchWidth())
         return waiting
     }
@@ -462,6 +472,16 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             }
         }
         settingsPanel.addView(labelRow, matchWidth())
+        autoStartRow = TextView(this).apply {
+            textSize = Theme.BODY_SP
+            setTextColor(Theme.TEXT_PRIMARY)
+            setPadding(0, 0, 0, Theme.dp(this@ReceiverActivity, 12))
+            setOnClickListener {
+                store.saveAutoStartEnabled(!store.autoStartEnabled())
+                refreshSettings()
+            }
+        }
+        settingsPanel.addView(autoStartRow, matchWidth())
         settingsPanel.addView(Button(this).apply {
             text = "完成"
             setTextColor(Theme.ACCENT)
@@ -478,6 +498,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         }
         rotationRow.text = "旋转跟随：${if (followRotation) "开" else "关"}"
         labelRow.text = "竖屏标签：${if (portraitLabel) "开" else "关"}"
+        autoStartRow.text = "开机自启：${if (store.autoStartEnabled()) "开" else "关"}"
     }
 
     private fun showSettings() {
@@ -602,7 +623,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
 
     private fun confirmEnd() {
         cancelEndConfirm()
-        session?.endActiveSession()
+        host.endActiveSession()
         statusText.text = "已结束投屏"
     }
 
@@ -615,28 +636,27 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         gravity = Gravity.CENTER_HORIZONTAL
     }
 
-    private fun receiverName(): String = store.deviceName(defaultReceiverName())
+    private fun receiverName(): String = store.deviceName(ReceiverHost.defaultDeviceName())
 
     private fun startSessions(name: String) {
-        val active = session ?: ReceiverSession(
-            context = this,
-            pairing = pairing,
-            onStatus = { text -> runOnUiThread { statusText.text = text } },
-            onPrompt = { prompt -> runOnUiThread { showPrompt(prompt) } },
-            onCasting = { casting, sender -> runOnUiThread { onCasting(casting, sender) } },
-            onNotice = { text -> runOnUiThread { showNotice(text) } },
-            onRecovery = { active -> runOnUiThread { showRecovery(active) } },
-            onVideoSize = { width, height -> runOnUiThread { onVideoSize(width, height) } },
-        ).also { it.start(name) }
-        session = active
-        val renderer = dlna ?: DlnaServer(this) { text -> runOnUiThread { statusText.text = text } }
-            .apply { onPlayingChanged = { playing -> runOnUiThread { if (playing) showCasting("") } } }
-            .also { dlna = it }
-        renderer.start(name)
+        host.start(name)
+        host.attachUi(hostUi)
+        ReceiverService.start(this)
     }
 
-    private fun defaultReceiverName(): String =
-        "AirMirror-${Build.MODEL}".replace(Regex("[^A-Za-z0-9-]"), "-").take(30)
+    /** 宿主把会话与 DLNA 的进度回放到界面；界面不持有监听生命周期。 */
+    private val hostUi = object : ReceiverHost.Ui {
+        override fun onStatus(text: String) = runOnUiThread { statusText.text = text }
+        override fun onPrompt(prompt: ReceiverSession.Prompt) = runOnUiThread { showPrompt(prompt) }
+        override fun onCasting(casting: Boolean, senderName: String) =
+            runOnUiThread { this@ReceiverActivity.onCasting(casting, senderName) }
+        override fun onNotice(text: String) = runOnUiThread { showNotice(text) }
+        override fun onRecovery(active: Boolean) = runOnUiThread { showRecovery(active) }
+        override fun onVideoSize(width: Int, height: Int) =
+            runOnUiThread { this@ReceiverActivity.onVideoSize(width, height) }
+        override fun onDlnaStatus(text: String) = runOnUiThread { statusText.text = text }
+        override fun onDlnaPlaying(playing: Boolean) = runOnUiThread { if (playing) showCasting("") }
+    }
 
     private fun refreshWaitingPage() {
         val code = pairing.code
@@ -646,9 +666,9 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         val seconds = code.secondsUntilRotation()
         countdownText.text = if (locked) "投屏码已临时锁定" else "${seconds} 秒后更换投屏码"
         ring.fraction = if (locked) 0f else seconds / 60f
-        val host = localIpv4() ?: "127.0.0.1"
-        val port = session?.port ?: 0
-        val payload = if (port > 0 && !locked) pairing.qrPayload(host, port, deviceNameText.text.toString()) else ""
+        val address = localIpv4() ?: "127.0.0.1"
+        val port = host.port
+        val payload = if (port > 0 && !locked) pairing.qrPayload(address, port, deviceNameText.text.toString()) else ""
         if (payload.isNotEmpty() && payload != lastPayload) {
             lastPayload = payload
             qrView.setImageBitmap(Qr.bitmap(payload, QR_PIXELS))
@@ -662,7 +682,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
 
     private fun respondToPrompt(allowed: Boolean) {
         promptBar.visibility = View.GONE
-        session?.resolve(allowed)
+        host.resolve(allowed)
     }
 
     private fun onCasting(casting: Boolean, senderName: String) {
@@ -707,16 +727,14 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     private val hideOverlay = Runnable { overlayName.visibility = View.GONE }
 
     override fun surfaceCreated(holder: SurfaceHolder) {
-        session?.attachSurface(holder.surface)
-        dlna?.attach(holder)
+        host.attachSurface(holder)
     }
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) = Unit
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
         // 只摘掉 Surface，会话继续收流；回到前台会重新挂载
-        session?.detachSurface()
-        dlna?.detach()
+        host.detachSurface()
     }
 
     override fun onDestroy() {
@@ -724,10 +742,9 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         main.removeCallbacks(hideOverlay)
         main.removeCallbacks(hideNotice)
         main.removeCallbacks(hideCornerHint)
-        session?.stop()
-        session = null
-        dlna?.stop()
-        dlna = null
+        // 界面退出不结束监听：前台服务与宿主继续等待投屏（PRD FS-13）
+        host.detachUi(hostUi)
+        Log.i(TAG, "activity destroyed, host keeps listening")
         super.onDestroy()
     }
 

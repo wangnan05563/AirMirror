@@ -12,12 +12,17 @@ class VideoDecoder(private val surface: Surface) {
     private var width = 0
     private var height = 0
 
+    /** 摘 Surface 与收流线程并发：界面已销毁后仍可能拿到旧引用，此时喂帧要静默跳过而不是抛「codec is released」。 */
+    @Volatile
+    private var released = false
+
     @Volatile
     var renderedFrames = 0L
         private set
 
     /** 用发送端的 SPS/PPS（内含宽高）配置解码器。 */
     fun configure(configPayload: ByteArray) {
+        if (released) return
         val config = H264.unpackConfig(configPayload)
         width = config.width
         height = config.height
@@ -41,6 +46,7 @@ class VideoDecoder(private val surface: Surface) {
     }
 
     fun decode(data: ByteArray, ptsUs: Long) {
+        if (released) return
         val decoder = codec ?: return
         val index = decoder.dequeueInputBuffer(10_000)
         if (index < 0) return
@@ -52,6 +58,7 @@ class VideoDecoder(private val surface: Surface) {
     }
 
     fun drain() {
+        if (released) return
         codec?.let { drain(it) }
     }
 
@@ -74,6 +81,7 @@ class VideoDecoder(private val surface: Surface) {
         if (Build.VERSION.SDK_INT >= 21) decoder.getInputBuffer(index)!! else decoder.inputBuffers[index]
 
     fun release() {
+        released = true
         codec?.let {
             runCatching { it.stop() }
             runCatching { it.release() }

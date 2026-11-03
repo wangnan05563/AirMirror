@@ -173,8 +173,10 @@ class ReceiverSession(
     }
 
     fun detachSurface() {
-        decoder?.release()
+        // 先摘引用再释放：收流线程拿到已释放的解码器时只会静默丢帧，不会抛异常
+        val codec = decoder
         decoder = null
+        codec?.release()
     }
 
     /** @return 真正被放行并服务的发送端名称；未授权的连接返回 null，不打扰界面上的推流状态。 */

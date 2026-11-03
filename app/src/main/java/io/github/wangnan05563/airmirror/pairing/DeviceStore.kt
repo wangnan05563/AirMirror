@@ -60,6 +60,13 @@ class DeviceStore(context: Context) {
         prefs.edit().putBoolean(KEY_PORTRAIT_LABEL, show).apply()
     }
 
+    /** 开机自启默认开启（PRD FS-13）；系统拦截时降级为「从应用列表手动打开」。 */
+    fun autoStartEnabled(): Boolean = prefs.getBoolean(KEY_AUTO_START, true)
+
+    fun saveAutoStartEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_AUTO_START, enabled).apply()
+    }
+
     private companion object {
         const val FILE = "airmirror-pairing"
         const val KEY_ID = "device_id"
@@ -69,5 +76,6 @@ class DeviceStore(context: Context) {
         const val KEY_DISPLAY_MODE = "display_mode"
         const val KEY_FOLLOW_ROTATION = "follow_rotation"
         const val KEY_PORTRAIT_LABEL = "portrait_label"
+        const val KEY_AUTO_START = "auto_start"
     }
 }
