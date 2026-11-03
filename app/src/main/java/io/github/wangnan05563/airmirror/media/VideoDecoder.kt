@@ -5,6 +5,7 @@ import android.media.MediaFormat
 import android.os.Build
 import android.view.Surface
 import io.github.wangnan05563.airmirror.perf.FrameLatency
+import io.github.wangnan05563.airmirror.perf.LatencyWindow
 import java.nio.ByteBuffer
 
 /** 接收端 H.264 硬解码，输出到 [Surface]。 */
@@ -24,6 +25,15 @@ class VideoDecoder(private val surface: Surface) {
     /** 采集→上屏的分位数：以帧时间戳（nanoTime 基准）与投递显示的时刻之差为样本。 */
     val latency = FrameLatency()
 
+    /**
+     * 延迟降级策略用的窗口统计：每 [WINDOW_FRAMES] 帧出一张，[takeLatencyWindow] 取走即空。
+     * 累计分位数不能用来做降级——起播那几秒的高延迟会永久留在直方图里，
+     * 之后无论怎么降档 p90 都下不来，策略就会一路降到底。
+     */
+    private val window = FrameLatency()
+    private val pendingWindow = java.util.concurrent.atomic.AtomicReference<LatencyWindow?>(null)
+    private var windowFrames = 0L
+
     /** 本解码器第一次真正投递显示的时刻（nanoTime），未出画为 0；接收端据此算首帧耗时。 */
     @Volatile
     var firstRenderAtNano = 0L
@@ -37,6 +47,9 @@ class VideoDecoder(private val surface: Surface) {
         height = config.height
         // 换配置就是换一条流水线，首帧与延迟分布都按新流水线重新计
         latency.reset()
+        window.reset()
+        windowFrames = 0L
+        pendingWindow.set(null)
         firstRenderAtNano = 0L
         val units = H264.splitAnnexB(H264.normalize(config.annexB))
         require(units.isNotEmpty()) { "empty codec config" }
@@ -87,12 +100,24 @@ class VideoDecoder(private val surface: Surface) {
                     val nowNano = System.nanoTime()
                     if (firstRenderAtNano == 0L) firstRenderAtNano = nowNano
                     if (info.presentationTimeUs > 0) {
-                        latency.record((nowNano / 1_000 - info.presentationTimeUs) / 1_000)
+                        val sample = (nowNano / 1_000 - info.presentationTimeUs) / 1_000
+                        latency.record(sample)
+                        window.record(sample)
+                        if (++windowFrames >= WINDOW_FRAMES) {
+                            windowFrames = 0L
+                            val snapshot = window.snapshot()
+                            window.reset()
+                            // 只留最新一张：收流线程取慢了也不该把过期窗口当成当前状态
+                            pendingWindow.set(snapshot)
+                        }
                     }
                 }
             }
         }
     }
+
+    /** 取走最近一张窗口统计（没有则 null）；降级策略只关心最新一段，取走即清空。 */
+    fun takeLatencyWindow(): LatencyWindow? = pendingWindow.getAndSet(null)
 
     private fun inputBuffer(decoder: MediaCodec, index: Int): ByteBuffer =
         if (Build.VERSION.SDK_INT >= 21) decoder.getInputBuffer(index)!! else decoder.inputBuffers[index]
@@ -104,5 +129,10 @@ class VideoDecoder(private val surface: Surface) {
             runCatching { it.release() }
         }
         codec = null
+    }
+
+    companion object {
+        /** 约 0.5~1 秒一个窗口（60fps/30fps），足够出分位数又不至于对抖动反应过慢 */
+        const val WINDOW_FRAMES = 30L
     }
 }

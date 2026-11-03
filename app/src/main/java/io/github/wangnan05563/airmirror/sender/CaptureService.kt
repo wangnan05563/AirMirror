@@ -624,14 +624,14 @@ class CaptureService : Service() {
 
     private fun applyCeiling(newCeiling: Limit.Ceiling) {
         if (newCeiling.isEmpty) return
-        val before = negotiatedTier()
+        val before = negotiatedPlan()
         peerCeiling = newCeiling
-        val after = negotiatedTier()
+        val after = negotiatedPlan()
         if (after != before) {
-            Log.i(TAG, "tier ${before.label} -> ${after.label}")
+            Log.i(TAG, "tier ${before.first.label}@${before.second} -> ${after.first.label}@${after.second}")
             SenderReport.quality = qualityText()
             // 恢复期收到新上限，回档目标也跟着改，但计时从头算，仍然是「先低一档」
-            if (recoveryQuality.active) recoveryQuality.start(after)
+            if (recoveryQuality.active) recoveryQuality.start(after.first)
             reconfigure.set(true)
         }
     }
@@ -643,6 +643,13 @@ class CaptureService : Service() {
         return QualityTiers.negotiate(ownCeiling, peer, band)
     }
 
+    /**
+     * 协商到的「档位 + 帧率」组合：接收端按延迟降级时只改帧率、档位标签不变（PRD REQ-077），
+     * 只看档位会漏掉这次变更，编码器就永远停在原帧率上。
+     */
+    private fun negotiatedPlan(): Pair<QualityTier, Int> =
+        negotiatedTier() to QualityTiers.effectiveFps(negotiatedTier(), peerCeiling.fps)
+
     /** 界面只展示真正可达的档位，并说明被谁压下来（PRD 13.1、T03939 4K 协商） */
     private fun qualityNote(): QualityNote {
         val ceiling = peerCeiling
@@ -650,8 +657,12 @@ class CaptureService : Service() {
         return QualityTiers.note(negotiatedTier(), ownCeiling, peer, band)
     }
 
-    private fun qualityText(): String =
-        if (recoveryQuality.active) recoveryQuality.text() else qualityNote().text()
+    private fun qualityText(): String {
+        val base = if (recoveryQuality.active) recoveryQuality.text() else qualityNote().text()
+        val tier = currentTier()
+        val fps = QualityTiers.effectiveFps(tier, peerCeiling.fps)
+        return if (fps in 1 until tier.fps) "$base · ${fps}fps" else base
+    }
 
     /**
      * 当前该用的档位：恢复期用降一档，其余时候用协商档。
@@ -660,9 +671,12 @@ class CaptureService : Service() {
     private fun currentTier(): QualityTier = recoveryQuality.tierOr(negotiatedTier())
 
     private fun currentProfile(): EncodeProfile {
-        val profile = QualityTiers.profile(currentTier(), sourceWidth, sourceHeight)
-        Log.i(TAG, "encode ${profile.width}x${profile.height}@${profile.fps} tier=${profile.tier.label} br=${profile.bitRateKbps}kbps")
-        return profile
+        val tier = currentTier()
+        val profile = QualityTiers.profile(tier, sourceWidth, sourceHeight)
+        val fps = QualityTiers.effectiveFps(tier, peerCeiling.fps)
+        val capped = if (fps == profile.fps) profile else profile.copy(fps = fps)
+        Log.i(TAG, "encode ${capped.width}x${capped.height}@${capped.fps} tier=${capped.tier.label} br=${capped.bitRateKbps}kbps")
+        return capped
     }
 
     private fun openEncoder(mediaProjection: MediaProjection, profile: EncodeProfile): VideoEncoder {
@@ -682,19 +696,48 @@ class CaptureService : Service() {
         return videoEncoder
     }
 
-    /** 换档要重建编码器与虚拟屏：采集尺寸变了，旧 Surface 不能再复用 */
+    /**
+     * 换档：编码尺寸/帧率变了，旧编码器的输入面不能复用，要换一条新的。
+     *
+     * 但虚拟屏不能重建：Android 14 起一个 MediaProjection 只允许调用一次
+     * `createVirtualDisplay`（「一次授权 = 一次采集会话」），release 之后再建会抛
+     * SecurityException，整条流当场断掉（模拟器取证时降档就是这样把投屏弄没的）。
+     * 所以这里保留同一条虚拟屏，只把它的输出面切到新编码器（API 21+ 的 setSurface/resize），
+     * 用户不需要重新授权，画面也不会因为会话重建而黑掉。
+     */
     private fun restartEncoder() {
-        val mediaProjection = projection ?: return
-        runCatching { virtualDisplay?.release() }
-        virtualDisplay = null
-        runCatching { encoder?.release() }
-        encoder = null
-        runCatching { openEncoder(mediaProjection, currentProfile()) }
-            .onFailure {
-                Log.w(TAG, "reconfigure failed: ${it.message}")
-                SenderReport.last = ErrorNotice.textFor(ErrorNotice.Cause.DECODE_UNSUPPORTED)
-                running = false
-            }
+        val profile = currentProfile()
+        if (profile.width <= 0 || profile.height <= 0) {
+            Log.w(TAG, "reconfigure skipped: unusable tier ${profile.tier.label}")
+            return
+        }
+        val display = virtualDisplay
+        if (display == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
+            val mediaProjection = projection ?: return
+            runCatching { display?.release() }
+            virtualDisplay = null
+            runCatching { encoder?.release() }
+            encoder = null
+            runCatching { openEncoder(mediaProjection, profile) }
+                .onFailure { failReconfigure(it) }
+            return
+        }
+        runCatching {
+            val previous = encoder
+            val videoEncoder = VideoEncoder(profile.width, profile.height, profile.fps, profile.bitRate)
+            encoder = videoEncoder
+            display.setSurface(videoEncoder.inputSurface)
+            display.resize(profile.width, profile.height, densityDpi)
+            // 新编码器手上没有 IDR，切面之后第一帧必须是关键帧，否则接收端只能等下一个 GOP
+            videoEncoder.requestKeyFrame()
+            runCatching { previous?.release() }
+        }.onFailure { failReconfigure(it) }
+    }
+
+    private fun failReconfigure(error: Throwable) {
+        Log.w(TAG, "reconfigure failed: ${error.message}")
+        SenderReport.last = ErrorNotice.textFor(ErrorNotice.Cause.DECODE_UNSUPPORTED)
+        running = false
     }
 
     private fun cleanup() {

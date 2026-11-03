@@ -17,6 +17,9 @@ import io.github.wangnan05563.airmirror.net.ServiceAdvertiser
 import io.github.wangnan05563.airmirror.net.StreamConnection
 import io.github.wangnan05563.airmirror.pairing.AuthGate
 import io.github.wangnan05563.airmirror.pairing.Pairing
+import io.github.wangnan05563.airmirror.perf.LatencyLadder
+import io.github.wangnan05563.airmirror.perf.LatencyMove
+import io.github.wangnan05563.airmirror.perf.LatencyPolicy
 import io.github.wangnan05563.airmirror.protocol.Auth
 import io.github.wangnan05563.airmirror.protocol.Handshake
 import io.github.wangnan05563.airmirror.protocol.Limit
@@ -86,6 +89,15 @@ class ReceiverSession(
     /** 当前会话的画质上限：协商结果，解不动时逐档下调并回写对端 */
     @Volatile
     private var ceiling: QualityTier = QualityTier.FHD60
+
+    /**
+     * 延迟降级用的档位序列与策略（PRD REQ-077「不达标时先降帧率再降分辨率，不出现黑屏」）。
+     * 序列按本机上限生成，上限变了（新会话、或解不动降档）就重建并把当前档夹回来。
+     */
+    @Volatile
+    private var ladder = LatencyLadder(QualityTier.FHD60)
+
+    private val latencyPolicy = LatencyPolicy()
 
     @Volatile
     private var activeConn: StreamConnection? = null
@@ -271,7 +283,10 @@ class ReceiverSession(
                                 configAtNano = System.nanoTime()
                                 pendingConfig = frame.payload
                                 runCatching { H264.unpackConfig(frame.payload) }
-                                    .onSuccess { onVideoSize(it.width, it.height) }
+                                    .onSuccess {
+                                        onVideoSize(it.width, it.height)
+                                        rebuildLadder(QualityTiers.tierWithin(it.width, it.height))
+                                    }
                                 val existing = decoder
                                 if (existing == null) {
                                     // Surface 可能早就在前台等着了，配置到了才建流水线
@@ -314,8 +329,9 @@ class ReceiverSession(
                                     )
                                     onStatus(
                                         "${hello.deviceName} · 收 $received / 解码 $decoded / 渲染 $rendered 帧" +
-                                            " · P90 ${latency?.percentile(90) ?: 0}ms",
+                                            " · P90 ${latency?.percentile(90) ?: 0}ms${qualitySuffix()}",
                                     )
+                                    pollLatency(codec, hello.deviceName)
                                 }
                             }
                         }
@@ -586,6 +602,8 @@ class ReceiverSession(
     private fun sendCeiling(conn: StreamConnection) {
         val tier = QualityTiers.receiverCeiling(gradePolicy, gradeFacts)
         ceiling = tier
+        latencyPolicy.reset()
+        rebuildLadder(tier)
         runCatching { conn.send(Protocol.Frame(Protocol.Type.CONTROL, payload = Limit.encode(ceilingOf(tier)))) }
             .onFailure { Log.w(TAG, "ceiling not delivered: ${it.message}") }
     }
@@ -603,12 +621,54 @@ class ReceiverSession(
             return
         }
         ceiling = lower
+        rebuildLadder(lower)
         sendControl(Limit.encode(ceilingOf(lower)), "ceiling ${lower.label}")
         onStatus("已切换到兼容模式 · ${lower.label}")
         onNotice("已切换到兼容模式 · ${lower.label}")
     }
 
-    private fun ceilingOf(tier: QualityTier) = Limit.Ceiling(tier.width, tier.height, tier.fps, tier.maxBitRateKbps, tier.label)
+    private fun ceilingOf(tier: QualityTier, fps: Int = tier.fps) =
+        Limit.Ceiling(tier.width, tier.height, fps, tier.maxBitRateKbps, tier.label)
+
+    /**
+     * 降档序列的基线取「本机上限 ∩ 对端实际推流档位」中更低的一档：
+     * 手机自己只编到 720p 时，从本机 1080p 上限起步的阶梯第一刀砍下去还是 720p，
+     * 等于发了个不动画质的通知，延迟永远不会好转。
+     */
+    private fun rebuildLadder(base: QualityTier) {
+        val start = if (base.rank > ceiling.rank) base else ceiling
+        if (!start.isUsable || ladder.step(0).tier == start) return
+        val current = ladder.step(latencyPolicy.stepIndex)
+        ladder = LatencyLadder(start)
+        latencyPolicy.anchorAt(ladder.indexNearest(current.tier, current.fps))
+        Log.i(TAG, "latency ladder: ${ladder.steps.joinToString(" → ") { it.text() }} 当前第 ${latencyPolicy.stepIndex} 档")
+    }
+
+    /** 周期性统计里带上当前画质档，降过档后大屏不会以为还在原档位跑（PRD 13.1） */
+    private fun qualitySuffix(): String {
+        val index = latencyPolicy.stepIndex
+        return if (index == 0) "" else " · ${ladder.step(index).text()}"
+    }
+
+    /**
+     * 每个统计窗口判一次延迟，超标就按 REQ-077 的顺序动画质：先降帧率、帧率到底再降分辨率。
+     * 只改上限、绝不停流——PRD 写明降级过程「不出现黑屏」，所以到最低档后原地保持。
+     * 提示走一次性浮层（REQ-295「角标提示，不弹窗」）。
+     */
+    private fun pollLatency(codec: VideoDecoder?, deviceName: String) {
+        val window = codec?.takeLatencyWindow() ?: return
+        val decision = latencyPolicy.onWindow(window, ladder.steps.size)
+        Log.i(TAG, "latency ${window.text()} ${decision.move} ${decision.reason}")
+        if (decision.move == LatencyMove.KEEP) return
+        val step = ladder.step(decision.stepIndex)
+        sendControl(Limit.encode(ceilingOf(step.tier, step.fps)), "latency ${step.text()}")
+        val text = when (decision.move) {
+            LatencyMove.DEGRADE -> "延迟偏高，画质已降到 ${step.text()}"
+            else -> "延迟恢复，画质升回 ${step.text()}"
+        }
+        onNotice("$deviceName · $text")
+        onStatus("$deviceName · $text")
+    }
 
     /**
      * 首帧时延打点（PRD 14.1 与 FS-01「在规定的时间内出现首帧」）：

@@ -63,6 +63,17 @@ class FrameLatency(private val bucketMs: Int = DEFAULT_BUCKET_MS, private val bu
 
     fun maxMs(): Long = maxMs
 
+    /** 取一张窗口快照交给延迟降级策略；调用方随后 [reset] 开始下一个窗口。 */
+    fun snapshot(): LatencyWindow = LatencyWindow(
+        frames = samples,
+        p50Ms = percentile(50),
+        p90Ms = percentile(90),
+        averageMs = averageMs(),
+        maxMs = maxMs,
+        overWindow = overCount,
+        clockSkew = clockSkewCount,
+    )
+
     fun reset() {
         counts.fill(0)
         samples = 0L

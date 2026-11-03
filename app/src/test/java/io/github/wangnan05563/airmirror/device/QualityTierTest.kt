@@ -33,6 +33,16 @@ class QualityTierTest {
     }
 
     @Test
+    fun `peer fps ceiling only ever lowers the tier frame rate`() {
+        assertEquals(60, QualityTiers.effectiveFps(QualityTier.FHD60, 0))
+        assertEquals(60, QualityTiers.effectiveFps(QualityTier.FHD60, 90))
+        assertEquals(30, QualityTiers.effectiveFps(QualityTier.FHD60, 30))
+        assertEquals(15, QualityTiers.effectiveFps(QualityTier.FHD60, 15))
+        assertEquals(30, QualityTiers.effectiveFps(QualityTier.HD30, 60))
+        assertEquals(0, QualityTiers.effectiveFps(QualityTier.OFF, 30))
+    }
+
+    @Test
     fun `downgrade walks down one tier and stops at the floor`() {
         assertEquals(QualityTier.QHD, QualityTiers.downgrade(QualityTier.UHD60))
         assertEquals(QualityTier.FHD60, QualityTiers.downgrade(QualityTier.QHD))

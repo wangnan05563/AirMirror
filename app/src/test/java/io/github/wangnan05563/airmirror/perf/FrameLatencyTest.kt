@@ -1,9 +1,44 @@
 package io.github.wangnan05563.airmirror.perf
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FrameLatencyTest {
+
+    @Test
+    fun `snapshot describes only the current window`() {
+        val latency = FrameLatency()
+        // 起播的高延迟只进累计直方图，不能污染降级策略用的窗口
+        latency.record(4_000L)
+        latency.record(-5L)
+        latency.reset()
+        for (value in 1L..30L) latency.record(value)
+        val window = latency.snapshot()
+        assertEquals(30L, window.frames)
+        assertEquals(27L, window.p90Ms)
+        assertEquals(30L, window.maxMs)
+        assertEquals(15L, window.p50Ms)
+        assertEquals("换流水线前的坏点不该留在新窗口", 0L, window.clockSkew)
+        assertEquals(0L, window.overWindow)
+        assertTrue(window.isTrustworthy)
+        latency.reset()
+        assertEquals(0L, latency.snapshot().frames)
+        assertFalse(latency.snapshot().isTrustworthy)
+    }
+
+    @Test
+    fun `samples skewed by the clock make the window untrustworthy`() {
+        val latency = FrameLatency()
+        repeat(10) { latency.record(it + 1L) }
+        repeat(25) { latency.record(-1L) }
+        val window = latency.snapshot()
+        assertEquals(10L, window.frames)
+        assertEquals(25L, window.clockSkew)
+        assertFalse(window.isTrustworthy)
+    }
+
     @Test
     fun `no samples reports zeros`() {
         val latency = FrameLatency()

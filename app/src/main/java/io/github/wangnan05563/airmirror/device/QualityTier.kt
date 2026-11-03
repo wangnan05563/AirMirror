@@ -84,6 +84,13 @@ object QualityTiers {
         return QualityTier.Ordered.firstOrNull { it.rank == next } ?: QualityTier.SD480
     }
 
+    /**
+     * 实际帧率 = 档位帧率 ∩ 对端上报的帧率上限。
+     * 接收端按延迟降档时先砍帧率（PRD REQ-077），此时分辨率档位不变，只有这个数会变。
+     */
+    fun effectiveFps(tier: QualityTier, peerFpsCeiling: Int): Int =
+        if (peerFpsCeiling <= 0 || !tier.isUsable) tier.fps else minOf(tier.fps, peerFpsCeiling)
+
     /** 回升一档，用于恢复后 10 秒内逐步回到原档位；已经高于上限时直接夹回上限 */
     fun upgrade(tier: QualityTier, ceiling: QualityTier): QualityTier {
         val target = tier.rank - 1
