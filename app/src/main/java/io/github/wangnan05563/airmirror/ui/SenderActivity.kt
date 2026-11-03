@@ -12,6 +12,7 @@ import android.text.InputFilter
 import android.text.InputType
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -25,6 +26,7 @@ import io.github.wangnan05563.airmirror.pairing.DeviceStore
 import io.github.wangnan05563.airmirror.pairing.PairingLink
 import io.github.wangnan05563.airmirror.protocol.ProtocolBoundary
 import io.github.wangnan05563.airmirror.sender.CaptureService
+import io.github.wangnan05563.airmirror.sender.SenderControl
 import io.github.wangnan05563.airmirror.sender.SenderReport
 
 /**
@@ -41,9 +43,11 @@ class SenderActivity : Activity() {
     private lateinit var list: LinearLayout
     private lateinit var codeInput: EditText
     private lateinit var addressInput: EditText
+    private lateinit var pauseButton: Button
     private var browser: ServiceBrowser? = null
     private var pending: Target? = null
     private var pendingCredential: String = ""
+    private var lastCasting = false
 
     private val devices = DeviceRegistry(now = { System.currentTimeMillis() }, sameSubnet = ::sameSubnet)
     private val main = Handler(Looper.getMainLooper())
@@ -65,6 +69,13 @@ class SenderActivity : Activity() {
                 // 出错时把输入放开让用户重试；正常投屏中保持禁用，避免重复发起
                 codeInput.isEnabled = report.isNotEmpty()
             }
+            // 有画质说明即表示会话在跑；暂停只停送帧，按钮仍留在原位
+            val casting = SenderReport.quality.isNotEmpty()
+            if (casting != lastCasting) {
+                lastCasting = casting
+                pauseButton.visibility = if (casting) View.VISIBLE else View.GONE
+            }
+            if (casting) pauseButton.text = if (SenderControl.paused) "继续投屏" else "暂停投屏"
             main.postDelayed(this, POLL_MS)
         }
     }
@@ -98,6 +109,13 @@ class SenderActivity : Activity() {
             setPadding(0, Theme.dp(this@SenderActivity, 6), 0, Theme.dp(this@SenderActivity, 14))
         }
         root.addView(status)
+        pauseButton = Button(this).apply {
+            text = "暂停投屏"
+            setTextColor(Theme.ACCENT)
+            visibility = View.GONE
+            setOnClickListener { SenderControl.paused = !SenderControl.paused }
+        }
+        root.addView(pauseButton, matchWidth())
 
         codeInput = makeInput("投屏码", InputType.TYPE_CLASS_NUMBER)
         codeInput.filters = arrayOf(InputFilter.LengthFilter(CODE_LENGTH))

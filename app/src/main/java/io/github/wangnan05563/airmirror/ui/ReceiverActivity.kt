@@ -47,12 +47,17 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     private lateinit var overlayName: TextView
     private lateinit var promptBar: LinearLayout
     private lateinit var promptText: TextView
+    private lateinit var endBar: LinearLayout
+    private lateinit var endText: TextView
 
     private var lastPayload = ""
+    private var isCasting = false
+    private var endConfirmUntil = 0L
     private val main = Handler(Looper.getMainLooper())
     private val ticker = object : Runnable {
         override fun run() {
             refreshWaitingPage()
+            tickEndConfirm()
             main.postDelayed(this, TICK_MS)
         }
     }
@@ -84,6 +89,11 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             Gravity.TOP or Gravity.CENTER_HORIZONTAL,
         ).apply { topMargin = Theme.dp(this@ReceiverActivity, 24) })
         root.addView(buildPromptBar(), FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            Gravity.BOTTOM,
+        ))
+        root.addView(buildEndBar(), FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.WRAP_CONTENT,
             Gravity.BOTTOM,
@@ -234,6 +244,70 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         return promptBar
     }
 
+    private fun buildEndBar(): View {
+        endBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(0xE612314F.toInt())
+            visibility = View.GONE
+            setPadding(Theme.dp(this@ReceiverActivity, 16), Theme.dp(this@ReceiverActivity, 12), Theme.dp(this@ReceiverActivity, 16), Theme.dp(this@ReceiverActivity, 12))
+        }
+        endText = TextView(this).apply {
+            textSize = Theme.BODY_SP
+            setTextColor(Theme.TEXT_PRIMARY)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        endBar.addView(endText)
+        endBar.addView(Button(this).apply {
+            text = "取消"
+            setTextColor(Theme.TEXT_SECONDARY)
+            setOnClickListener { cancelEndConfirm() }
+        })
+        endBar.addView(Button(this).apply {
+            text = "结束"
+            setTextColor(Theme.DANGER)
+            setOnClickListener { confirmEnd() }
+        })
+        return endBar
+    }
+
+    /** FS-09：投屏中第一次返回只提示，10 秒内不再按就自动取消，第二次才真的结束。 */
+    @Deprecated("Activity's back callback; keeps the app free of AndroidX")
+    override fun onBackPressed() {
+        if (!isCasting) {
+            super.onBackPressed()
+            return
+        }
+        if (endBar.visibility == View.VISIBLE) confirmEnd() else showEndConfirm()
+    }
+
+    private fun showEndConfirm() {
+        endConfirmUntil = System.currentTimeMillis() + END_CONFIRM_MS
+        endBar.visibility = View.VISIBLE
+        endText.text = "结束投屏？"
+    }
+
+    private fun tickEndConfirm() {
+        if (endBar.visibility != View.VISIBLE) return
+        val leftMs = endConfirmUntil - System.currentTimeMillis()
+        if (leftMs <= 0L) {
+            cancelEndConfirm()
+            return
+        }
+        endText.text = "结束投屏？${(leftMs + 999) / 1000} 秒后自动取消"
+    }
+
+    private fun cancelEndConfirm() {
+        endConfirmUntil = 0L
+        endBar.visibility = View.GONE
+    }
+
+    private fun confirmEnd() {
+        cancelEndConfirm()
+        session?.endActiveSession()
+        statusText.text = "已结束投屏"
+    }
+
     private fun matchWidth() = LinearLayout.LayoutParams(
         LinearLayout.LayoutParams.MATCH_PARENT,
         LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -291,9 +365,11 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     }
 
     private fun onCasting(casting: Boolean, senderName: String) {
+        isCasting = casting
         if (casting) showCasting(senderName) else {
             waiting.visibility = View.VISIBLE
             promptBar.visibility = View.GONE
+            cancelEndConfirm()
         }
     }
 
@@ -336,6 +412,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     private companion object {
         const val TICK_MS = 500L
         const val OVERLAY_MS = 3_000L
+        const val END_CONFIRM_MS = 10_000L
         const val QR_PIXELS = 420
         const val LOCK_PLACEHOLDER = "------"
     }

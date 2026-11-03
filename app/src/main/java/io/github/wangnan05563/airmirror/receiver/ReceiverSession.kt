@@ -20,6 +20,7 @@ import io.github.wangnan05563.airmirror.protocol.Auth
 import io.github.wangnan05563.airmirror.protocol.Handshake
 import io.github.wangnan05563.airmirror.protocol.Limit
 import io.github.wangnan05563.airmirror.protocol.Protocol
+import io.github.wangnan05563.airmirror.protocol.SessionControl
 import java.io.IOException
 import java.net.ServerSocket
 import java.net.Socket
@@ -77,6 +78,10 @@ class ReceiverSession(
     @Volatile
     private var activeConn: StreamConnection? = null
 
+    /** 发送端暂停后不再解码，Surface 上保留最后一帧（PRD FS-09 步骤 1） */
+    @Volatile
+    private var paused = false
+
     fun start(advertisedName: String) {
         if (running) return
         running = true
@@ -104,6 +109,17 @@ class ReceiverSession(
     /** 用户在屏幕上点了允许/拒绝，或 5 秒无操作由界面代为默认放行。 */
     fun resolve(allowed: Boolean) {
         decision.offer(allowed)
+    }
+
+    /**
+     * 接收端主动结束当前会话（PRD FS-09 步骤 2/3）：先告知对端再断开，
+     * 对端应立即回设备列表，而不是等心跳超时。
+     */
+    fun endActiveSession() {
+        val conn = activeConn ?: return
+        Log.i(TAG, "end requested on screen")
+        runCatching { conn.send(Protocol.Frame(Protocol.Type.BYE)) }
+        conn.close()
     }
 
     /** Surface 就绪：若已有缓存的编码配置，立刻建解码器。 */
@@ -152,7 +168,7 @@ class ReceiverSession(
                                 val codec = decoder
                                 if (codec == null) {
                                     if (received == 1) Log.w(TAG, "video frame without surface decoder")
-                                } else {
+                                } else if (!paused) {
                                     runCatching { codec.decode(frame.payload, frame.ptsUs) }
                                         .onSuccess { decoded++ }
                                         .onFailure { Log.w(TAG, "decode failed", it) }
@@ -166,6 +182,22 @@ class ReceiverSession(
                         }
 
                         Protocol.Type.PING -> conn.send(Protocol.Frame(Protocol.Type.PONG, payload = frame.payload))
+                        Protocol.Type.CONTROL -> {
+                            val signal = SessionControl.decode(frame.payload)
+                            when (signal.op) {
+                                SessionControl.OP_PAUSE -> {
+                                    paused = true
+                                    Log.i(TAG, "paused by peer")
+                                    onStatus("${hello.deviceName} 已暂停")
+                                }
+                                SessionControl.OP_RESUME -> {
+                                    paused = false
+                                    Log.i(TAG, "resumed by peer")
+                                    onStatus("${hello.deviceName} 推流中")
+                                }
+                                else -> Unit
+                            }
+                        }
                         Protocol.Type.BYE -> return hello.deviceName
                         else -> Unit
                     }
@@ -174,8 +206,9 @@ class ReceiverSession(
                 if (running) Log.w(TAG, "connection dropped: ${e.message}")
             } finally {
                 activeConn = null
-                decoder?.release()
-                decoder = null
+                paused = false
+                // 解码器跟 Surface 同寿：会话结束时保留，下一次连接的 CONFIG 会重新配置，
+                // 否则第二台设备连进来会因 decoder 已被置空而无法上屏
                 pairing.trust.releaseSession(deviceId)
                 onCasting(false, "")
             }
@@ -306,6 +339,8 @@ class ReceiverSession(
         advertiser = null
         worker?.join(1_000)
         worker = null
+        decoder?.release()
+        decoder = null
         pairing.trust.active()?.let { pairing.trust.releaseSession(it) }
         Log.i(TAG, "session stopped")
     }

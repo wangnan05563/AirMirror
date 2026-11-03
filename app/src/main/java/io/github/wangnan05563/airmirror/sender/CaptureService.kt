@@ -28,6 +28,7 @@ import io.github.wangnan05563.airmirror.protocol.Auth
 import io.github.wangnan05563.airmirror.protocol.Handshake
 import io.github.wangnan05563.airmirror.protocol.Limit
 import io.github.wangnan05563.airmirror.protocol.Protocol
+import io.github.wangnan05563.airmirror.protocol.SessionControl
 import java.io.InterruptedIOException
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -41,6 +42,12 @@ object SenderReport {
     /** 成功建立会话后的画质说明（如「已按 1080p60 投屏 · 对方上限」）；会话结束即清空 */
     @Volatile
     var quality: String = ""
+}
+
+/** 发送端控制播放（PRD FS-09 步骤 1）：暂停只停送帧，编码器保持热态，恢复时补一个关键帧。 */
+object SenderControl {
+    @Volatile
+    var paused: Boolean = false
 }
 
 /**
@@ -127,6 +134,7 @@ class CaptureService : Service() {
         try {
             SenderReport.last = ""
             SenderReport.quality = ""
+            SenderControl.paused = false
             // 先握手、先授权，通过后才开始采集屏幕：被拒时不该已经在录屏（PRD 14.4 最小采集）
             val socket = Socket()
             socket.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
@@ -169,7 +177,20 @@ class CaptureService : Service() {
 
             var sentFrames = 0
             var lastOutputAt = System.currentTimeMillis()
+            var pauseApplied = false
             while (running) {
+                if (SenderControl.paused != pauseApplied) {
+                    pauseApplied = SenderControl.paused
+                    val payload = if (pauseApplied) SessionControl.pause() else SessionControl.resume()
+                    runCatching { conn.send(Protocol.Frame(Protocol.Type.CONTROL, payload = payload)) }
+                    SenderReport.quality = if (pauseApplied) {
+                        "已暂停投屏 · 大屏保留最后一帧"
+                    } else {
+                        qualityNote().text()
+                    }
+                    // 恢复后解码器需要关键帧才能继续出画，否则会等下一个自然 IDR
+                    if (!pauseApplied) runCatching { encoder?.requestKeyFrame() }
+                }
                 if (reconfigure.getAndSet(false)) restartEncoder()
                 val videoEncoder = encoder
                 if (videoEncoder == null) {
@@ -187,6 +208,8 @@ class CaptureService : Service() {
                     continue
                 }
                 lastOutputAt = System.currentTimeMillis()
+                // 暂停期间继续取帧但丢弃，避免编码器缓冲堆满、恢复时一次性涌出
+                if (pauseApplied) continue
                 for (frame in frames) {
                     val flags = when {
                         frame.config -> Protocol.Flags.CONFIG
@@ -330,6 +353,7 @@ class CaptureService : Service() {
     private fun cleanup() {
         running = false
         SenderReport.quality = ""
+        SenderControl.paused = false
         peerReader?.join(500)
         peerReader = null
         runCatching { connection?.close() }
