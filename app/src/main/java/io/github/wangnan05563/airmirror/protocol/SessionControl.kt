@@ -12,6 +12,9 @@ object SessionControl {
     const val OP_TAKEOVER = "takeover"
     const val OP_TAKEOVER_RESULT = "takeover_result"
 
+    /** 接收端换了解码器流水线（挂 Surface、暂停恢复），请发送端立刻补一个关键帧。 */
+    const val OP_SYNC = "sync"
+
     private const val KEY_OP = "op"
     private const val KEY_FROM = "from"
     private const val KEY_ALLOW = "allow"
@@ -23,6 +26,8 @@ object SessionControl {
     fun pause(): ByteArray = encode(Signal(OP_PAUSE, "", false))
 
     fun resume(): ByteArray = encode(Signal(OP_RESUME, "", false))
+
+    fun sync(): ByteArray = encode(Signal(OP_SYNC, "", false))
 
     fun takeover(from: String): ByteArray = encode(Signal(OP_TAKEOVER, from, false))
 

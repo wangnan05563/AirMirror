@@ -40,6 +40,18 @@ class RecoveryQualityTest {
     }
 
     @Test
+    fun `before any recovery the session tier is the negotiated one`() {
+        // 真机上踩过的坑：会话首次建编码器直接取 tier() 会得到初值 OFF，算出 0x0 档，起流即失败
+        assertEquals(QualityTier.OFF, quality.tier())
+        assertEquals(QualityTier.FHD60, quality.tierOr(QualityTier.FHD60))
+        quality.start(QualityTier.FHD60)
+        assertEquals(QualityTier.HD30, quality.tierOr(QualityTier.FHD60))
+        clock += 10_000L
+        quality.tick()
+        assertEquals(QualityTier.FHD60, quality.tierOr(QualityTier.FHD60))
+    }
+
+    @Test
     fun `stopping ends the recovery window`() {
         quality.start(QualityTier.QHD)
         quality.stop()

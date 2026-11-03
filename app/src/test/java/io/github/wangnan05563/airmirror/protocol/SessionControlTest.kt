@@ -28,6 +28,14 @@ class SessionControlTest {
     }
 
     @Test
+    fun `sync request is a signal and never reads as a ceiling`() {
+        // 老发送端把没有 op 的 CONTROL 当画质上限，新加的 sync 必须自带 op，
+        // 同时反向也不能被 Limit 认成一个空档以外的上限
+        assertEquals(SessionControl.OP_SYNC, SessionControl.decode(SessionControl.sync()).op)
+        assertTrue(Limit.decode(SessionControl.sync()).isEmpty)
+    }
+
+    @Test
     fun `a ceiling payload is not mistaken for a signal`() {
         val decoded = SessionControl.decode(Limit.encode(Limit.Ceiling(1920, 1080, 60, 12_000, "1080p60")))
         assertTrue(decoded.isEmpty)

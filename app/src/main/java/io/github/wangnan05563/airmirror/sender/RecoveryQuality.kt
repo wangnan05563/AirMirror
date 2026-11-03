@@ -31,8 +31,15 @@ class RecoveryQuality(
         restored = true
     }
 
-    /** 当前该用的档位：恢复期低一档，其余时候就是协商档。 */
+    /** 恢复期内该用的档位（原档低一档）；不在恢复期时别用它，见 [tierOr]。 */
     fun tier(): QualityTier = if (active) QualityTiers.downgrade(fullTier) else fullTier
+
+    /**
+     * 取当前档位，没在恢复时回落到本次会话的协商档 [negotiated]。
+     * 用这个而不是 [tier]：[tier] 在从未进过恢复时返回初值 OFF，
+     * 拿它建编码器会得到 0x0 的档，会话起流即失败。
+     */
+    fun tierOr(negotiated: QualityTier): QualityTier = if (active) tier() else negotiated
 
     /** 10 秒到点返回一次 true，表示该回档了。 */
     fun tick(): Boolean {

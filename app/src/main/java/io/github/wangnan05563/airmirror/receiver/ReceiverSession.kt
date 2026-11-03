@@ -127,6 +127,14 @@ class ReceiverSession(
     @Volatile
     private var loggedFirstRenderNano = 0L
 
+    /** 新解码器流水线要先拿到 IDR 才能喂帧；置位后 P 帧只丢不解。 */
+    @Volatile
+    private var awaitKeyFrame = false
+
+    /** 界面当前挂着的 Surface；会话可能在它之后才建立，所以两边都要记住。 */
+    @Volatile
+    private var surface: Surface? = null
+
     fun start(advertisedName: String) {
         if (running) return
         running = true
@@ -162,6 +170,8 @@ class ReceiverSession(
     /**
      * 接收端主动结束当前会话（PRD FS-09 步骤 2/3）：先告知对端再断开，
      * 对端应立即回设备列表，而不是等心跳超时。
+     * 大屏按键在主线程上，主线程不能收发网络，所以整段挪到一次性线程里，
+     * 并保证「先写完 BYE 再关连接」的顺序，否则对端只会看到意外断链而进入恢复窗口。
      */
     fun endActiveSession() {
         val conn = activeConn ?: return
@@ -169,22 +179,61 @@ class ReceiverSession(
         endRequested = true
         recovery.close()
         onRecovery(false)
-        runCatching { conn.send(Protocol.Frame(Protocol.Type.BYE)) }
-        conn.close()
+        thread(name = "airmirror-end") {
+            runCatching { conn.send(Protocol.Frame(Protocol.Type.BYE)) }
+                .onFailure { Log.w(TAG, "bye not delivered: ${it.message}") }
+            conn.close()
+        }
     }
 
     /** Surface 就绪：若已有缓存的编码配置，立刻建解码器。 */
     fun attachSurface(surface: Surface) {
-        val codec = VideoDecoder(surface)
-        pendingConfig?.let { config ->
+        this.surface = surface
+        startPipeline(pendingConfig)
+    }
+
+    /**
+     * 用当前 Surface 起一条解码流水线。Surface 可能比会话先到（页面一直在前台），
+     * 也可能比编码配置后到（回前台重挂），两个方向都要能接上。
+     */
+    private fun startPipeline(config: ByteArray?) {
+        val holder = surface ?: return
+        val codec = VideoDecoder(holder)
+        if (config != null) {
             runCatching { codec.configure(config) }
                 .onFailure { fallBackToOneTierLower(it) }
         }
         decoder = codec
+        // 新起的解码器手上没有 IDR，直接喂后续 P 帧会永远不出画（回前台黑屏就是这么来的）：
+        // 先只等关键帧，同时请发送端立刻补一个
+        awaitKeyFrame = true
+        requestKeyFrame()
+    }
+
+    /** 请发送端补一个关键帧（新解码器流水线要用）。 */
+    private fun requestKeyFrame() = sendControl(SessionControl.sync(), "key frame request")
+
+    /**
+     * 发给对端的信令统一走一次性线程：挂 Surface、降档这类调用点来自主线程，
+     * 而主线程收发网络会直接被系统拦掉——写在线程外的信令只会静默丢掉，
+     * 表现成新解码器等不到 IDR、或降档通知发不出去。
+     */
+    private fun sendControl(payload: ByteArray, label: String) {
+        val conn = activeConn
+        if (conn == null) {
+            Log.i(TAG, "$label skipped: no active connection")
+            return
+        }
+        thread(name = "airmirror-peer-tx") {
+            runCatching { conn.send(Protocol.Frame(Protocol.Type.CONTROL, payload = payload)) }
+                .onSuccess { Log.i(TAG, "$label sent") }
+                .onFailure { Log.w(TAG, "$label not sent: ${it.message}") }
+        }
     }
 
     fun detachSurface() {
         // 先摘引用再释放：收流线程拿到已释放的解码器时只会静默丢帧，不会抛异常
+        surface = null
         val codec = decoder
         decoder = null
         codec?.release()
@@ -206,6 +255,7 @@ class ReceiverSession(
             endRequested = false
             var received = 0
             var decoded = 0
+            var droppedUntilKey = 0
             var byeReceived = false
             try {
                 while (running) {
@@ -222,9 +272,15 @@ class ReceiverSession(
                                 pendingConfig = frame.payload
                                 runCatching { H264.unpackConfig(frame.payload) }
                                     .onSuccess { onVideoSize(it.width, it.height) }
-                                decoder?.let {
-                                    runCatching { it.configure(frame.payload) }
+                                val existing = decoder
+                                if (existing == null) {
+                                    // Surface 可能早就在前台等着了，配置到了才建流水线
+                                    startPipeline(frame.payload)
+                                } else {
+                                    runCatching { existing.configure(frame.payload) }
                                         .onFailure { error -> fallBackToOneTierLower(error) }
+                                    // 配置后面紧跟着的就是 IDR，从 IDR 起才算新流水线的第一帧
+                                    awaitKeyFrame = true
                                 }
                                 Log.i(TAG, "config received: ${frame.payload.size}B, decoder=${decoder != null}")
                                 onStatus("${hello.deviceName} 推流中")
@@ -232,18 +288,30 @@ class ReceiverSession(
                             } else {
                                 received++
                                 val codec = decoder
-                                if (codec == null) {
-                                    if (received == 1) Log.w(TAG, "video frame without surface decoder")
-                                } else if (!paused) {
-                                    runCatching { codec.decode(frame.payload, frame.ptsUs) }
-                                        .onSuccess { decoded++ }
-                                        .onFailure { Log.w(TAG, "decode failed", it) }
+                                val key = frame.flags and Protocol.Flags.KEY_FRAME != 0
+                                if (awaitKeyFrame && !key) {
+                                    // 新流水线没拿到 IDR 前喂 P 帧，解码器会一直不出画，只会把延迟样本拖没
+                                    droppedUntilKey++
+                                } else {
+                                    if (awaitKeyFrame) Log.i(TAG, "key frame after $droppedUntilKey drops")
+                                    awaitKeyFrame = false
+                                    if (codec == null) {
+                                        if (received == 1) Log.w(TAG, "video frame without surface decoder")
+                                    } else if (!paused) {
+                                        runCatching { codec.decode(frame.payload, frame.ptsUs) }
+                                            .onSuccess { decoded++ }
+                                            .onFailure { Log.w(TAG, "decode failed", it) }
+                                    }
                                 }
                                 if (received % 30 == 0) {
                                     val rendered = codec?.renderedFrames ?: 0L
                                     logFirstFrame(codec)
                                     val latency = codec?.latency
-                                    Log.i(TAG, "received=$received decoded=$decoded rendered=$rendered ${latency?.summary() ?: ""}")
+                                    Log.i(
+                                        TAG,
+                                        "received=$received decoded=$decoded rendered=$rendered " +
+                                            "等关键帧丢 $droppedUntilKey ${latency?.summary() ?: ""}",
+                                    )
                                     onStatus(
                                         "${hello.deviceName} · 收 $received / 解码 $decoded / 渲染 $rendered 帧" +
                                             " · P90 ${latency?.percentile(90) ?: 0}ms",
@@ -535,9 +603,7 @@ class ReceiverSession(
             return
         }
         ceiling = lower
-        activeConn?.let { conn ->
-            runCatching { conn.send(Protocol.Frame(Protocol.Type.CONTROL, payload = Limit.encode(ceilingOf(lower)))) }
-        }
+        sendControl(Limit.encode(ceilingOf(lower)), "ceiling ${lower.label}")
         onStatus("已切换到兼容模式 · ${lower.label}")
         onNotice("已切换到兼容模式 · ${lower.label}")
     }

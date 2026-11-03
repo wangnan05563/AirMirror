@@ -152,6 +152,9 @@ class CaptureService : Service() {
 
     private val reconfigure = java.util.concurrent.atomic.AtomicBoolean(false)
 
+    /** 接收端换了解码器流水线时会请求关键帧；编码器只能在采集线程上操作，所以先置位再由循环消费。 */
+    private val syncRequested = java.util.concurrent.atomic.AtomicBoolean(false)
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -182,13 +185,20 @@ class CaptureService : Service() {
 
     /** 交凭据并等接收端表态；被拒时把原因回写界面，一帧都不推。 */
     private fun authorize(conn: StreamConnection, deviceId: String, credential: String): Boolean {
+        // 14.1「投屏码校验：提交到结果 ≤1 秒」的取样点，含网络往返与接收端判定
+        val sentAt = System.nanoTime()
         conn.send(Protocol.Frame(Protocol.Type.AUTH, payload = Auth.request(deviceId, credential)))
         val reply = conn.receive()
         if (reply == null || reply.type != Protocol.Type.AUTH_RESULT) {
+            Log.w(TAG, "credential check timed out after ${(System.nanoTime() - sentAt) / 1_000_000}ms")
             SenderReport.last = "接收端未应答授权"
             return false
         }
         val result = Auth.parseResult(reply.payload)
+        Log.i(
+            TAG,
+            "credential check ${(System.nanoTime() - sentAt) / 1_000_000}ms accepted=${result.accepted}",
+        )
         SenderReport.last = when {
             result.accepted -> ""
             result.reason.isBlank() -> ErrorNotice.textFor(ErrorNotice.Cause.REFUSED_BY_USER)
@@ -213,6 +223,7 @@ class CaptureService : Service() {
             SenderControl.clearTakeover()
             yielded = false
             peerGone = false
+            syncRequested.set(false)
             recoveryQuality.stop()
             this.serviceName = serviceName
             // 先握手、先授权，通过后才开始采集屏幕：被拒时不该已经在录屏（PRD 14.4 最小采集）
@@ -302,6 +313,13 @@ class CaptureService : Service() {
                     SenderReport.quality = qualityNote().text()
                     reconfigure.set(true)
                 }
+                if (syncRequested.getAndSet(false)) {
+                    // 只记「收到了」还不够：真正的证据是随后这一帧 IDR 有没有出去
+                    val encoderHere = encoder
+                    Log.i(TAG, "sync requested, encoder=${if (encoderHere == null) "null" else "alive"}")
+                    runCatching { encoderHere?.requestKeyFrame() }
+                        .onFailure { Log.w(TAG, "sync frame request failed: ${it.message}") }
+                }
                 if (reconfigure.getAndSet(false)) restartEncoder()
                 val videoEncoder = encoder
                 if (videoEncoder == null) {
@@ -335,12 +353,17 @@ class CaptureService : Service() {
                     }
                     sentFrames++
                     if (sentFrames == 1 || sentFrames % 60 == 0) {
-                        // 帧时间戳即采集时刻（nanoTime 基准），这里的差值就是「采集→编码出帧」
-                        val encodeLagMs = (System.nanoTime() / 1_000 - frame.ptsUs) / 1_000
+                        // 帧时间戳即采集时刻（nanoTime 基准），这里的差值就是「采集→编码出帧」。
+                        // 编码配置帧的 pts 是 0，不参与计算，否则报出一个假的上亿毫秒
+                        val lagText = if (frame.ptsUs > 0L) {
+                            " encode+${(System.nanoTime() / 1_000 - frame.ptsUs) / 1_000}ms"
+                        } else {
+                            ""
+                        }
                         Log.i(
                             TAG,
                             "sent $sentFrames frames, last=${frame.data.size}B key=${frame.keyFrame} " +
-                                "config=${frame.config} encode+${encodeLagMs}ms",
+                                "config=${frame.config}$lagText",
                         )
                     }
                 }
@@ -563,6 +586,10 @@ class CaptureService : Service() {
                                     )
                                     SenderReport.quality = "${signal.from} 请求接管投屏"
                                 }
+                                SessionControl.OP_SYNC -> {
+                                    Log.i(TAG, "peer restarted its decoder, sending a key frame")
+                                    syncRequested.set(true)
+                                }
                                 // 没有 op 的 CONTROL 仍是本机画质上限（PRD 8.4）
                                 "" -> applyCeiling(Limit.decode(frame.payload))
                                 else -> Unit
@@ -570,6 +597,8 @@ class CaptureService : Service() {
                         }
 
                         Protocol.Type.BYE -> {
+                            // 大屏按了「结束投屏」：这是有序收尾，不进恢复窗口
+                            Log.i(TAG, "peer ended session (bye), yielded=$yielded")
                             SenderReport.last = if (yielded) {
                                 "已让出投屏"
                             } else {
@@ -624,8 +653,14 @@ class CaptureService : Service() {
     private fun qualityText(): String =
         if (recoveryQuality.active) recoveryQuality.text() else qualityNote().text()
 
+    /**
+     * 当前该用的档位：恢复期用降一档，其余时候用协商档。
+     * 按 OFF 建编码器会得到 0x0，整条链路起流即失败。
+     */
+    private fun currentTier(): QualityTier = recoveryQuality.tierOr(negotiatedTier())
+
     private fun currentProfile(): EncodeProfile {
-        val profile = QualityTiers.profile(recoveryQuality.tier(), sourceWidth, sourceHeight)
+        val profile = QualityTiers.profile(currentTier(), sourceWidth, sourceHeight)
         Log.i(TAG, "encode ${profile.width}x${profile.height}@${profile.fps} tier=${profile.tier.label} br=${profile.bitRateKbps}kbps")
         return profile
     }
