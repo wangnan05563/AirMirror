@@ -45,6 +45,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     private lateinit var statusText: TextView
     private lateinit var gradeText: TextView
     private lateinit var overlayName: TextView
+    private lateinit var noticeOverlay: TextView
     private lateinit var promptBar: LinearLayout
     private lateinit var promptText: TextView
     private lateinit var endBar: LinearLayout
@@ -88,6 +89,11 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             FrameLayout.LayoutParams.WRAP_CONTENT,
             Gravity.TOP or Gravity.CENTER_HORIZONTAL,
         ).apply { topMargin = Theme.dp(this@ReceiverActivity, 24) })
+        root.addView(buildNoticeOverlay(), FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            Gravity.TOP or Gravity.CENTER_HORIZONTAL,
+        ).apply { topMargin = Theme.dp(this@ReceiverActivity, 72) })
         root.addView(buildPromptBar(), FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -217,6 +223,28 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         return overlayName
     }
 
+    /** 投屏中状态栏和待连接页都不可见：暂停、接管请求、接管超时等状态在这里短暂提示。 */
+    private fun buildNoticeOverlay(): TextView {
+        noticeOverlay = TextView(this).apply {
+            textSize = Theme.BODY_SP
+            setTextColor(Theme.ACCENT)
+            setBackgroundColor(0xCC0B1F3A.toInt())
+            setPadding(Theme.dp(this@ReceiverActivity, 20), Theme.dp(this@ReceiverActivity, 10), Theme.dp(this@ReceiverActivity, 20), Theme.dp(this@ReceiverActivity, 10))
+            visibility = View.GONE
+        }
+        return noticeOverlay
+    }
+
+    private fun showNotice(text: String) {
+        if (!isCasting || text.isEmpty()) return
+        noticeOverlay.text = text
+        noticeOverlay.visibility = View.VISIBLE
+        main.removeCallbacks(hideNotice)
+        main.postDelayed(hideNotice, NOTICE_MS)
+    }
+
+    private val hideNotice = Runnable { noticeOverlay.visibility = View.GONE }
+
     private fun buildPromptBar(): View {
         promptBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -326,6 +354,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             onStatus = { text -> runOnUiThread { statusText.text = text } },
             onPrompt = { prompt -> runOnUiThread { showPrompt(prompt) } },
             onCasting = { casting, sender -> runOnUiThread { onCasting(casting, sender) } },
+            onNotice = { text -> runOnUiThread { showNotice(text) } },
         ).also { it.start(name) }
         session = active
         val renderer = dlna ?: DlnaServer(this) { text -> runOnUiThread { statusText.text = text } }
@@ -369,6 +398,8 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         if (casting) showCasting(senderName) else {
             waiting.visibility = View.VISIBLE
             promptBar.visibility = View.GONE
+            main.removeCallbacks(hideNotice)
+            noticeOverlay.visibility = View.GONE
             cancelEndConfirm()
         }
     }
@@ -402,6 +433,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     override fun onDestroy() {
         main.removeCallbacks(ticker)
         main.removeCallbacks(hideOverlay)
+        main.removeCallbacks(hideNotice)
         session?.stop()
         session = null
         dlna?.stop()
@@ -412,6 +444,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     private companion object {
         const val TICK_MS = 500L
         const val OVERLAY_MS = 3_000L
+        const val NOTICE_MS = 3_000L
         const val END_CONFIRM_MS = 10_000L
         const val QR_PIXELS = 420
         const val LOCK_PLACEHOLDER = "------"

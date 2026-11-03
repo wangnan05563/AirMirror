@@ -41,6 +41,8 @@ class ReceiverSession(
     private val onStatus: (String) -> Unit,
     private val onPrompt: (Prompt) -> Unit,
     private val onCasting: (Boolean, String) -> Unit,
+    /** 投屏中待连接页不可见：暂停、接管这类一次性事件单独走浮层，周期性统计不进来。 */
+    private val onNotice: (String) -> Unit = onStatus,
 ) {
     /** 首次连接的大屏确认请求；界面必须在 [autoAllowAt] 之前调用 [ReceiverSession.resolve]。 */
     data class Prompt(val deviceId: String, val deviceName: String, val autoAllowAt: Long)
@@ -207,11 +209,13 @@ class ReceiverSession(
                                     paused = true
                                     Log.i(TAG, "paused by peer")
                                     onStatus("${hello.deviceName} 已暂停")
+                                    onNotice("${hello.deviceName} 已暂停")
                                 }
                                 SessionControl.OP_RESUME -> {
                                     paused = false
                                     Log.i(TAG, "resumed by peer")
                                     onStatus("${hello.deviceName} 推流中")
+                                    onNotice("${hello.deviceName} 推流中")
                                 }
                                 SessionControl.OP_TAKEOVER_RESULT -> {
                                     Log.i(TAG, "takeover answer allow=${signal.allow}")
@@ -301,6 +305,7 @@ class ReceiverSession(
         try {
             Log.i(TAG, "takeover: ${verdict.deviceName} requests, current=$oldId")
             onStatus("${verdict.deviceName} 请求接管")
+            onNotice("${verdict.deviceName} 请求接管")
             takeoverAnswers.clear()
             val notified = runCatching {
                 old.send(Protocol.Frame(Protocol.Type.CONTROL, payload = SessionControl.takeover(verdict.deviceName)))
@@ -317,6 +322,7 @@ class ReceiverSession(
                 false -> {
                     Log.i(TAG, "takeover refused by $oldId")
                     onStatus("已拒绝 ${verdict.deviceName} 的接管请求，继续投屏")
+                    onNotice("已拒绝 ${verdict.deviceName} 的接管请求")
                     refuse(conn, "已有设备在投屏")
                     return null
                 }
@@ -324,6 +330,7 @@ class ReceiverSession(
                     // PRD FS-09「接管超时」：60 秒无响应按拒绝处理，原会话不动
                     Log.i(TAG, "takeover timed out, keeping $oldId")
                     onStatus("对方未响应，已保留当前会话")
+                    onNotice("对方未响应，已保留当前会话")
                     refuse(conn, "已有设备在投屏")
                     return null
                 }
@@ -347,6 +354,7 @@ class ReceiverSession(
         if (promoted == null) {
             refuse(conn, "已有设备在投屏")
             onStatus("${verdict.deviceName} 接管失败，已保留当前会话")
+            onNotice("${verdict.deviceName} 接管失败，已保留当前会话")
             return null
         }
         Log.i(TAG, "takeover complete: ${promoted.deviceName}")
@@ -395,6 +403,7 @@ class ReceiverSession(
         val lower = QualityTiers.downgrade(ceiling)
         if (lower == ceiling) {
             onStatus(ErrorNotice.textFor(ErrorNotice.Cause.DECODE_UNSUPPORTED))
+            onNotice(ErrorNotice.textFor(ErrorNotice.Cause.DECODE_UNSUPPORTED))
             return
         }
         ceiling = lower
@@ -402,6 +411,7 @@ class ReceiverSession(
             runCatching { conn.send(Protocol.Frame(Protocol.Type.CONTROL, payload = Limit.encode(ceilingOf(lower)))) }
         }
         onStatus("已切换到兼容模式 · ${lower.label}")
+        onNotice("已切换到兼容模式 · ${lower.label}")
     }
 
     private fun ceilingOf(tier: QualityTier) = Limit.Ceiling(tier.width, tier.height, tier.fps, tier.maxBitRateKbps, tier.label)
