@@ -49,13 +49,49 @@ class TransportMachineTest {
     }
 
     @Test
-    fun playBeforePreparedStaysPlayingAfterLoad() {
+    fun playBeforePreparedStaysTransitioningUntilLoaded() {
         val m = TransportMachine()
         m.setUri(meta)
         m.onPlayInvoked()
-        assertEquals("PLAYING", m.transportState())
+        // 画面还没开始走就报 PLAYING，控制点会一直轮询一个黑屏
+        assertEquals("TRANSITIONING", m.transportState())
+        assertEquals("0", m.currentSpeed())
         m.onLoaded()
         assertEquals("PLAYING", m.transportState())
+        assertEquals("1", m.currentSpeed())
+    }
+
+    @Test
+    fun playPendingIsDroppedByStop() {
+        val m = TransportMachine()
+        m.setUri(meta)
+        m.onPlayInvoked()
+        m.onStopInvoked()
+        assertEquals("STOPPED", m.transportState())
+        m.onLoaded()
+        assertEquals("STOPPED", m.transportState())
+    }
+
+    @Test
+    fun playPendingIsDroppedByFailure() {
+        val m = TransportMachine()
+        m.setUri(meta)
+        m.onPlayInvoked()
+        m.onPlaybackFailed()
+        assertEquals("STOPPED", m.transportState())
+        // 失败后迟到的 prepared 不能把状态又抬回 PLAYING
+        m.onLoaded()
+        assertEquals("STOPPED", m.transportState())
+    }
+
+    @Test
+    fun newUriClearsPendingPlay() {
+        val m = TransportMachine()
+        m.setUri(meta)
+        m.onPlayInvoked()
+        m.setUri(meta)
+        m.onLoaded()
+        assertEquals("STOPPED", m.transportState())
     }
 
     @Test

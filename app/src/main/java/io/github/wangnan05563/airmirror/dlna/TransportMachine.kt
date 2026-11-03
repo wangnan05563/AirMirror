@@ -23,6 +23,10 @@ class TransportMachine {
     var playMode: String = "NORMAL"
         private set
 
+    /** Play 先于媒体就绪时记下意图，等 onLoaded 兑现，避免中途谎报 PLAYING。 */
+    @Volatile
+    private var playRequested: Boolean = false
+
     /** 控制点读到的 TransportState。 */
     fun transportState(): String = when (state) {
         State.NO_MEDIA -> "NO_MEDIA_PRESENT"
@@ -46,16 +50,31 @@ class TransportMachine {
     /** 收到新媒体描述：进入 LOADING，由服务端异步准备；未就绪前 Play 视为非法。 */
     fun setUri(meta: Upnp.MediaMeta?) {
         media = meta
+        playRequested = false
         state = if (meta == null) State.NO_MEDIA else State.LOADING
     }
 
-    /** 媒体准备完成（尚未起播）。若期间已收到 Play，则保持 PLAYING 不回退。 */
+    /**
+     * 媒体准备完成（尚未起播）。期间收到过 Play 就直接进 PLAYING（播放器侧已经
+     * 排队了 start），否则回 STOPPED 等控制点再发。
+     */
     fun onLoaded() {
-        if (state == State.LOADING) state = State.STOPPED
+        if (state == State.LOADING) state = if (playRequested) State.PLAYING else State.STOPPED
+        playRequested = false
     }
 
+    /**
+     * Play 落在还没就绪的媒体上时**不能**先报 PLAYING。
+     * UPnP 口径的 PLAYING 意味着画面真的在走；提前报会让控制点以为一切正常而持续
+     * 轮询进度，大屏却还黑着——取流失效时尤其明显。未就绪期间保持 TRANSITIONING，
+     * 由 onLoaded 在真正起播的那一刻补上。
+     */
     fun onPlayInvoked() {
-        if (state == State.LOADING || state == State.STOPPED || state == State.PAUSED) state = State.PLAYING
+        when (state) {
+            State.LOADING -> playRequested = true
+            State.STOPPED, State.PAUSED -> state = State.PLAYING
+            else -> Unit
+        }
     }
 
     fun onPauseInvoked() {
@@ -63,6 +82,7 @@ class TransportMachine {
     }
 
     fun onStopInvoked() {
+        playRequested = false
         if (media != null) state = State.STOPPED
     }
 
@@ -76,6 +96,7 @@ class TransportMachine {
      * 否则控制点会以为还在播并一直轮询进度。
      */
     fun onPlaybackFailed() {
+        playRequested = false
         if (media != null) state = State.STOPPED
     }
 
