@@ -335,9 +335,12 @@ class CaptureService : Service() {
                     }
                     sentFrames++
                     if (sentFrames == 1 || sentFrames % 60 == 0) {
+                        // 帧时间戳即采集时刻（nanoTime 基准），这里的差值就是「采集→编码出帧」
+                        val encodeLagMs = (System.nanoTime() / 1_000 - frame.ptsUs) / 1_000
                         Log.i(
                             TAG,
-                            "sent $sentFrames frames, last=${frame.data.size}B key=${frame.keyFrame} config=${frame.config}",
+                            "sent $sentFrames frames, last=${frame.data.size}B key=${frame.keyFrame} " +
+                                "config=${frame.config} encode+${encodeLagMs}ms",
                         )
                     }
                 }

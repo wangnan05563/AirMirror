@@ -4,6 +4,7 @@ import android.media.MediaCodec
 import android.media.MediaFormat
 import android.os.Build
 import android.view.Surface
+import io.github.wangnan05563.airmirror.perf.FrameLatency
 import java.nio.ByteBuffer
 
 /** 接收端 H.264 硬解码，输出到 [Surface]。 */
@@ -20,12 +21,23 @@ class VideoDecoder(private val surface: Surface) {
     var renderedFrames = 0L
         private set
 
+    /** 采集→上屏的分位数：以帧时间戳（nanoTime 基准）与投递显示的时刻之差为样本。 */
+    val latency = FrameLatency()
+
+    /** 本解码器第一次真正投递显示的时刻（nanoTime），未出画为 0；接收端据此算首帧耗时。 */
+    @Volatile
+    var firstRenderAtNano = 0L
+        private set
+
     /** 用发送端的 SPS/PPS（内含宽高）配置解码器。 */
     fun configure(configPayload: ByteArray) {
         if (released) return
         val config = H264.unpackConfig(configPayload)
         width = config.width
         height = config.height
+        // 换配置就是换一条流水线，首帧与延迟分布都按新流水线重新计
+        latency.reset()
+        firstRenderAtNano = 0L
         val units = H264.splitAnnexB(H264.normalize(config.annexB))
         require(units.isNotEmpty()) { "empty codec config" }
         codec?.let { runCatching { it.stop() }; runCatching { it.release() } }
@@ -72,6 +84,11 @@ class VideoDecoder(private val surface: Surface) {
                 index >= 0 -> {
                     decoder.releaseOutputBuffer(index, true)
                     renderedFrames++
+                    val nowNano = System.nanoTime()
+                    if (firstRenderAtNano == 0L) firstRenderAtNano = nowNano
+                    if (info.presentationTimeUs > 0) {
+                        latency.record((nowNano / 1_000 - info.presentationTimeUs) / 1_000)
+                    }
                 }
             }
         }

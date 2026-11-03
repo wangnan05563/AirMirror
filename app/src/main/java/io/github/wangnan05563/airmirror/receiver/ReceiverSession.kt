@@ -116,6 +116,17 @@ class ReceiverSession(
     @Volatile
     private var hasCast = false
 
+    /** 授权通过与编码配置到达的时刻，用来算首帧时延（PRD FS-01「首帧时延」、14.1 起播） */
+    @Volatile
+    private var grantedAtNano = 0L
+
+    @Volatile
+    private var configAtNano = 0L
+
+    /** 已打点的首帧时刻：换配置后解码器会重置首帧，这里按新时刻再打一次（降档后的首帧同样要量） */
+    @Volatile
+    private var loggedFirstRenderNano = 0L
+
     fun start(advertisedName: String) {
         if (running) return
         running = true
@@ -207,6 +218,7 @@ class ReceiverSession(
                         Protocol.Type.VIDEO -> {
                             if (frame.flags and Protocol.Flags.CONFIG != 0) {
                                 hasCast = true
+                                configAtNano = System.nanoTime()
                                 pendingConfig = frame.payload
                                 runCatching { H264.unpackConfig(frame.payload) }
                                     .onSuccess { onVideoSize(it.width, it.height) }
@@ -229,8 +241,13 @@ class ReceiverSession(
                                 }
                                 if (received % 30 == 0) {
                                     val rendered = codec?.renderedFrames ?: 0L
-                                    Log.i(TAG, "received=$received decoded=$decoded rendered=$rendered")
-                                    onStatus("${hello.deviceName} · 收 $received / 解码 $decoded / 渲染 $rendered 帧")
+                                    logFirstFrame(codec)
+                                    val latency = codec?.latency
+                                    Log.i(TAG, "received=$received decoded=$decoded rendered=$rendered ${latency?.summary() ?: ""}")
+                                    onStatus(
+                                        "${hello.deviceName} · 收 $received / 解码 $decoded / 渲染 $rendered 帧" +
+                                            " · P90 ${latency?.percentile(90) ?: 0}ms",
+                                    )
                                 }
                             }
                         }
@@ -482,6 +499,8 @@ class ReceiverSession(
     }
 
     private fun grant(conn: StreamConnection, deviceName: String, permanent: Boolean, deviceId: String) {
+        grantedAtNano = System.nanoTime()
+        configAtNano = 0L
         if (permanent) pairing.persistTrusted()
         // 正常授权 / 恢复成功都代表窗口结束，收掉大屏上的恢复提示
         recovery.close()
@@ -524,6 +543,19 @@ class ReceiverSession(
     }
 
     private fun ceilingOf(tier: QualityTier) = Limit.Ceiling(tier.width, tier.height, tier.fps, tier.maxBitRateKbps, tier.label)
+
+    /**
+     * 首帧时延打点（PRD 14.1 与 FS-01「在规定的时间内出现首帧」）：
+     * 分别给「编码配置到达→上屏」和「授权通过→上屏」两个口径，后者含协商与首帧编码等待。
+     */
+    private fun logFirstFrame(decoder: VideoDecoder?) {
+        val first = decoder?.firstRenderAtNano ?: 0L
+        if (first == 0L || first == loggedFirstRenderNano) return
+        loggedFirstRenderNano = first
+        val fromConfig = if (configAtNano > 0L) (first - configAtNano) / 1_000_000 else -1L
+        val fromAuth = if (grantedAtNano > 0L) (first - grantedAtNano) / 1_000_000 else -1L
+        Log.i(TAG, "first frame config+${fromConfig}ms auth+${fromAuth}ms")
+    }
 
     private fun refuse(conn: StreamConnection, reason: String) {
         runCatching { conn.send(Protocol.Frame(Protocol.Type.AUTH_RESULT, payload = Auth.result(false, reason))) }

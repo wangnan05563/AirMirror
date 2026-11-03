@@ -41,6 +41,9 @@ class DlnaPlayer {
     var onPreparedCallback: (() -> Unit)? = null
     var onCompletedCallback: (() -> Unit)? = null
 
+    /** 起播请求的时刻（nanoTime），首帧到达即打点；仅主线程读写（PRD 14.1「视频推送起播」）。 */
+    private var playAtNano = 0L
+
     fun attach(holder: SurfaceHolder?) {
         main.post {
             this.holder = holder
@@ -61,11 +64,20 @@ class DlnaPlayer {
         main.post {
             releasePlayer()
             pendingPlay = false
+            playAtNano = 0L
             val mediaPlayer = MediaPlayer()
             player = mediaPlayer
             try {
                 mediaPlayer.setDataSource(uri)
                 bindSurface(mediaPlayer, holder)
+                mediaPlayer.setOnInfoListener { _, what, _ ->
+                    if (what == MediaPlayer.MEDIA_INFO_VIDEO_RENDERING_START && playAtNano > 0L) {
+                        val firstFrameMs = (System.nanoTime() - playAtNano) / 1_000_000
+                        playAtNano = 0L
+                        Log.i(TAG, "first frame ${firstFrameMs}ms after play")
+                    }
+                    false
+                }
                 mediaPlayer.setOnPreparedListener {
                     prepared = true
                     if (pendingPlay) start(it)
@@ -107,6 +119,8 @@ class DlnaPlayer {
 
     fun play() {
         main.post {
+            // 起播计时从 Play 落到主线程开始，含「还没准备好」的等待
+            playAtNano = System.nanoTime()
             val mediaPlayer = player ?: return@post
             if (prepared) start(mediaPlayer) else pendingPlay = true
         }
