@@ -11,6 +11,7 @@ import io.github.wangnan05563.airmirror.device.GradePolicy
 import io.github.wangnan05563.airmirror.device.QualityTier
 import io.github.wangnan05563.airmirror.device.QualityTiers
 import io.github.wangnan05563.airmirror.error.ErrorNotice
+import io.github.wangnan05563.airmirror.media.H264
 import io.github.wangnan05563.airmirror.media.VideoDecoder
 import io.github.wangnan05563.airmirror.net.ServiceAdvertiser
 import io.github.wangnan05563.airmirror.net.StreamConnection
@@ -43,6 +44,8 @@ class ReceiverSession(
     private val onCasting: (Boolean, String) -> Unit,
     /** 投屏中待连接页不可见：暂停、接管这类一次性事件单独走浮层，周期性统计不进来。 */
     private val onNotice: (String) -> Unit = onStatus,
+    /** 新编码配置的宽高：大屏据此等比摆放画面并跟随手机旋转（PRD FS-08）。 */
+    private val onVideoSize: (Int, Int) -> Unit = { _, _ -> },
 ) {
     /** 首次连接的大屏确认请求；界面必须在 [autoAllowAt] 之前调用 [ReceiverSession.resolve]。 */
     data class Prompt(val deviceId: String, val deviceName: String, val autoAllowAt: Long)
@@ -176,6 +179,8 @@ class ReceiverSession(
                         Protocol.Type.VIDEO -> {
                             if (frame.flags and Protocol.Flags.CONFIG != 0) {
                                 pendingConfig = frame.payload
+                                runCatching { H264.unpackConfig(frame.payload) }
+                                    .onSuccess { onVideoSize(it.width, it.height) }
                                 decoder?.let {
                                     runCatching { it.configure(frame.payload) }
                                         .onFailure { error -> fallBackToOneTierLower(error) }

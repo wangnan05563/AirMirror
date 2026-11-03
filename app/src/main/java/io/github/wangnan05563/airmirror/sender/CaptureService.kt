@@ -113,6 +113,27 @@ class CaptureService : Service() {
     @Volatile
     private var yielded = false
 
+    private var displayManager: DisplayManager? = null
+
+    /** 手机旋转时交换采集宽高并重建编码器，大屏才能跟着换方向（PRD FS-08 步骤 2）。 */
+    private val displayListener = object : DisplayManager.DisplayListener {
+        override fun onDisplayAdded(displayId: Int) = Unit
+        override fun onDisplayRemoved(displayId: Int) = Unit
+        override fun onDisplayChanged(displayId: Int) {
+            if (displayId != android.view.Display.DEFAULT_DISPLAY) return
+            val metrics = DisplayMetrics()
+            @Suppress("DEPRECATION")
+            (getSystemService(WINDOW_SERVICE) as WindowManager).defaultDisplay.getRealMetrics(metrics)
+            val width = metrics.widthPixels and 0xFFFFFFFE.toInt()
+            val height = metrics.heightPixels and 0xFFFFFFFE.toInt()
+            if (width == sourceWidth && height == sourceHeight) return
+            Log.i(TAG, "display rotated: ${sourceWidth}x$sourceHeight -> ${width}x$height")
+            sourceWidth = width
+            sourceHeight = height
+            reconfigure.set(true)
+        }
+    }
+
     private val reconfigure = java.util.concurrent.atomic.AtomicBoolean(false)
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -208,6 +229,9 @@ class CaptureService : Service() {
             }
             SenderReport.quality = qualityNote().text()
             watchPeer(conn)
+            displayManager = (getSystemService(DISPLAY_SERVICE) as DisplayManager).also {
+                it.registerDisplayListener(displayListener, null)
+            }
 
             openEncoder(mediaProjection, currentProfile())
 
@@ -424,6 +448,8 @@ class CaptureService : Service() {
         SenderReport.quality = ""
         SenderControl.paused = false
         SenderControl.clearTakeover()
+        displayManager?.unregisterDisplayListener(displayListener)
+        displayManager = null
         peerReader?.join(500)
         peerReader = null
         runCatching { connection?.close() }

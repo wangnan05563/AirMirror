@@ -2,6 +2,7 @@ package io.github.wangnan05563.airmirror.pairing
 
 import android.content.Context
 import android.content.SharedPreferences
+import io.github.wangnan05563.airmirror.device.DisplayMode
 import java.util.UUID
 
 /**
@@ -39,11 +40,34 @@ class DeviceStore(context: Context) {
         prefs.edit().putBoolean(KEY_AUTO_ALLOW, enabled).apply()
     }
 
+    /** 显示模式按设备持久化，重启后保持（PRD FS-08 验收「设置持久」）。 */
+    fun displayMode(): DisplayMode =
+        DisplayMode.parse(prefs.getString(KEY_DISPLAY_MODE, null))
+
+    fun saveDisplayMode(mode: DisplayMode) {
+        prefs.edit().putString(KEY_DISPLAY_MODE, mode.name).apply()
+    }
+
+    fun followRotation(): Boolean = prefs.getBoolean(KEY_FOLLOW_ROTATION, true)
+
+    fun saveFollowRotation(follow: Boolean) {
+        prefs.edit().putBoolean(KEY_FOLLOW_ROTATION, follow).apply()
+    }
+
+    fun portraitLabel(): Boolean = prefs.getBoolean(KEY_PORTRAIT_LABEL, true)
+
+    fun savePortraitLabel(show: Boolean) {
+        prefs.edit().putBoolean(KEY_PORTRAIT_LABEL, show).apply()
+    }
+
     private companion object {
         const val FILE = "airmirror-pairing"
         const val KEY_ID = "device_id"
         const val KEY_TRUSTED = "trusted"
         const val KEY_NAME = "device_name"
         const val KEY_AUTO_ALLOW = "auto_allow"
+        const val KEY_DISPLAY_MODE = "display_mode"
+        const val KEY_FOLLOW_ROTATION = "follow_rotation"
+        const val KEY_PORTRAIT_LABEL = "portrait_label"
     }
 }
