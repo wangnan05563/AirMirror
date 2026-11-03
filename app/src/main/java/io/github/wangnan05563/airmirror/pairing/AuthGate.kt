@@ -18,6 +18,16 @@ class AuthGate(
         /** 需要大屏确认；[autoAllowAt] 为界面上限时刻，到点按默认策略放行。 */
         data class PendingPrompt(val deviceId: String, val deviceName: String, val autoAllowAt: Long) : Verdict
 
+        /**
+         * 凭据有效但已有别的设备在投屏（PRD FS-09 步骤 4）：可向当前发送端申请接管，
+         * 而不是直接拒绝。未通过凭据的设备只会拿到 [Rejected] + [Refused.SESSION_BUSY]。
+         */
+        data class TakeoverRequired(
+            val deviceId: String,
+            val deviceName: String,
+            val permanent: Boolean,
+        ) : Verdict
+
         data class Rejected(val reason: Refused, val secondsLeft: Int) : Verdict
     }
 
@@ -29,6 +39,13 @@ class AuthGate(
     }
 
     fun decline(deviceId: String) = trust.deny(deviceId)
+
+    /**
+     * 当前发送端允许接管后，把活动会话从旧设备换到 [deviceId]。
+     * 旧会话必须先释放；仍被占用时返回 null，调用方保留原会话。
+     */
+    fun promote(deviceId: String, deviceName: String, permanent: Boolean): Verdict.Authorized? =
+        if (trust.acquireSession(deviceId)) Verdict.Authorized(deviceName, permanent) else null
 
     fun authorize(deviceId: String, deviceName: String, credential: String): Verdict {
         val id = deviceId.ifBlank { "unknown" }
@@ -59,7 +76,7 @@ class AuthGate(
                     return if (trust.acquireSession(id)) {
                         Verdict.Authorized(deviceName, permanent = false)
                     } else {
-                        Verdict.Rejected(Refused.SESSION_BUSY, 0)
+                        Verdict.TakeoverRequired(id, deviceName, permanent = false)
                     }
                 }
             }
@@ -68,7 +85,7 @@ class AuthGate(
             return if (trust.acquireSession(id)) {
                 Verdict.Authorized(deviceName, permanent = true)
             } else {
-                Verdict.Rejected(Refused.SESSION_BUSY, 0)
+                Verdict.TakeoverRequired(id, deviceName, permanent = true)
             }
         }
         val held = trust.active()

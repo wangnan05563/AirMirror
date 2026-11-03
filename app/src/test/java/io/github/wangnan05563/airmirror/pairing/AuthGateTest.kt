@@ -128,15 +128,48 @@ class AuthGateTest {
     }
 
     @Test
-    fun onlyOneDeviceMayCastAtATime() {
+    fun onlyOneDeviceMayCastAtATimeAndTheSecondValidOneMayAskToTakeOver() {
         val subject = gate(codes = intArrayOf(123_456, 654_321))
         assertTrue(subject.authorize("phone-a", "a", "123456") is AuthGate.Verdict.Authorized)
+        val verdict = subject.authorize("phone-b", "b", "654321") as AuthGate.Verdict.TakeoverRequired
+        assertEquals("phone-b", verdict.deviceId)
+        assertEquals("b", verdict.deviceName)
+        assertEquals(false, verdict.permanent)
+        // 原会话未释放前不允许强插
+        assertEquals("phone-a", trust.active())
+        assertEquals(null, subject.promote("phone-b", "b", permanent = false))
+        trust.releaseSession("phone-a")
+        assertEquals(
+            AuthGate.Verdict.Authorized("b", permanent = false),
+            subject.promote("phone-b", "b", permanent = false),
+        )
+        assertEquals("phone-b", trust.active())
+    }
+
+    @Test
+    fun aTrustedDeviceCanRequestTakeoverToo() {
+        val subject = gate(codes = intArrayOf(123_456))
+        subject.confirm("phone-a", "a")
+        subject.confirm("phone-b", "b")
+        trust.acquireSession("phone-a")
+        val verdict = subject.authorize("phone-b", "b", "") as AuthGate.Verdict.TakeoverRequired
+        assertEquals(true, verdict.permanent)
+        trust.releaseSession("phone-a")
+        assertEquals(
+            AuthGate.Verdict.Authorized("b", permanent = true),
+            subject.promote("phone-b", "b", permanent = true),
+        )
+    }
+
+    @Test
+    fun anUnauthenticatedDeviceStillCannotAskToTakeOver() {
+        val subject = gate(codes = intArrayOf(123_456))
+        assertTrue(subject.authorize("phone-a", "a", "123456") is AuthGate.Verdict.Authorized)
+        // 既没有有效凭据也不在可信列表：只能被拒，不能向当前发送端申请接管
         assertEquals(
             AuthGate.Refused.SESSION_BUSY,
-            (subject.authorize("phone-b", "b", "654321") as AuthGate.Verdict.Rejected).reason,
+            (subject.authorize("phone-c", "c", "") as AuthGate.Verdict.Rejected).reason,
         )
-        trust.releaseSession("phone-a")
-        assertTrue(subject.authorize("phone-b", "b", "654321") is AuthGate.Verdict.Authorized)
     }
 
     @Test

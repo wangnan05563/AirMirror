@@ -48,6 +48,37 @@ object SenderReport {
 object SenderControl {
     @Volatile
     var paused: Boolean = false
+
+    /** 当前发送端收到的接管请求（PRD FS-09 步骤 4）；空串表示没有待处理请求 */
+    @Volatile
+    var takeoverFrom: String = ""
+
+    /** 界面展示倒计时用；到点仍未表态由接收端按 60 秒超时拒绝 */
+    @Volatile
+    var takeoverDeadline: Long = 0L
+
+    private val takeoverAnswer = java.util.concurrent.atomic.AtomicReference<Boolean?>(null)
+
+    fun requestTakeover(from: String, deadline: Long) {
+        takeoverAnswer.set(null)
+        takeoverDeadline = deadline
+        takeoverFrom = from
+    }
+
+    /** 用户点了「让出」或「拒绝」；界面立即收起提示，由采集循环把回答发回接收端。 */
+    fun answerTakeover(allow: Boolean) {
+        takeoverFrom = ""
+        takeoverDeadline = 0L
+        takeoverAnswer.set(allow)
+    }
+
+    fun takeTakeoverAnswer(): Boolean? = takeoverAnswer.getAndSet(null)
+
+    fun clearTakeover() {
+        takeoverFrom = ""
+        takeoverDeadline = 0L
+        takeoverAnswer.set(null)
+    }
 }
 
 /**
@@ -78,6 +109,9 @@ class CaptureService : Service() {
 
     @Volatile
     private var peerCeiling: Limit.Ceiling = Limit.empty()
+
+    @Volatile
+    private var yielded = false
 
     private val reconfigure = java.util.concurrent.atomic.AtomicBoolean(false)
 
@@ -135,6 +169,8 @@ class CaptureService : Service() {
             SenderReport.last = ""
             SenderReport.quality = ""
             SenderControl.paused = false
+            SenderControl.clearTakeover()
+            yielded = false
             // 先握手、先授权，通过后才开始采集屏幕：被拒时不该已经在录屏（PRD 14.4 最小采集）
             val socket = Socket()
             socket.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
@@ -179,6 +215,19 @@ class CaptureService : Service() {
             var lastOutputAt = System.currentTimeMillis()
             var pauseApplied = false
             while (running) {
+                // 用户在大屏外的手机界面上选择了让出/拒绝（PRD FS-09 步骤 4）
+                SenderControl.takeTakeoverAnswer()?.let { allow ->
+                    Log.i(TAG, "takeover answer allow=$allow")
+                    runCatching {
+                        conn.send(Protocol.Frame(Protocol.Type.CONTROL, payload = SessionControl.takeoverResult(allow)))
+                    }.onFailure { Log.w(TAG, "takeover answer not delivered: ${it.message}") }
+                    if (allow) {
+                        yielded = true
+                        SenderReport.quality = "已让出投屏"
+                    } else {
+                        SenderReport.quality = qualityNote().text()
+                    }
+                }
                 if (SenderControl.paused != pauseApplied) {
                     pauseApplied = SenderControl.paused
                     val payload = if (pauseApplied) SessionControl.pause() else SessionControl.resume()
@@ -270,9 +319,29 @@ class CaptureService : Service() {
                 while (running) {
                     val frame = conn.receive() ?: break
                     when (frame.type) {
-                        Protocol.Type.CONTROL -> applyCeiling(Limit.decode(frame.payload))
+                        Protocol.Type.CONTROL -> {
+                            val signal = SessionControl.decode(frame.payload)
+                            when (signal.op) {
+                                SessionControl.OP_TAKEOVER -> {
+                                    Log.i(TAG, "takeover requested by ${signal.from}")
+                                    SenderControl.requestTakeover(
+                                        signal.from,
+                                        System.currentTimeMillis() + TAKEOVER_WINDOW_MS,
+                                    )
+                                    SenderReport.quality = "${signal.from} 请求接管投屏"
+                                }
+                                // 没有 op 的 CONTROL 仍是本机画质上限（PRD 8.4）
+                                "" -> applyCeiling(Limit.decode(frame.payload))
+                                else -> Unit
+                            }
+                        }
+
                         Protocol.Type.BYE -> {
-                            SenderReport.last = ErrorNotice.textFor(ErrorNotice.Cause.SESSION_ENDED)
+                            SenderReport.last = if (yielded) {
+                                "已让出投屏"
+                            } else {
+                                ErrorNotice.textFor(ErrorNotice.Cause.SESSION_ENDED)
+                            }
                             running = false
                             break
                         }
@@ -354,6 +423,7 @@ class CaptureService : Service() {
         running = false
         SenderReport.quality = ""
         SenderControl.paused = false
+        SenderControl.clearTakeover()
         peerReader?.join(500)
         peerReader = null
         runCatching { connection?.close() }
@@ -420,5 +490,6 @@ class CaptureService : Service() {
         private const val NOTIFICATION_ID = 1
         private const val CONNECT_TIMEOUT_MS = 5_000
         private const val CEILING_WAIT_MS = 1_500
+        private const val TAKEOVER_WINDOW_MS = 60_000L
     }
 }

@@ -51,6 +51,8 @@ class StreamConnection(private val socket: Socket) : Closeable {
         return hello
     }
 
+    /** 接管流程会从别的连接线程往当前会话写信令，串行化避免帧头与载荷交错。 */
+    @Synchronized
     fun send(frame: Protocol.Frame) = Protocol.write(output, frame)
 
     fun receive(): Protocol.Frame? = Protocol.read(input)

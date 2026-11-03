@@ -44,6 +44,8 @@ class SenderActivity : Activity() {
     private lateinit var codeInput: EditText
     private lateinit var addressInput: EditText
     private lateinit var pauseButton: Button
+    private lateinit var takeoverBar: LinearLayout
+    private lateinit var takeoverText: TextView
     private var browser: ServiceBrowser? = null
     private var pending: Target? = null
     private var pendingCredential: String = ""
@@ -76,6 +78,7 @@ class SenderActivity : Activity() {
                 pauseButton.visibility = if (casting) View.VISIBLE else View.GONE
             }
             if (casting) pauseButton.text = if (SenderControl.paused) "继续投屏" else "暂停投屏"
+            refreshTakeover(casting)
             main.postDelayed(this, POLL_MS)
         }
     }
@@ -116,6 +119,7 @@ class SenderActivity : Activity() {
             setOnClickListener { SenderControl.paused = !SenderControl.paused }
         }
         root.addView(pauseButton, matchWidth())
+        root.addView(buildTakeoverBar(), matchWidth())
 
         codeInput = makeInput("投屏码", InputType.TYPE_CLASS_NUMBER)
         codeInput.filters = arrayOf(InputFilter.LengthFilter(CODE_LENGTH))
@@ -169,6 +173,53 @@ class SenderActivity : Activity() {
         if (!directHost.isNullOrEmpty() && directPort > 0) {
             requestCapture(Target("direct", directHost, directPort, directHost), intent.getStringExtra(EXTRA_TARGET_CREDENTIAL).orEmpty())
         }
+    }
+
+    /** FS-09 步骤 4：第二台设备申请接管时，由当前发送端决定让出还是拒绝。 */
+    private fun buildTakeoverBar(): View {
+        takeoverBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(0xFF12314F.toInt())
+            visibility = View.GONE
+            val gap = Theme.dp(this@SenderActivity, 8)
+            setPadding(gap, gap, gap, gap)
+        }
+        takeoverText = TextView(this).apply {
+            textSize = Theme.PHONE_BODY_SP
+            setTextColor(Theme.TEXT_PRIMARY)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        takeoverBar.addView(takeoverText)
+        takeoverBar.addView(Button(this).apply {
+            text = "拒绝"
+            setTextColor(Theme.DANGER)
+            setOnClickListener { SenderControl.answerTakeover(false) }
+        })
+        takeoverBar.addView(Button(this).apply {
+            text = "让出"
+            setTextColor(Theme.ACCENT)
+            setOnClickListener { SenderControl.answerTakeover(true) }
+        })
+        return takeoverBar
+    }
+
+    /** 60 秒内不表态由接收端按超时拒绝；界面到点自动收起，避免留一个失效的按钮。 */
+    private fun refreshTakeover(casting: Boolean) {
+        val from = SenderControl.takeoverFrom
+        if (!casting || from.isEmpty()) {
+            takeoverBar.visibility = View.GONE
+            if (!casting) SenderControl.clearTakeover()
+            return
+        }
+        val leftMs = SenderControl.takeoverDeadline - System.currentTimeMillis()
+        if (leftMs <= 0L) {
+            SenderControl.clearTakeover()
+            takeoverBar.visibility = View.GONE
+            return
+        }
+        takeoverBar.visibility = View.VISIBLE
+        takeoverText.text = "$from 请求接管投屏 · ${(leftMs + 999) / 1000} 秒后拒绝"
     }
 
     private fun makeInput(label: String, inputType: Int) = EditText(this).apply {

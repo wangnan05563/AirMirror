@@ -24,6 +24,7 @@ import io.github.wangnan05563.airmirror.protocol.SessionControl
 import java.io.IOException
 import java.net.ServerSocket
 import java.net.Socket
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
@@ -58,6 +59,9 @@ class ReceiverSession(
     private val clients: MutableSet<Socket> = java.util.Collections.synchronizedSet(HashSet())
     private val decision = LinkedBlockingQueue<Boolean>(1)
 
+    /** 当前发送端对「让出投屏」的回答；新设备连接线程在此等待（PRD FS-09 步骤 4） */
+    private val takeoverAnswers = LinkedBlockingQueue<Boolean>(1)
+
     @Volatile
     private var running = false
 
@@ -78,6 +82,17 @@ class ReceiverSession(
     @Volatile
     private var activeConn: StreamConnection? = null
 
+    @Volatile
+    private var activeDeviceId: String? = null
+
+    /** 接管进行中时，旧会话的「连接结束」状态不覆盖大屏上的换人提示 */
+    @Volatile
+    private var handoverInProgress = false
+
+    /** 旧会话处理线程结束的信号，换人时先等它彻底收尾再授权新设备 */
+    @Volatile
+    private var sessionDone: CountDownLatch? = null
+
     /** 发送端暂停后不再解码，Surface 上保留最后一帧（PRD FS-09 步骤 1） */
     @Volatile
     private var paused = false
@@ -97,7 +112,7 @@ class ReceiverSession(
                             .onFailure { if (running) Log.w(TAG, "connection failed: ${it.message}") }
                             .getOrNull()
                         clients.remove(socket)
-                        if (served != null) onStatus("$served 连接结束，继续等待")
+                        if (served != null && !handoverInProgress) onStatus("$served 连接结束，继续等待")
                     }
                 }
             } catch (e: Exception) {
@@ -142,7 +157,10 @@ class ReceiverSession(
         StreamConnection(socket).use { conn ->
             val hello = conn.acceptAsServer(Build.MODEL, Handshake.Capability.VIDEO_H264)
             val deviceId = authorize(conn, socket, hello.deviceName) ?: return null
+            val done = CountDownLatch(1)
+            sessionDone = done
             activeConn = conn
+            activeDeviceId = deviceId
             var received = 0
             var decoded = 0
             try {
@@ -195,6 +213,10 @@ class ReceiverSession(
                                     Log.i(TAG, "resumed by peer")
                                     onStatus("${hello.deviceName} 推流中")
                                 }
+                                SessionControl.OP_TAKEOVER_RESULT -> {
+                                    Log.i(TAG, "takeover answer allow=${signal.allow}")
+                                    takeoverAnswers.offer(signal.allow)
+                                }
                                 else -> Unit
                             }
                         }
@@ -205,12 +227,19 @@ class ReceiverSession(
             } catch (e: IOException) {
                 if (running) Log.w(TAG, "connection dropped: ${e.message}")
             } finally {
-                activeConn = null
-                paused = false
+                // 接管时旧线程可能晚于新会话收尾，只有仍属于自己才清空共享状态并撤回投屏态
+                val owns = activeConn === conn
+                if (owns) {
+                    activeConn = null
+                    activeDeviceId = null
+                    paused = false
+                }
                 // 解码器跟 Surface 同寿：会话结束时保留，下一次连接的 CONFIG 会重新配置，
                 // 否则第二台设备连进来会因 decoder 已被置空而无法上屏
                 pairing.trust.releaseSession(deviceId)
-                onCasting(false, "")
+                if (owns) onCasting(false, "")
+                done.countDown()
+                if (sessionDone === done) sessionDone = null
             }
             return hello.deviceName
         }
@@ -242,6 +271,7 @@ class ReceiverSession(
                     null
                 }
             }
+            is AuthGate.Verdict.TakeoverRequired -> handOver(conn, verdict)
             is AuthGate.Verdict.Rejected -> {
                 val reason = when (verdict.reason) {
                     AuthGate.Refused.TOO_MANY_ATTEMPTS -> "投屏码错误次数过多"
@@ -257,6 +287,85 @@ class ReceiverSession(
                 null
             }
         }
+    }
+
+    /**
+     * 第二台设备凭据有效但已有会话（PRD FS-09 步骤 4/5）：先请当前发送端表态；
+     * 允许则「先停旧会话，再让新设备上屏」，拒绝或 60 秒无响应则保留原会话。
+     */
+    private fun handOver(conn: StreamConnection, verdict: AuthGate.Verdict.TakeoverRequired): String? {
+        val old = activeConn
+        val oldId = activeDeviceId
+        if (old == null || oldId == null) return promoteDirectly(conn, verdict)
+        handoverInProgress = true
+        try {
+            Log.i(TAG, "takeover: ${verdict.deviceName} requests, current=$oldId")
+            onStatus("${verdict.deviceName} 请求接管")
+            takeoverAnswers.clear()
+            val notified = runCatching {
+                old.send(Protocol.Frame(Protocol.Type.CONTROL, payload = SessionControl.takeover(verdict.deviceName)))
+            }.isSuccess
+            if (!notified) {
+                // 旧连接已经写不进去：按等价于旧会话结束处理，释放后再放行新设备
+                Log.w(TAG, "takeover request not delivered, dropping dead session $oldId")
+                runCatching { old.close() }
+                sessionDone?.await(TAKEOVER_STOP_WAIT_MS, TimeUnit.MILLISECONDS)
+                pairing.trust.releaseSession(oldId)
+                return promoteDirectly(conn, verdict)
+            }
+            when (awaitTakeoverAnswer(old)) {
+                false -> {
+                    Log.i(TAG, "takeover refused by $oldId")
+                    onStatus("已拒绝 ${verdict.deviceName} 的接管请求，继续投屏")
+                    refuse(conn, "已有设备在投屏")
+                    return null
+                }
+                null -> {
+                    // PRD FS-09「接管超时」：60 秒无响应按拒绝处理，原会话不动
+                    Log.i(TAG, "takeover timed out, keeping $oldId")
+                    onStatus("对方未响应，已保留当前会话")
+                    refuse(conn, "已有设备在投屏")
+                    return null
+                }
+                true -> Unit
+            }
+            Log.i(TAG, "takeover approved by $oldId")
+            // 先执行停止：旧会话彻底结束并释放占用后才给新设备授权（PRD「先执行停止，再处理接管请求」）
+            runCatching { old.send(Protocol.Frame(Protocol.Type.BYE)) }
+            old.close()
+            sessionDone?.await(TAKEOVER_STOP_WAIT_MS, TimeUnit.MILLISECONDS)
+            pairing.trust.releaseSession(oldId)
+            return promoteDirectly(conn, verdict)
+        } finally {
+            handoverInProgress = false
+        }
+    }
+
+    /** 没有可通知的旧发送端（会话刚好结束）或旧会话已释放时，直接按接管结果建立新会话。 */
+    private fun promoteDirectly(conn: StreamConnection, verdict: AuthGate.Verdict.TakeoverRequired): String? {
+        val promoted = pairing.gate.promote(verdict.deviceId, verdict.deviceName, verdict.permanent)
+        if (promoted == null) {
+            refuse(conn, "已有设备在投屏")
+            onStatus("${verdict.deviceName} 接管失败，已保留当前会话")
+            return null
+        }
+        Log.i(TAG, "takeover complete: ${promoted.deviceName}")
+        grant(conn, promoted.deviceName, promoted.permanent, verdict.deviceId)
+        onCasting(true, promoted.deviceName)
+        return verdict.deviceId
+    }
+
+    /**
+     * 等当前发送端的回答：true=让出，false=明确拒绝，null=60 秒超时。
+     * 期间旧会话自行结束（网络断开或大屏按了结束）也视为可以换人。
+     */
+    private fun awaitTakeoverAnswer(old: StreamConnection): Boolean? {
+        val deadline = System.currentTimeMillis() + TAKEOVER_TIMEOUT_MS
+        while (running && System.currentTimeMillis() < deadline) {
+            takeoverAnswers.poll(TAKEOVER_POLL_MS, TimeUnit.MILLISECONDS)?.let { return it }
+            if (activeConn !== old) return true
+        }
+        return null
     }
 
     private fun grant(conn: StreamConnection, deviceName: String, permanent: Boolean, deviceId: String) {
@@ -332,6 +441,7 @@ class ReceiverSession(
     fun stop() {
         running = false
         decision.offer(false)
+        takeoverAnswers.offer(false)
         runCatching { server.close() }
         clients.toList().forEach { socket -> runCatching { socket.close() } }
         clients.clear()
@@ -349,6 +459,9 @@ class ReceiverSession(
         const val TAG = "AirMirrorReceiver"
         const val AUTH_TIMEOUT_MS = 10_000
         const val PROMPT_MAX_WAIT_MS = 60_000L
+        const val TAKEOVER_TIMEOUT_MS = 60_000L
+        const val TAKEOVER_STOP_WAIT_MS = 3_000L
+        const val TAKEOVER_POLL_MS = 200L
         const val PREFERRED_PORT = 41523
     }
 }
