@@ -42,6 +42,15 @@ class DlnaPlayer {
     var onCompletedCallback: (() -> Unit)? = null
     var onErrorCallback: ((Int, Int) -> Unit)? = null
 
+    /**
+     * 当前有没有可渲染的面。接收端退后台或息屏时 SurfaceView 的 Surface 会被销毁，
+     * 这时「推无音轨的纯视频」会 prepared + start 全成功但一帧不进、进度永远停在 0，
+     * 15 秒看门狗管不到它（那条只管未就绪）。上层用这个位来决定要不要提示。
+     */
+    @Volatile
+    var surfaceReady: Boolean = false
+        private set
+
     /** 起播请求的时刻（nanoTime），首帧到达即打点；仅主线程读写（PRD 14.1「视频推送起播」）。 */
     private var playAtNano = 0L
 
@@ -57,6 +66,9 @@ class DlnaPlayer {
     fun attach(holder: SurfaceHolder?) {
         main.post {
             this.holder = holder
+            // surfaceCreated 才带得到有效面；surfaceDestroyed 传进来的是 null
+            surfaceReady = holder?.surface?.isValid == true
+            Log.i(TAG, "render surface " + if (surfaceReady) "attached" else "cleared")
             player?.let { bindSurface(it, holder) }
         }
     }

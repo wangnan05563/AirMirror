@@ -313,7 +313,9 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     }
 
     private fun showNotice(text: String) {
-        if (!isCasting || text.isEmpty()) return
+        // DLNA 播放不置 casting，但同样整屏是画面，浮层是唯一看得见的通道
+        if (text.isEmpty() || (!isCasting && !host.dlnaPlaying)) return
+        Log.i(TAG, "notice overlay: $text")
         noticeOverlay.text = text
         noticeOverlay.visibility = View.VISIBLE
         main.removeCallbacks(hideNotice)

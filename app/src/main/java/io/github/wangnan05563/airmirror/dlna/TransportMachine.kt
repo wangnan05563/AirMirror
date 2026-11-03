@@ -47,6 +47,9 @@ class TransportMachine {
         State.NO_MEDIA -> ""
     }
 
+    /** 控制点是否已经要求播放（含 Play 早于就绪、正在排队等就绪的情况）。 */
+    val wantsPlayback: Boolean get() = state == State.PLAYING || playRequested
+
     /** 收到新媒体描述：进入 LOADING，由服务端异步准备；未就绪前 Play 视为非法。 */
     fun setUri(meta: Upnp.MediaMeta?) {
         media = meta

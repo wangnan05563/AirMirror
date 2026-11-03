@@ -1,7 +1,9 @@
 package io.github.wangnan05563.airmirror.dlna
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** AVTransport 状态迁移：控制点看到的必须是 UPnP 口径的状态名。 */
@@ -92,6 +94,21 @@ class TransportMachineTest {
         m.setUri(meta)
         m.onLoaded()
         assertEquals("STOPPED", m.transportState())
+    }
+
+    @Test
+    fun wantsPlaybackCoversQueuedPlay() {
+        val m = TransportMachine()
+        assertFalse(m.wantsPlayback)
+        m.setUri(meta)
+        // 只是推了地址、控制点还没发 Play：没画面不该抱怨
+        assertFalse(m.wantsPlayback)
+        m.onPlayInvoked()
+        assertTrue(m.wantsPlayback)
+        m.onLoaded()
+        assertTrue(m.wantsPlayback)
+        m.onStopInvoked()
+        assertFalse(m.wantsPlayback)
     }
 
     @Test

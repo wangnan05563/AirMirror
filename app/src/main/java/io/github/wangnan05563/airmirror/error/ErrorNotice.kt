@@ -74,6 +74,8 @@ object ErrorNotice {
         SOURCE_NOT_FOUND,
         SOURCE_FORMAT,
         DEVICE_UNSUPPORTED,
+        /** 推送已经在放，但接收端此刻没有可用的渲染面（退后台/息屏），画面永远不会出现 */
+        DISPLAY_UNREADY,
     }
 
     private val table: Map<Cause, Notice> = mapOf(
@@ -88,6 +90,10 @@ object ErrorNotice {
         Cause.DEVICE_UNSUPPORTED to Notice(
             Category.CAPABILITY, "这台设备不支持", "本机条件不足，改用电视自带投屏或换一台设备。",
             listOf(Action.NONE),
+        ),
+        Cause.DISPLAY_UNREADY to Notice(
+            Category.SESSION, "接收端画面未就绪", "大屏正在放声音但没画面，点亮或回到 AirMirror 界面就会自动接上。",
+            listOf(Action.AUTO_RECOVER),
         ),
         Cause.CODE_EXPIRED to Notice(
             Category.PAIRING, "投屏码已过期", "投屏码每 60 秒换一次，请在大屏看新码后重新输入。",

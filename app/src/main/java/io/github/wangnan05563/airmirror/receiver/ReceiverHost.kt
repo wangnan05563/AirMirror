@@ -113,6 +113,9 @@ class ReceiverHost private constructor(context: Context) {
             dlnaPlaying = playing
             post { it.onDlnaPlaying(playing) }
         }
+        // 只投「此刻值得让用户看见」的一条：界面在后台时收到的是 lastStatus，
+        // 回到前台 Surface 重建那一刻由 announceSurfaceBack 再补一条浮层
+        renderer.onNotice = { text -> post { it.onNotice(text) } }
         renderer.start(deviceName)
         dlna = renderer
         holder?.let { mount(it) }
