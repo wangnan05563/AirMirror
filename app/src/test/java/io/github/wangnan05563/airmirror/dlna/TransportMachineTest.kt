@@ -105,4 +105,34 @@ class TransportMachineTest {
         assertEquals(Upnp.FAULT_INVALID_ARGS, m.setPlayMode("REPEAT_EVERYTHING"))
         assertEquals("REPEAT_ALL", m.playMode)
     }
+
+    @Test
+    fun `failure while playing must stop claiming PLAYING`() {
+        val m = TransportMachine()
+        m.setUri(meta)
+        m.onLoaded()
+        m.onPlayInvoked()
+        assertEquals("PLAYING", m.transportState())
+        m.onPlaybackFailed()
+        assertEquals("STOPPED", m.transportState())
+        assertEquals("0", m.currentSpeed())
+        // 媒体仍然挂着：控制点要能读到片名并重推同一条地址
+        assertEquals("a", m.media?.title)
+    }
+
+    @Test
+    fun failureDuringLoadingFallsOutOfTransitioning() {
+        val m = TransportMachine()
+        m.setUri(meta)
+        m.onPlaybackFailed()
+        assertEquals("STOPPED", m.transportState())
+    }
+
+    @Test
+    fun failureWithoutMediaDoesNotInventOne() {
+        val m = TransportMachine()
+        m.onPlaybackFailed()
+        assertEquals("NO_MEDIA_PRESENT", m.transportState())
+        assertEquals(Upnp.FAULT_NO_MEDIA, m.canPlay())
+    }
 }

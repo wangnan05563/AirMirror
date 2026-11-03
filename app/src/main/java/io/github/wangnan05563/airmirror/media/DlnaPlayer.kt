@@ -37,12 +37,22 @@ class DlnaPlayer {
     var completed = false
         private set
 
-    /** 主线程回调：媒体就绪（未起播）／播放到末尾。 */
+    /** 主线程回调：媒体就绪（未起播）／播放到末尾／播放失败（what, extra 原样带回，由上层归类）。 */
     var onPreparedCallback: (() -> Unit)? = null
     var onCompletedCallback: (() -> Unit)? = null
+    var onErrorCallback: ((Int, Int) -> Unit)? = null
 
     /** 起播请求的时刻（nanoTime），首帧到达即打点；仅主线程读写（PRD 14.1「视频推送起播」）。 */
     private var playAtNano = 0L
+
+    /** 准备段耗时（毫秒），首帧日志里带回，避免取证脚本只能量到含 SOAP 往返与轮询粒度的上界。 */
+    @Volatile
+    var prepareMs = 0L
+        private set
+
+    /** SetAVTransportURI 落地的时刻（nanoTime）；控制点线程写、主线程读，故为 Volatile。 */
+    @Volatile
+    private var pushAtNano = 0L
 
     fun attach(holder: SurfaceHolder?) {
         main.post {
@@ -57,53 +67,80 @@ class DlnaPlayer {
         completed = false
         prepared = false
         playing = false
+        pushAtNano = System.nanoTime()
         if (!uri.startsWith("http://") && !uri.startsWith("https://") && !uri.startsWith("file://")) {
             lastError = "unsupported uri scheme"
             return false
         }
-        main.post {
-            releasePlayer()
-            pendingPlay = false
-            playAtNano = 0L
-            val mediaPlayer = MediaPlayer()
-            player = mediaPlayer
-            try {
-                mediaPlayer.setDataSource(uri)
-                bindSurface(mediaPlayer, holder)
-                mediaPlayer.setOnInfoListener { _, what, _ ->
-                    if (what == MediaPlayer.MEDIA_INFO_VIDEO_RENDERING_START && playAtNano > 0L) {
-                        val firstFrameMs = (System.nanoTime() - playAtNano) / 1_000_000
-                        playAtNano = 0L
-                        Log.i(TAG, "first frame ${firstFrameMs}ms after play")
-                    }
-                    false
-                }
-                mediaPlayer.setOnPreparedListener {
-                    prepared = true
-                    if (pendingPlay) start(it)
-                    onPreparedCallback?.invoke()
-                }
-                mediaPlayer.setOnCompletionListener {
-                    completed = true
-                    playing = false
-                    Log.i(TAG, "playback completed")
-                    onCompletedCallback?.invoke()
-                }
-                mediaPlayer.setOnErrorListener { _, what, extra ->
-                    val description = "MediaPlayer what=$what extra=$extra"
-                    lastError = description
-                    prepared = false
-                    playing = false
-                    Log.w(TAG, description)
-                    true
-                }
-                mediaPlayer.prepareAsync()
-            } catch (e: IOException) {
-                lastError = e.message
-                Log.w(TAG, "load failed: ${e.message}")
-            }
-        }
+        currentUri = uri
+        failed = false
+        main.post { openUri(uri) }
         return true
+    }
+
+    /** 上一次取流是否以失败收场；失败之后控制点再发 Play 要当成重试，而不是接着谎报在播。 */
+    @Volatile
+    private var failed = false
+
+    private var currentUri: String? = null
+
+    /** 主线程：真正建 MediaPlayer、挂回调、开始取流。重试也走这里。 */
+    private fun openUri(uri: String) {
+        releasePlayer()
+        pendingPlay = false
+        playAtNano = 0L
+        prepared = false
+        playing = false
+        val mediaPlayer = MediaPlayer()
+        player = mediaPlayer
+        try {
+            mediaPlayer.setDataSource(uri)
+            bindSurface(mediaPlayer, holder)
+            mediaPlayer.setOnInfoListener { _, what, _ ->
+                if (what == MediaPlayer.MEDIA_INFO_VIDEO_RENDERING_START && playAtNano > 0L) {
+                    val firstFrameMs = (System.nanoTime() - playAtNano) / 1_000_000
+                    playAtNano = 0L
+                    // 分段才看得出瓶颈在取流还是在解码上屏；total 从推送落地起算，不含 SOAP 往返与取证脚本的轮询粒度
+                    Log.i(TAG, "first frame ${firstFrameMs}ms after play, prepare ${prepareMs}ms, total ${((System.nanoTime() - pushAtNano) / 1_000_000)}ms after push")
+                }
+                false
+            }
+            mediaPlayer.setOnPreparedListener {
+                cancelLoadTimeout()
+                prepared = true
+                prepareMs = (System.nanoTime() - pushAtNano) / 1_000_000
+                if (pendingPlay) start(it)
+                onPreparedCallback?.invoke()
+            }
+            mediaPlayer.setOnCompletionListener {
+                cancelLoadTimeout()
+                completed = true
+                playing = false
+                Log.i(TAG, "playback completed")
+                onCompletedCallback?.invoke()
+            }
+            mediaPlayer.setOnErrorListener { _, what, extra ->
+                cancelLoadTimeout()
+                val description = "MediaPlayer what=$what extra=$extra"
+                lastError = description
+                prepared = false
+                playing = false
+                playAtNano = 0L
+                failed = true
+                Log.w(TAG, description)
+                // 光写日志等于没告诉任何人：控制点还在按 PLAYING 轮询，大屏也还是黑的
+                onErrorCallback?.invoke(what, extra)
+                true
+            }
+            mediaPlayer.prepareAsync()
+            armLoadTimeout()
+        } catch (e: IOException) {
+            lastError = e.message
+            failed = true
+            Log.w(TAG, "load failed: ${e.message}")
+            // 建不起来同样要通知：否则状态停在 TRANSITIONING，控制点会一直等到超时
+            onErrorCallback?.invoke(1, -1004)
+        }
     }
 
     private fun bindSurface(mediaPlayer: MediaPlayer, surfaceHolder: SurfaceHolder?) {
@@ -119,7 +156,14 @@ class DlnaPlayer {
 
     fun play() {
         main.post {
-            // 起播计时从 Play 落到主线程开始，含「还没准备好」的等待
+            val retry = currentUri
+            if (failed && retry != null) {
+                // 上次取流已经失败，这个 MediaPlayer 不能再 start；Play 就当重试来一次
+                failed = false
+                openUri(retry)
+            }
+            // 起播计时从 Play 落到主线程开始，含「还没准备好」的等待；
+            // 必须在 openUri 之后取，重试那一支会在 openUri 里清零，否则这一跑的耗时量不出来
             playAtNano = System.nanoTime()
             val mediaPlayer = player ?: return@post
             if (prepared) start(mediaPlayer) else pendingPlay = true
@@ -195,7 +239,33 @@ class DlnaPlayer {
         main.post { releasePlayer() }
     }
 
+    /**
+     * PRD FS-02 状态迁移：LOADING 15 秒未就绪判为加载失败。
+     * 来源「连得上但一直不给数据」时 MediaPlayer 既不回 prepared 也不回 error，
+     * 没有这条超时，状态会永远停在 TRANSITIONING。
+     */
+    private fun armLoadTimeout() {
+        cancelLoadTimeout()
+        val pending = Runnable {
+            if (prepared || failed) return@Runnable
+            lastError = "load timeout"
+            failed = true
+            Log.w(TAG, "media not ready in ${LOAD_TIMEOUT_MS}ms")
+            onErrorCallback?.invoke(1, -110)
+        }
+        loadTimeout = pending
+        main.postDelayed(pending, LOAD_TIMEOUT_MS)
+    }
+
+    private fun cancelLoadTimeout() {
+        loadTimeout?.let { main.removeCallbacks(it) }
+        loadTimeout = null
+    }
+
+    private var loadTimeout: Runnable? = null
+
     private fun releasePlayer() {
+        cancelLoadTimeout()
         player?.let {
             runCatching { it.reset() }
             runCatching { it.release() }
@@ -207,5 +277,6 @@ class DlnaPlayer {
 
     private companion object {
         const val TAG = "AirMirrorDlnaPlayer"
+        const val LOAD_TIMEOUT_MS = 15_000L
     }
 }

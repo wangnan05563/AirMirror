@@ -655,7 +655,14 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         override fun onVideoSize(width: Int, height: Int) =
             runOnUiThread { this@ReceiverActivity.onVideoSize(width, height) }
         override fun onDlnaStatus(text: String) = runOnUiThread { statusText.text = text }
-        override fun onDlnaPlaying(playing: Boolean) = runOnUiThread { if (playing) showCasting("") }
+        override fun onDlnaPlaying(playing: Boolean) = runOnUiThread {
+            if (playing) {
+                showCasting("")
+            } else if (!isCasting) {
+                // 推送放完或放失败都回到待连接页：停在最后一帧就是 PRD FS-02「格式兜底」里禁止的死胡同
+                onCasting(false, "")
+            }
+        }
     }
 
     private fun refreshWaitingPage() {

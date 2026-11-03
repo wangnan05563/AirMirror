@@ -70,6 +70,15 @@ class TransportMachine {
         if (!loop && media != null) state = State.STOPPED
     }
 
+    /**
+     * 播放失败：状态必须回落到 STOPPED。
+     * 媒体还挂在上面（片名、地址仍要能被 GetPositionInfo 读到），但速度一定是 0，
+     * 否则控制点会以为还在播并一直轮询进度。
+     */
+    fun onPlaybackFailed() {
+        if (media != null) state = State.STOPPED
+    }
+
     /** Play 前置校验：返回 null 表示允许。 */
     fun canPlay(): Int? = if (media == null) Upnp.FAULT_NO_MEDIA else null
 

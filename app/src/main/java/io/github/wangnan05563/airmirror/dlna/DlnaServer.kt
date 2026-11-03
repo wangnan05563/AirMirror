@@ -60,6 +60,14 @@ class DlnaServer(
             onPlayingChanged?.invoke(false)
             onStatus("DLNA 播放结束")
         }
+        player.onErrorCallback = { what, extra ->
+            // 状态不回落，控制点就会一直读到 PLAYING 并接着轮询进度；大屏则完全不知道出了什么事
+            machine.onPlaybackFailed()
+            onPlayingChanged?.invoke(false)
+            val text = PlayerFailure.textFor(what, extra)
+            Log.w(TAG, "playback failed what=$what extra=$extra -> $text")
+            onStatus("DLNA 播放失败 · $text")
+        }
     }
 
     fun start(friendlyName: String) {
