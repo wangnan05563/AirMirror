@@ -76,6 +76,14 @@ object ErrorNotice {
         DEVICE_UNSUPPORTED,
         /** 推送已经在放，但接收端此刻没有可用的渲染面（退后台/息屏），画面永远不会出现 */
         DISPLAY_UNREADY,
+        /** 系统把「采集本机声音」算在录音权限里，没给权限就只能投画面（PRD FS-01 音频口径） */
+        PERMISSION_AUDIO,
+        /** 系统版本或厂商限制，压根不提供声音采集通道 */
+        AUDIO_UNAVAILABLE,
+        /** 接收端找不到音频输出设备（PRD FR-09 异常「未检测到扬声器」） */
+        NO_SPEAKER,
+        /** 音频轨被来电或其他应用占用超过 1 秒，画面不受影响 */
+        AUDIO_INTERRUPTED,
     }
 
     private val table: Map<Cause, Notice> = mapOf(
@@ -93,6 +101,22 @@ object ErrorNotice {
         ),
         Cause.DISPLAY_UNREADY to Notice(
             Category.SESSION, "接收端画面未就绪", "大屏正在放声音但没画面，点亮或回到 AirMirror 界面就会自动接上。",
+            listOf(Action.AUTO_RECOVER),
+        ),
+        Cause.PERMISSION_AUDIO to Notice(
+            Category.PERMISSION, "没给声音采集权限", "镜像带声音要用系统的录音权限；不给也能投画面，声音留在手机上。",
+            listOf(Action.OPEN_SETTINGS, Action.USE_FALLBACK),
+        ),
+        Cause.AUDIO_UNAVAILABLE to Notice(
+            Category.CAPABILITY, "这台手机不让采声音", "当前系统限制，声音从手机播放，画面照常投，会话不中断。",
+            listOf(Action.NONE),
+        ),
+        Cause.NO_SPEAKER to Notice(
+            Category.CAPABILITY, "未检测到扬声器", "这台设备找不到音频输出，接上外放或换一台有声的设备，画面不受影响。",
+            listOf(Action.NONE),
+        ),
+        Cause.AUDIO_INTERRUPTED to Notice(
+            Category.SESSION, "声音被其他应用占用", "画面继续投，等声音空出来会自动接上，不用重新投屏。",
             listOf(Action.AUTO_RECOVER),
         ),
         Cause.CODE_EXPIRED to Notice(

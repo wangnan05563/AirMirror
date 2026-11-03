@@ -66,6 +66,7 @@ replay_pid*.log
 # ---- 本项目的内部工作区（任务系统取证快照与脚本，不对外发布） ----
 .mtask_tmp/
 .screenshots/
+.scratch/
 
 # ---- 签名与凭据（公开仓库中绝不提交） ----
 *.keystore

@@ -15,6 +15,9 @@ object SessionControl {
     /** 接收端换了解码器流水线（挂 Surface、暂停恢复），请发送端立刻补一个关键帧。 */
     const val OP_SYNC = "sync"
 
+    /** 发送端把声音开关拨到开/关（PRD FS-01 参数「音频」）：接收端据此收放音频流水线，避免误判成中断。 */
+    const val OP_AUDIO = "audio"
+
     private const val KEY_OP = "op"
     private const val KEY_FROM = "from"
     private const val KEY_ALLOW = "allow"
@@ -28,6 +31,8 @@ object SessionControl {
     fun resume(): ByteArray = encode(Signal(OP_RESUME, "", false))
 
     fun sync(): ByteArray = encode(Signal(OP_SYNC, "", false))
+
+    fun audio(on: Boolean): ByteArray = encode(Signal(OP_AUDIO, "", on))
 
     fun takeover(from: String): ByteArray = encode(Signal(OP_TAKEOVER, from, false))
 

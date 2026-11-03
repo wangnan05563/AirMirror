@@ -67,6 +67,13 @@ class DeviceStore(context: Context) {
         prefs.edit().putBoolean(KEY_AUTO_START, enabled).apply()
     }
 
+    /** 镜像是否带声音，默认开启（PRD FS-01 参数「音频：开启/关闭（默认开启）」）。 */
+    fun mirrorAudioEnabled(): Boolean = prefs.getBoolean(KEY_MIRROR_AUDIO, true)
+
+    fun saveMirrorAudioEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_MIRROR_AUDIO, enabled).apply()
+    }
+
     private companion object {
         const val FILE = "airmirror-pairing"
         const val KEY_ID = "device_id"
@@ -77,5 +84,6 @@ class DeviceStore(context: Context) {
         const val KEY_FOLLOW_ROTATION = "follow_rotation"
         const val KEY_PORTRAIT_LABEL = "portrait_label"
         const val KEY_AUTO_START = "auto_start"
+        const val KEY_MIRROR_AUDIO = "mirror_audio"
     }
 }

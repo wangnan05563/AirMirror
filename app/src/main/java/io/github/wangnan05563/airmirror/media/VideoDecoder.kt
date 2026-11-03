@@ -39,6 +39,11 @@ class VideoDecoder(private val surface: Surface) {
     var firstRenderAtNano = 0L
         private set
 
+    /** 最近一帧真正上屏的流时间戳（与音频帧同一 nanoTime 基准）：音画同步拿它和音频主时钟比。 */
+    @Volatile
+    var lastRenderedPtsUs = 0L
+        private set
+
     /** 用发送端的 SPS/PPS（内含宽高）配置解码器。 */
     fun configure(configPayload: ByteArray) {
         if (released) return
@@ -51,6 +56,7 @@ class VideoDecoder(private val surface: Surface) {
         windowFrames = 0L
         pendingWindow.set(null)
         firstRenderAtNano = 0L
+        lastRenderedPtsUs = 0L
         val units = H264.splitAnnexB(H264.normalize(config.annexB))
         require(units.isNotEmpty()) { "empty codec config" }
         codec?.let { runCatching { it.stop() }; runCatching { it.release() } }
@@ -99,6 +105,7 @@ class VideoDecoder(private val surface: Surface) {
                     renderedFrames++
                     val nowNano = System.nanoTime()
                     if (firstRenderAtNano == 0L) firstRenderAtNano = nowNano
+                    if (info.presentationTimeUs > 0L) lastRenderedPtsUs = info.presentationTimeUs
                     if (info.presentationTimeUs > 0) {
                         val sample = (nowNano / 1_000 - info.presentationTimeUs) / 1_000
                         latency.record(sample)

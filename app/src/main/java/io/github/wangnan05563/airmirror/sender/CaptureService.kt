@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
+import android.media.AudioRecord
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
@@ -23,9 +24,12 @@ import io.github.wangnan05563.airmirror.device.QualityTier
 import io.github.wangnan05563.airmirror.device.QualityTiers
 import io.github.wangnan05563.airmirror.dlna.localIpv4
 import io.github.wangnan05563.airmirror.error.ErrorNotice
+import io.github.wangnan05563.airmirror.media.AudioEncoder
+import io.github.wangnan05563.airmirror.media.AudioFormat
 import io.github.wangnan05563.airmirror.media.VideoEncoder
 import io.github.wangnan05563.airmirror.net.ServiceLocator
 import io.github.wangnan05563.airmirror.net.StreamConnection
+import io.github.wangnan05563.airmirror.perf.AvSync
 import io.github.wangnan05563.airmirror.protocol.Auth
 import io.github.wangnan05563.airmirror.protocol.Handshake
 import io.github.wangnan05563.airmirror.protocol.Limit
@@ -52,6 +56,10 @@ object SenderReport {
 object SenderControl {
     @Volatile
     var paused: Boolean = false
+
+    /** 镜像是否带声音（PRD FS-01 参数「音频」，默认开启）；关掉后只送画面 */
+    @Volatile
+    var audio: Boolean = true
 
     /** 当前发送端收到的接管请求（PRD FS-09 步骤 4）；空串表示没有待处理请求 */
     @Volatile
@@ -128,6 +136,22 @@ class CaptureService : Service() {
 
     @Volatile
     private var yielded = false
+
+    /** 系统声音采集线程与它的结论文案（PRD FS-01「持续发送画面与音频」） */
+    private var audioThread: Thread? = null
+
+    /** 录音句柄由服务持有释放：断线重连要能换一条新的采集流水线 */
+    private var audioRecord: AudioRecord? = null
+
+    @Volatile
+    private var audioStop = false
+
+    @Volatile
+    private var audioNote = ""
+
+    /** 对端握手时认了音频能力，才去开采集——老接收端不认就别白占一个录音权限 */
+    @Volatile
+    private var peerAcceptsAudio = false
 
     private var displayManager: DisplayManager? = null
 
@@ -259,17 +283,19 @@ class CaptureService : Service() {
                 SenderReport.last = ErrorNotice.textFor(ErrorNotice.Cause.DECODE_UNSUPPORTED)
                 return
             }
-            SenderReport.quality = qualityNote().text()
+            SenderReport.quality = qualityText()
             watchPeer(conn)
             displayManager = (getSystemService(DISPLAY_SERVICE) as DisplayManager).also {
                 it.registerDisplayListener(displayListener, null)
             }
 
             openEncoder(mediaProjection, currentProfile())
+            startAudio(mediaProjection, conn)
 
             var sentFrames = 0
             var lastOutputAt = System.currentTimeMillis()
             var pauseApplied = SenderControl.paused
+            var audioWanted = SenderControl.audio
             while (running) {
                 // 断链后先续会再继续送帧；续不上已经把结论文案写好，直接收尾
                 if (peerGone) {
@@ -279,6 +305,8 @@ class CaptureService : Service() {
                     currentHost = resumed.host
                     currentPort = resumed.port
                     watchPeer(conn)
+                    // 声音线程绑的是上一条连接，重连后不换过来就只剩哑巴画面
+                    restartAudio(mediaProjection, conn)
                     pauseApplied = SenderControl.paused
                     if (pauseApplied) {
                         sendOrGone(conn, Protocol.Frame(Protocol.Type.CONTROL, payload = SessionControl.pause()))
@@ -308,9 +336,23 @@ class CaptureService : Service() {
                     // 恢复后解码器需要关键帧才能继续出画，否则会等下一个自然 IDR
                     if (!pauseApplied) runCatching { encoder?.requestKeyFrame() }
                 }
+                if (SenderControl.audio != audioWanted) {
+                    // 投屏中拨声音开关（PRD FS-01 参数「音频」）：要真的收放采集通道并告知大屏，
+                    // 只停发送会让大屏在 1 秒后误报「声音被占用」
+                    audioWanted = SenderControl.audio
+                    Log.i(TAG, "audio switch -> $audioWanted")
+                    sendOrGone(conn, Protocol.Frame(Protocol.Type.CONTROL, payload = SessionControl.audio(audioWanted)))
+                    if (audioWanted) {
+                        startAudio(mediaProjection, conn)
+                    } else {
+                        stopAudio()
+                        audioNote = "已按要求关闭声音投屏"
+                    }
+                    SenderReport.quality = qualityText()
+                }
                 if (recoveryQuality.tick()) {
                     Log.i(TAG, "recovery quality restored to ${recoveryQuality.fullTier().label}")
-                    SenderReport.quality = qualityNote().text()
+                    SenderReport.quality = qualityText()
                     reconfigure.set(true)
                 }
                 if (syncRequested.getAndSet(false)) {
@@ -379,6 +421,145 @@ class CaptureService : Service() {
         }
     }
 
+    /**
+     * 系统声音采集（PRD FS-01「持续发送画面与音频」）。
+     *
+     * 采不到声音不终止会话：按 PRD 异常表「系统禁止采集内部音频 → 画面继续，不中断会话」收口，
+     * 只把原因写在发送端界面上，让人知道现在投的是哑巴画面而不是链路坏了。
+     */
+    private fun startAudio(projection: MediaProjection, conn: StreamConnection) {
+        if (!peerAcceptsAudio) {
+            Log.i(TAG, "audio skipped: peer did not take the audio capability")
+            return
+        }
+        if (!SenderControl.audio) {
+            audioNote = "已按要求关闭声音投屏"
+            SenderReport.quality = qualityText()
+            return
+        }
+        when (val opened = SystemAudio.open(projection, SystemAudio.hasPermission(this))) {
+            is SystemAudio.Opened.NoPermission -> {
+                audioNote = ErrorNotice.textFor(ErrorNotice.Cause.PERMISSION_AUDIO)
+                Log.w(TAG, "audio skipped: RECORD_AUDIO not granted")
+            }
+
+            is SystemAudio.Opened.Unsupported -> {
+                audioNote = ErrorNotice.textFor(ErrorNotice.Cause.AUDIO_UNAVAILABLE)
+                Log.i(TAG, "audio unsupported: ${opened.reason}")
+            }
+
+            is SystemAudio.Opened.Failed -> {
+                audioNote = ErrorNotice.textFor(ErrorNotice.Cause.AUDIO_UNAVAILABLE)
+                Log.w(TAG, "audio open failed: ${opened.reason}")
+            }
+
+            is SystemAudio.Opened.Ready -> {
+                audioNote = ""
+                val record = opened.record
+                val spec = opened.spec
+                val via = opened.via
+                audioStop = false
+                audioRecord = record
+                audioThread = thread(name = "airmirror-audio") { runAudio(record, spec, via, conn) }
+            }
+        }
+        SenderReport.quality = qualityText()
+    }
+
+    /**
+     * 停掉声音采集：断线重连（连接已换）与收尾都要先停这一路。
+     * 录音句柄在这里统一释放，采集线程只负责不再往外发。
+     */
+    private fun stopAudio() {
+        audioStop = true
+        audioThread?.let {
+            runCatching { it.interrupt() }
+            runCatching { it.join(500) }
+        }
+        audioThread = null
+        runCatching { audioRecord?.release() }
+        audioRecord = null
+    }
+
+    /** 重连后连接换了新的，旧线程绑在死连接上，必须换一条采集流水线（PRD FS-10 恢复后画面与音频都要回来）。 */
+    private fun restartAudio(projection: MediaProjection, conn: StreamConnection) {
+        stopAudio()
+        startAudio(projection, conn)
+    }
+
+    /**
+     * 采集 → AAC 编码 → AUDIO 帧。时间戳起点取当前 nanoTime，与画面编码器同一基准，
+     * 大屏才可能拿音频主时钟给画面对表（PRD FR-09）。
+     */
+    private fun runAudio(record: AudioRecord, spec: AudioFormat.Spec, via: String, conn: StreamConnection) {
+        var encoder = AudioEncoder(spec, System.nanoTime() / 1_000)
+        if (!sendAudioConfig(conn, spec)) {
+            runCatching { encoder.release() }
+            return
+        }
+        Log.i(TAG, "audio capture started via $via ${spec.sampleRate}Hz/${spec.channels}ch")
+        val buffer = ByteArray(SystemAudio.READ_BYTES)
+        var sent = 0
+        var lastSampleAt = System.currentTimeMillis()
+        var interrupted = false
+        while (running && !audioStop) {
+            val read = runCatching { record.read(buffer, 0, buffer.size) }.getOrDefault(0)
+            if (read <= 0) {
+                // 采不到样本超过 1 秒：按「声音被占用」写结论，画面照投（PRD FS-06 异常表）
+                if (!interrupted && System.currentTimeMillis() - lastSampleAt > AUDIO_GAP_MS) {
+                    interrupted = true
+                    audioNote = ErrorNotice.textFor(ErrorNotice.Cause.AUDIO_INTERRUPTED)
+                    SenderReport.quality = qualityText()
+                    Log.w(TAG, "audio stalled for ${AUDIO_GAP_MS}ms, keeping video only")
+                }
+                sleepQuietly(AUDIO_IDLE_MS)
+                continue
+            }
+            lastSampleAt = System.currentTimeMillis()
+            if (interrupted) {
+                // 声音回来了要重新对表：旧基准已经把缺口算进样本数里，继续用会一路追帧
+                interrupted = false
+                audioNote = ""
+                SenderReport.quality = qualityText()
+                runCatching { encoder.release() }
+                encoder = AudioEncoder(spec, System.nanoTime() / 1_000)
+                if (!sendAudioConfig(conn, spec)) return
+                Log.i(TAG, "audio resumed, clock re-anchored")
+            }
+            // 关掉声音开关或被暂停时继续把采集读干净，只是不发，免得缓冲区堆满
+            if (!SenderControl.audio || SenderControl.paused) continue
+            for (frame in encoder.feed(buffer.copyOf(read))) {
+                val ok = sendOrGone(
+                    conn,
+                    Protocol.Frame(Protocol.Type.AUDIO, ptsUs = frame.ptsUs, payload = frame.data),
+                )
+                if (!ok) {
+                    runCatching { encoder.release() }
+                    return
+                }
+                sent++
+                if (sent == 1 || sent % 150 == 0) {
+                    Log.i(TAG, "sent $sent audio frames, pts=${frame.ptsUs}")
+                }
+            }
+        }
+        runCatching { encoder.release() }
+        Log.i(TAG, "audio capture stopped after $sent frames")
+    }
+
+    /** 音频描述帧：接收端靠它建解码器与声卡，重新锚定时间戳时要再发一次。 */
+    private fun sendAudioConfig(conn: StreamConnection, spec: AudioFormat.Spec): Boolean =
+        sendOrGone(conn, Protocol.Frame(Protocol.Type.AUDIO, flags = Protocol.Flags.CONFIG, payload = AudioFormat.encode(spec)))
+
+    private fun sleepQuietly(millis: Long) {
+        try {
+            Thread.sleep(millis)
+        } catch (e: InterruptedException) {
+            // 只影响这一路声音：停它靠 audioStop，不能顺手把整个会话判死
+            Thread.currentThread().interrupt()
+        }
+    }
+
     /** 首次接入：握手 + 授权。被拒时 [authorize] 已把原因写进界面。 */
     private fun openConnection(
         host: String,
@@ -390,12 +571,13 @@ class CaptureService : Service() {
         socket.tcpNoDelay = true
         socket.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
         val conn = StreamConnection(socket)
-        val ack = runCatching { conn.connectAsClient(Build.MODEL, Handshake.Capability.VIDEO_H264) }
+        val ack = runCatching { conn.connectAsClient(Build.MODEL, MIRROR_CAPABILITIES) }
             .getOrElse {
                 conn.close()
                 throw it
             }
-        Log.i(TAG, "connected to $host:$port version=${ack.chosenVersion}")
+        peerAcceptsAudio = ack.capabilities and Handshake.Capability.AUDIO_AAC != 0
+        Log.i(TAG, "connected to $host:$port version=${ack.chosenVersion} audio=$peerAcceptsAudio")
         if (!authorize(conn, deviceId, credential)) {
             conn.close()
             throw IllegalStateException("authorization refused")
@@ -494,7 +676,8 @@ class CaptureService : Service() {
             socket.tcpNoDelay = true
             socket.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
             val conn = StreamConnection(socket)
-            conn.connectAsClient(Build.MODEL, Handshake.Capability.VIDEO_H264)
+            val ack = conn.connectAsClient(Build.MODEL, MIRROR_CAPABILITIES)
+            peerAcceptsAudio = ack.capabilities and Handshake.Capability.AUDIO_AAC != 0
             conn.send(Protocol.Frame(Protocol.Type.AUTH, payload = Auth.request(deviceId, "", resume = true)))
             conn.setReadTimeout(AUTH_WAIT_MS)
             val reply = try {
@@ -661,7 +844,9 @@ class CaptureService : Service() {
         val base = if (recoveryQuality.active) recoveryQuality.text() else qualityNote().text()
         val tier = currentTier()
         val fps = QualityTiers.effectiveFps(tier, peerCeiling.fps)
-        return if (fps in 1 until tier.fps) "$base · ${fps}fps" else base
+        val withFps = if (fps in 1 until tier.fps) "$base · ${fps}fps" else base
+        // 声音的结论跟在画质后面同一条展示：投屏中界面不额外弹窗，但「现在有没有声音」必须看得见
+        return if (audioNote.isEmpty()) withFps else "$withFps · $audioNote"
     }
 
     /**
@@ -751,6 +936,10 @@ class CaptureService : Service() {
         displayManager = null
         peerReader?.join(500)
         peerReader = null
+        // 声音线程也在往同一个连接写，先停它再关连接，否则收尾期会往已关的 socket 上丢帧
+        stopAudio()
+        audioNote = ""
+        peerAcceptsAudio = false
         runCatching { connection?.close() }
         connection = null
         runCatching { virtualDisplay?.release() }
@@ -825,5 +1014,14 @@ class CaptureService : Service() {
         private const val CEILING_WAIT_MS = 1_500
         private const val TAKEOVER_WINDOW_MS = 60_000L
         private const val RECOVERY_IDLE_STEP_MS = 50L
+
+        /** 镜像一路带画面与声音（PRD FS-01 状态「STREAMING 持续发送画面与音频」），能力位按两样报 */
+        private const val MIRROR_CAPABILITIES = Handshake.Capability.VIDEO_H264 or Handshake.Capability.AUDIO_AAC
+
+        /** 采不到样本超过这个时长判为「声音被占用」（PRD FS-06 异常表 1 秒） */
+        private const val AUDIO_GAP_MS = AvSync.INTERRUPT_MS
+
+        /** 空转时的取样间隔：太密是白耗 CPU，太疏会让 1 秒判定迟一拍 */
+        private const val AUDIO_IDLE_MS = 10L
     }
 }

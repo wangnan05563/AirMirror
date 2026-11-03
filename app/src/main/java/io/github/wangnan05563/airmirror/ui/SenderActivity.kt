@@ -28,6 +28,7 @@ import io.github.wangnan05563.airmirror.protocol.ProtocolBoundary
 import io.github.wangnan05563.airmirror.sender.CaptureService
 import io.github.wangnan05563.airmirror.sender.SenderControl
 import io.github.wangnan05563.airmirror.sender.SenderReport
+import io.github.wangnan05563.airmirror.sender.SystemAudio
 
 /**
  * 发送端选择页（PRD FR-02 + §11.3）：设备卡片只给设备名与协议角标，不展示 IP 等实现细节；
@@ -44,6 +45,7 @@ class SenderActivity : Activity() {
     private lateinit var codeInput: EditText
     private lateinit var addressInput: EditText
     private lateinit var pauseButton: Button
+    private lateinit var audioButton: Button
     private lateinit var takeoverBar: LinearLayout
     private lateinit var takeoverText: TextView
     private var browser: ServiceBrowser? = null
@@ -76,8 +78,12 @@ class SenderActivity : Activity() {
             if (casting != lastCasting) {
                 lastCasting = casting
                 pauseButton.visibility = if (casting) View.VISIBLE else View.GONE
+                audioButton.visibility = if (casting) View.VISIBLE else View.GONE
             }
-            if (casting) pauseButton.text = if (SenderControl.paused) "继续投屏" else "暂停投屏"
+            if (casting) {
+                pauseButton.text = if (SenderControl.paused) "继续投屏" else "暂停投屏"
+                audioButton.text = audioLabel()
+            }
             refreshTakeover(casting)
             main.postDelayed(this, POLL_MS)
         }
@@ -119,6 +125,17 @@ class SenderActivity : Activity() {
             setOnClickListener { SenderControl.paused = !SenderControl.paused }
         }
         root.addView(pauseButton, matchWidth())
+        // PRD FS-01 参数「音频：开启/关闭（默认开启）」：投屏中随时可切，切换即时生效且落盘
+        audioButton = Button(this).apply {
+            setTextColor(Theme.ACCENT)
+            visibility = View.GONE
+            setOnClickListener {
+                SenderControl.audio = !SenderControl.audio
+                store.saveMirrorAudioEnabled(SenderControl.audio)
+                text = audioLabel()
+            }
+        }
+        root.addView(audioButton, matchWidth())
         root.addView(buildTakeoverBar(), matchWidth())
 
         codeInput = makeInput("投屏码", InputType.TYPE_CLASS_NUMBER)
@@ -164,6 +181,11 @@ class SenderActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 33) {
             requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 100)
         }
+        // 镜像带声音要用系统的录音权限（只采本机播放的声音，不碰麦克风）；不给也能投画面
+        if (Build.VERSION.SDK_INT >= 23 && !SystemAudio.hasPermission(this)) {
+            requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 101)
+        }
+        SenderControl.audio = store.mirrorAudioEnabled()
         startBrowsing()
         main.post(refresh)
 
@@ -402,6 +424,9 @@ class SenderActivity : Activity() {
     }
 
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+
+    /** FS-01 参数「音频」的开关文案：状态直接写在按钮上，投屏中一眼能看出现在有没有声音 */
+    private fun audioLabel() = if (SenderControl.audio) "声音：开" else "声音：关"
 
     override fun onDestroy() {
         main.removeCallbacks(refresh)

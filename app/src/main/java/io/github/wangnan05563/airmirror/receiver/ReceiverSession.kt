@@ -11,12 +11,16 @@ import io.github.wangnan05563.airmirror.device.GradePolicy
 import io.github.wangnan05563.airmirror.device.QualityTier
 import io.github.wangnan05563.airmirror.device.QualityTiers
 import io.github.wangnan05563.airmirror.error.ErrorNotice
+import io.github.wangnan05563.airmirror.media.AudioDevices
+import io.github.wangnan05563.airmirror.media.AudioFormat
+import io.github.wangnan05563.airmirror.media.AudioOut
 import io.github.wangnan05563.airmirror.media.H264
 import io.github.wangnan05563.airmirror.media.VideoDecoder
 import io.github.wangnan05563.airmirror.net.ServiceAdvertiser
 import io.github.wangnan05563.airmirror.net.StreamConnection
 import io.github.wangnan05563.airmirror.pairing.AuthGate
 import io.github.wangnan05563.airmirror.pairing.Pairing
+import io.github.wangnan05563.airmirror.perf.AvSync
 import io.github.wangnan05563.airmirror.perf.LatencyLadder
 import io.github.wangnan05563.airmirror.perf.LatencyMove
 import io.github.wangnan05563.airmirror.perf.LatencyPolicy
@@ -81,6 +85,31 @@ class ReceiverSession(
 
     @Volatile
     private var pendingConfig: ByteArray? = null
+
+    /**
+     * 音频输出流水线（PRD FS-01「持续发送画面与音频」）。它就是音画同步的主时钟：
+     * 画面按它给出的播放时刻对齐，而不是各放各的。
+     */
+    @Volatile
+    private var audioOut: AudioOut? = null
+
+    @Volatile
+    private var lastAudioAtMs = 0L
+
+    /** 声音轨是否已被判为中断（超 1 秒没帧），恢复时要把提示收掉并重新对表 */
+    @Volatile
+    private var audioGone = false
+
+    /** 最近一次采到的音画偏差（毫秒，正=声音比画面晚），打点与大屏状态栏都用它 */
+    @Volatile
+    private var lastDriftMs = 0
+
+    private var avLoggedAtMs = 0L
+    private var avDowngrades = 0
+
+    /** 同步状态机与调整节拍器按会话重建：上一场留下的次数不该影响新一场（PRD「连续三次」的口径） */
+    private var avSync = AvSync.Tracker()
+    private var pacer = AvSync.Pacer()
 
     /** 本机分级与画质上限，扫能力表有开销，放到首次真正用到时才算（PRD FS-12 步骤 1） */
     private val gradeFacts: DeviceFacts by lazy { DeviceProbe.facts(context) }
@@ -254,7 +283,19 @@ class ReceiverSession(
     /** @return 真正被放行并服务的发送端名称；未授权的连接返回 null，不打扰界面上的推流状态。 */
     private fun handle(socket: Socket): String? {
         StreamConnection(socket).use { conn ->
-            val hello = conn.acceptAsServer(Build.MODEL, Handshake.Capability.VIDEO_H264)
+            // 能力位带音频：老发送端不带时协商结果自动只剩画面，不会硬起一条播不出声的流水线
+            val hello = conn.acceptAsServer(
+                Build.MODEL,
+                Handshake.Capability.VIDEO_H264 or Handshake.Capability.AUDIO_AAC,
+            )
+            avSync = AvSync.Tracker()
+            pacer = AvSync.Pacer()
+            lastAudioAtMs = 0L
+            audioGone = false
+            lastDriftMs = 0
+            avDowngrades = 0
+            var audioFrames = 0L
+            var droppedLate = 0
             val request = readAuth(conn, socket) ?: run {
                 refuse(conn, "缺少授权")
                 return null
@@ -313,9 +354,19 @@ class ReceiverSession(
                                     if (codec == null) {
                                         if (received == 1) Log.w(TAG, "video frame without surface decoder")
                                     } else if (!paused) {
-                                        runCatching { codec.decode(frame.payload, frame.ptsUs) }
-                                            .onSuccess { decoded++ }
-                                            .onFailure { Log.w(TAG, "decode failed", it) }
+                                        val clock = audioOut?.clockUs() ?: 0L
+                                        if (clock > 0L && AvSync.videoAction(frame.ptsUs, clock, key) == AvSync.VideoAction.DROP) {
+                                            // 晚到超容忍区只能「丢到下一个 IDR」：单独抽掉一个中间帧会断参考链、画面发花，
+                                            // 关键帧不参与丢弃（PRD FR-09「丢非关键帧，避免花屏」）
+                                            awaitKeyFrame = true
+                                            requestKeyFrame()
+                                            droppedLate++
+                                            Log.i(TAG, "video late beyond tolerance, dropping until key frame")
+                                        } else {
+                                            runCatching { codec.decode(frame.payload, frame.ptsUs) }
+                                                .onSuccess { decoded++ }
+                                                .onFailure { Log.w(TAG, "decode failed", it) }
+                                        }
                                     }
                                 }
                                 if (received % 30 == 0) {
@@ -325,13 +376,37 @@ class ReceiverSession(
                                     Log.i(
                                         TAG,
                                         "received=$received decoded=$decoded rendered=$rendered " +
-                                            "等关键帧丢 $droppedUntilKey ${latency?.summary() ?: ""}",
+                                            "等关键帧丢 $droppedUntilKey 晚到丢 $droppedLate 音画偏差 ${lastDriftMs}ms " +
+                                            "音帧 $audioFrames/已播 ${audioOut?.playedFrames ?: 0} " +
+                                            "${latency?.summary() ?: ""}",
                                     )
                                     onStatus(
                                         "${hello.deviceName} · 收 $received / 解码 $decoded / 渲染 $rendered 帧" +
-                                            " · P90 ${latency?.percentile(90) ?: 0}ms${qualitySuffix()}",
+                                            " · P90 ${latency?.percentile(90) ?: 0}ms · 偏差 ${lastDriftMs}ms" +
+                                            qualitySuffix(),
                                     )
                                     pollLatency(codec, hello.deviceName)
+                                    watchAudioInterrupt(hello.deviceName)
+                                }
+                            }
+                        }
+
+                        Protocol.Type.AUDIO -> {
+                            if (frame.flags and Protocol.Flags.CONFIG != 0) {
+                                openAudio(frame.payload, hello.deviceName)
+                            } else {
+                                audioFrames++
+                                lastAudioAtMs = System.currentTimeMillis()
+                                val out = audioOut
+                                if (out == null) {
+                                    if (audioFrames == 1L) Log.i(TAG, "audio data before a usable config, ignored")
+                                } else if (!paused) {
+                                    runCatching { out.write(frame.payload, frame.ptsUs) }
+                                        .onFailure {
+                                            Log.w(TAG, "audio output failed: ${it.message}")
+                                            closeAudio()
+                                        }
+                                    if (audioFrames % AV_SAMPLE_FRAMES == 0L) sampleAvSync(hello.deviceName)
                                 }
                             }
                         }
@@ -348,6 +423,10 @@ class ReceiverSession(
                                 }
                                 SessionControl.OP_RESUME -> {
                                     paused = false
+                                    lastAudioAtMs = System.currentTimeMillis()
+                                    audioGone = false
+                                    // 暂停期间两条流各自停了一段，恢复即重新对齐，1 秒内要回到容忍区（PRD FR-09 状态迁移）
+                                    resyncAvClock("${hello.deviceName} 恢复投屏")
                                     Log.i(TAG, "resumed by peer")
                                     onStatus("${hello.deviceName} 推流中")
                                     onNotice("${hello.deviceName} 推流中")
@@ -355,6 +434,17 @@ class ReceiverSession(
                                 SessionControl.OP_TAKEOVER_RESULT -> {
                                     Log.i(TAG, "takeover answer allow=${signal.allow}")
                                     takeoverAnswers.offer(signal.allow)
+                                }
+                                SessionControl.OP_AUDIO -> {
+                                    // 对方主动关了声音：这是选择，不是故障，不能等到 1 秒后弹「被占用」
+                                    if (!signal.allow) {
+                                        closeAudio()
+                                        Log.i(TAG, "peer switched audio off")
+                                        onNotice("${hello.deviceName} 已关闭声音")
+                                    } else {
+                                        Log.i(TAG, "peer switched audio on, waiting for its config frame")
+                                        onNotice("${hello.deviceName} 已打开声音")
+                                    }
                                 }
                                 else -> Unit
                             }
@@ -376,6 +466,8 @@ class ReceiverSession(
                 if (owns) {
                     activeConn = null
                     paused = false
+                    // 声音跟着会话走：留着会让断线后的主时钟继续往前跑，续会时按假偏差乱抽帧
+                    closeAudio()
                 }
                 if (dropped) {
                     // PRD FS-10：短暂中断不重来，保留最后一帧并等原设备在 30 秒内回来
@@ -671,6 +763,144 @@ class ReceiverSession(
     }
 
     /**
+     * 收到音频描述帧：按它建一条 AAC → 声卡的输出流水线（PRD FR-09「以音频为主时钟」）。
+     *
+     * 建不起来也不许动画面：PRD 的口径是声音出问题只提示，会话不中断。
+     */
+    private fun openAudio(payload: ByteArray, deviceName: String) {
+        val spec = AudioFormat.decode(payload)
+        if (spec == null) {
+            Log.w(TAG, "audio config unusable: ${String(payload, Charsets.UTF_8)}")
+            onNotice(ErrorNotice.textFor(ErrorNotice.Cause.DECODE_UNSUPPORTED))
+            return
+        }
+        if (!AudioDevices.hasOutput(context)) {
+            Log.w(TAG, "no audio output device, keep video only")
+            onNotice(ErrorNotice.textFor(ErrorNotice.Cause.NO_SPEAKER))
+            onStatus("$deviceName · ${ErrorNotice.noticeFor(ErrorNotice.Cause.NO_SPEAKER).headline}")
+            return
+        }
+        closeAudio()
+        val out = runCatching { AudioOut(spec) }.getOrNull()
+        if (out == null) {
+            Log.w(TAG, "audio pipeline unavailable")
+            onNotice(ErrorNotice.textFor(ErrorNotice.Cause.DECODE_UNSUPPORTED))
+            return
+        }
+        audioOut = out
+        audioGone = false
+        lastAudioAtMs = System.currentTimeMillis()
+        resyncAvClock("$deviceName 投屏中")
+        Log.i(TAG, "audio pipeline up: ${spec.sampleRate}Hz/${spec.channels}ch ${spec.codec}")
+    }
+
+    private fun closeAudio() {
+        val out = audioOut
+        audioOut = null
+        audioGone = false
+        lastDriftMs = 0
+        out?.release()
+    }
+
+    /**
+     * 主时钟重新对齐（暂停恢复、音频重新出现、换流水线都走这里）：
+     * 清掉缓冲里的旧声音，画面与新基准从这一拍起算，1 秒的回到容忍区窗口从头计。
+     */
+    private fun resyncAvClock(statusText: String) {
+        val now = System.currentTimeMillis()
+        avSync.onResync(now)
+        pacer.reset()
+        audioOut?.hardAlign()
+        Log.i(TAG, "av clock re-anchored, back in tolerance within ${AvSync.RESYNC_WINDOW_MS}ms")
+        onStatus("$statusText · 重新对齐音画")
+    }
+
+    /**
+     * 音画偏差取样（PRD FR-09）：两条流共用发送端的 nanoTime 基准，各自和「现在」比就是各自的端到端滞后，
+     * 差值才是观众感知的偏差。正数=声音比画面晚。
+     */
+    private fun sampleAvSync(deviceName: String) {
+        val out = audioOut ?: return
+        val clock = out.clockUs()
+        val videoPts = decoder?.lastRenderedPtsUs ?: 0L
+        // 主时钟还没锚定、或画面一帧都没上屏时不比对：拿 0 当时间戳会算出一个假的巨大偏差，直接把声音抽花
+        if (clock == 0L || videoPts == 0L) return
+        val nowUs = System.nanoTime() / 1_000
+        val videoLagMs = ((nowUs - videoPts) / 1_000).toInt()
+        val audioLagMs = ((nowUs - clock) / 1_000).toInt()
+        val driftMs = audioLagMs - videoLagMs
+        lastDriftMs = driftMs
+        val now = System.currentTimeMillis()
+        val action = avSync.onDrift(kotlin.math.abs(driftMs), now)
+        if (now - avLoggedAtMs >= AV_LOG_INTERVAL_MS) {
+            avLoggedAtMs = now
+            Log.i(
+                TAG,
+                "av-drift ${driftMs}ms 画面滞后 ${videoLagMs}ms 声音滞后 ${audioLagMs}ms " +
+                    "缓冲 ${out.levelMs()}ms -> $action/${avSync.state}",
+            )
+        }
+        when (action) {
+            AvSync.Action.NONE, AvSync.Action.MICRO_ADJUST -> {
+                val move = pacer.onBuffer(AvSync.correction(driftMs, out.levelMs()))
+                when (move.action) {
+                    AvSync.Pacer.Action.SKIP -> out.skip(move.amount)
+
+                    AvSync.Pacer.Action.PAD -> out.pad(move.amount)
+                    AvSync.Pacer.Action.NONE -> Unit
+                }
+            }
+
+            AvSync.Action.HARD_ALIGN -> {
+                // 一次跳变把声音拉到画面那一侧（PRD「允许一帧内的轻微跳变」），欠账按新基准重算
+                out.hardAlign()
+                pacer.reset()
+                avSync.afterHardAlign()
+                Log.i(TAG, "hard align at ${driftMs}ms drift, streak=${avSync.hardAlignStreak}")
+                onNotice("$deviceName · 音画偏差过大，已重新对齐")
+            }
+
+            AvSync.Action.DOWNGRADE -> downgradeForAvDrift(deviceName, driftMs)
+        }
+    }
+
+    /**
+     * 连续三次硬对齐仍拉不回来（PRD FR-09「连续三次则降档」）：
+     * 说明这条链路撑不住当前码率的缓冲深度，降一档比继续抽声音有效。
+     */
+    private fun downgradeForAvDrift(deviceName: String, driftMs: Int) {
+        avDowngrades++
+        val lower = QualityTiers.downgrade(ceiling)
+        if (lower == ceiling) {
+            Log.w(TAG, "av drift ${driftMs}ms at lowest tier ${ceiling.label}, keeping stream")
+            onNotice("$deviceName · 已在最低档，音画仍有偏差")
+            return
+        }
+        ceiling = lower
+        rebuildLadder(lower)
+        sendControl(Limit.encode(ceilingOf(lower)), "av-sync ceiling ${lower.label}")
+        Log.i(TAG, "av drift ${driftMs}ms -> tier ${lower.label}")
+        onNotice("$deviceName · 音画偏差过大，画质已降到 ${lower.label}")
+        onStatus("$deviceName · 音画偏差过大，画质已降到 ${lower.label}")
+        pacer.reset()
+    }
+
+    /** 声音轨超 1 秒没帧 = 被来电或其他应用占用：只提示，画面照投（PRD FS-01/FS-06 异常表）。 */
+    private fun watchAudioInterrupt(deviceName: String) {
+        if (audioOut == null || paused) return
+        val now = System.currentTimeMillis()
+        val interrupted = AvSync.audioInterrupted(lastAudioAtMs, now)
+        if (interrupted && !audioGone) {
+            audioGone = true
+            Log.w(TAG, "audio stream silent for more than ${AvSync.INTERRUPT_MS}ms")
+            onNotice("$deviceName · ${ErrorNotice.noticeFor(ErrorNotice.Cause.AUDIO_INTERRUPTED).headline}")
+        } else if (!interrupted && audioGone) {
+            audioGone = false
+            resyncAvClock("$deviceName 声音已恢复")
+        }
+    }
+
+    /**
      * 首帧时延打点（PRD 14.1 与 FS-01「在规定的时间内出现首帧」）：
      * 分别给「编码配置到达→上屏」和「授权通过→上屏」两个口径，后者含协商与首帧编码等待。
      */
@@ -727,6 +957,7 @@ class ReceiverSession(
         worker = null
         decoder?.release()
         decoder = null
+        closeAudio()
         pairing.trust.active()?.let { pairing.trust.releaseSession(it) }
         Log.i(TAG, "session stopped")
     }
@@ -740,5 +971,9 @@ class ReceiverSession(
         const val TAKEOVER_POLL_MS = 200L
         const val RECOVERY_POLL_MS = 200L
         const val PREFERRED_PORT = 41523
+
+        /** 48kHz 下一个 AAC 访问单元约 21ms，5 帧一采约 105ms，与 PRD「每 100ms 采样」同口径 */
+        const val AV_SAMPLE_FRAMES = 5L
+        const val AV_LOG_INTERVAL_MS = 2_000L
     }
 }
