@@ -112,4 +112,24 @@ class UpnpSoapTest {
         assertTrue(sink.contains("http-get:*:video/mp4:*"))
         assertTrue(sink.contains("http-get:*:audio/mpeg:*"))
     }
+
+    @Test
+    fun charsetComesFromContentTypeAndDefaultsToUtfEight() {
+        assertEquals(Charsets.UTF_8, Upnp.charsetOf(null))
+        assertEquals(Charsets.UTF_8, Upnp.charsetOf("text/xml"))
+        assertEquals(Charsets.UTF_8, Upnp.charsetOf("text/xml; charset=\"utf-8\""))
+        assertEquals(Charsets.ISO_8859_1, Upnp.charsetOf("text/xml; charset=iso-8859-1"))
+        assertEquals(Charsets.UTF_8, Upnp.charsetOf("text/xml; charset=\"not-a-charset\""))
+    }
+
+    /** 中文节目名要经过 HTTP 正文才到大屏：按 ASCII 解正文会把它变成一串乱码方块。 */
+    @Test
+    fun chineseTitleSurvivesTheSoapBody() {
+        val meta = Upnp.didlLite(Upnp.MediaMeta("http://10.0.2.2/long.mp4", "无音轨1080p", "object.item.videoItem", -1L, "video/mp4"))
+        val body = envelope("SetAVTransportURI", "CurrentURIMetaData" to "<![CDATA[$meta]]>")
+        val bytes = body.toByteArray(Charsets.UTF_8)
+        val decoded = String(bytes, Upnp.charsetOf("text/xml; charset=\"utf-8\""))
+        val raw = Upnp.soapArgs(decoded)["CurrentURIMetaData"].orEmpty()
+        assertEquals("无音轨1080p", Upnp.parseDidl(raw)?.title)
+    }
 }

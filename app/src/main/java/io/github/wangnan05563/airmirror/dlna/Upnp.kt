@@ -1,5 +1,6 @@
 package io.github.wangnan05563.airmirror.dlna
 
+import java.nio.charset.Charset
 import java.util.Locale
 
 /**
@@ -334,6 +335,21 @@ object Upnp {
             args[arg.name] = unescape(stripCdata(arg.text).trim())
         }
         return args
+    }
+
+    /**
+     * 从 Content-Type 取正文编码，认不出来一律按 UTF-8 解。
+     *
+     * 控制点送来的 DIDL 里带中文节目名，用 ASCII 解正文会让大屏和状态栏一起变成乱码方块。
+     */
+    fun charsetOf(contentType: String?): Charset {
+        val text = contentType?.lowercase(Locale.US).orEmpty()
+        val marker = "charset="
+        val at = text.indexOf(marker)
+        if (at < 0) return Charsets.UTF_8
+        val name = text.substring(at + marker.length).split(';').first().trim().trim('"', '\'')
+        if (name.isEmpty()) return Charsets.UTF_8
+        return runCatching { Charset.forName(name) }.getOrDefault(Charsets.UTF_8)
     }
 
     /** UPnP 控制走 SOAP 1.1，多数老控制点认不了 1.2 的 Code/Reason 结构。 */

@@ -4,9 +4,13 @@ import android.content.Context
 import android.os.Build
 import android.util.Log
 import android.view.SurfaceHolder
+import io.github.wangnan05563.airmirror.error.ErrorNotice
 import io.github.wangnan05563.airmirror.media.DlnaPlayer
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.net.ServerSocket
 import java.net.Socket
+import java.nio.charset.Charset
 import java.util.Locale
 import java.util.UUID
 import kotlin.concurrent.thread
@@ -50,19 +54,34 @@ class DlnaServer(
     /** 界面据此收起待连接页：投屏中整屏只保留画面。 */
     var onPlayingChanged: ((Boolean) -> Unit)? = null
 
+    /**
+     * 浮层提示通道：投屏中待连接页已经让位给画面，`onStatus` 那种写在页面上的字看不见，
+     * 「画面未就绪」这类要让用户当场看到的话走这里（与镜像侧的接管浮层同一渲染路径）。
+     */
+    var onNotice: ((String) -> Unit)? = null
+
+    /** 已经提示过「画面未就绪」，等 Surface 回来收口；只在 SOAP 线程与主线程读改写，故 Volatile */
+    @Volatile
+    private var awaitingSurface = false
+
     init {
         player.onPreparedCallback = {
             machine.onLoaded()
             onStatus("DLNA 已载入 ${machine.media?.title.orEmpty()}")
+            // Play 早于就绪时提示是在 Play 那一刻打的，那时还没有画面可言；
+            // 真正 start 之后再说一次，才能区分「还在取流」和「在放但没面」
+            warnIfNoSurface()
         }
         player.onCompletedCallback = {
             machine.onCompleted(loop = false)
+            awaitingSurface = false
             onPlayingChanged?.invoke(false)
             onStatus("DLNA 播放结束")
         }
         player.onErrorCallback = { what, extra ->
             // 状态不回落，控制点就会一直读到 PLAYING 并接着轮询进度；大屏则完全不知道出了什么事
             machine.onPlaybackFailed()
+            awaitingSurface = false
             onPlayingChanged?.invoke(false)
             val text = PlayerFailure.textFor(what, extra)
             Log.w(TAG, "playback failed what=$what extra=$extra -> $text")
@@ -88,10 +107,40 @@ class DlnaServer(
 
     fun attach(holder: SurfaceHolder) {
         player.attach(holder)
+        announceSurfaceBack()
     }
 
     fun detach() {
         player.attach(null)
+        // 播放中途被摘掉面（按 Home / 息屏）同样要说一句：不然后台只剩「在播但没画面」这种没人知道的状态
+        warnIfNoSurface(hasSurface = false)
+    }
+
+    /**
+     * 推送正在放、但接收端此刻没有可用渲染面（退后台 / 息屏）。
+     *
+     * 这不是失败：有声片源照常出声，回到前台 Surface 重建后画面自动接上。
+     * 但也不能默默当没事——判据见 [RenderSurfaceWatch]，这里只负责把它说出去。
+     */
+    private fun warnIfNoSurface(hasSurface: Boolean = player.surfaceReady) {
+        val cause = RenderSurfaceWatch.causeFor(machine.media?.upnpClass, machine.wantsPlayback, hasSurface)
+            ?: return
+        awaitingSurface = true
+        val text = ErrorNotice.textFor(cause)
+        Log.w(TAG, "playing without a render surface: title=${machine.media?.title}")
+        onStatus("DLNA 播放中 · $text")
+        onNotice?.invoke("DLNA $text")
+    }
+
+    /** Surface 回来时把「画面未就绪」的提示收掉，否则大屏会一直挂着一条已经过时的话。 */
+    private fun announceSurfaceBack() {
+        if (!awaitingSurface) return
+        awaitingSurface = false
+        val title = machine.media?.title.orEmpty()
+        Log.i(TAG, "render surface back, picture resumes")
+        onStatus("DLNA 播放中 · 画面已接上 $title")
+        // 提示要在人回到屏幕前的那一刻出现，而不是留在后台没人看见的那三秒
+        if (machine.wantsPlayback) onNotice?.invoke("DLNA 画面已接上 $title")
     }
 
     private fun acceptLoop(socket: ServerSocket, friendlyName: String, ip: String) {
@@ -111,21 +160,23 @@ class DlnaServer(
     }
 
     private fun serve(client: Socket, friendlyName: String, ip: String) {
-        val reader = client.getInputStream().bufferedReader(Charsets.US_ASCII)
-        val requestLine = reader.readLine() ?: return
+        // 逐字节读头：BufferedReader 会预读，把 UTF-8 正文吃进缓冲区后就没法按原编码解了
+        val input = client.getInputStream()
+        val requestLine = input.readAsciiLine() ?: return
         val parts = requestLine.split(' ')
         if (parts.size < 2) return
         val method = parts[0].uppercase(Locale.US)
         val path = parts[1]
         val headers = LinkedHashMap<String, String>()
         while (true) {
-            val line = reader.readLine() ?: break
+            val line = input.readAsciiLine() ?: break
             if (line.isEmpty()) break
             val colon = line.indexOf(':')
             if (colon > 0) headers[line.substring(0, colon).trim().lowercase(Locale.US)] = line.substring(colon + 1).trim()
         }
         val body = headers["content-length"]?.toIntOrNull()?.let { length ->
-            if (length <= 0 || length > MAX_BODY) "" else reader.readText(length)
+            if (length <= 0 || length > MAX_BODY) ""
+            else input.readBody(length, Upnp.charsetOf(headers["content-type"]))
         }.orEmpty()
 
         if (method == "SUBSCRIBE" && path.substringBefore('?').startsWith("/evt/")) {
@@ -218,6 +269,8 @@ class DlnaServer(
             player.play()
             machine.onPlayInvoked()
             onPlayingChanged?.invoke(true)
+            Log.i(TAG, "play: surfaceReady=${player.surfaceReady} prepared=${player.prepared}")
+            warnIfNoSurface()
             emptyList()
         }
 
@@ -225,6 +278,7 @@ class DlnaServer(
             machine.canPauseOrSeek()?.let { throw SoapError(it, "not playing") }
             player.pause()
             machine.onPauseInvoked()
+            awaitingSurface = false
             onPlayingChanged?.invoke(false)
             emptyList()
         }
@@ -232,6 +286,7 @@ class DlnaServer(
         "Stop" -> {
             player.stop()
             machine.onStopInvoked()
+            awaitingSurface = false
             onPlayingChanged?.invoke(false)
             emptyList()
         }
@@ -381,14 +436,27 @@ class DlnaServer(
     }
 }
 
-/** 按字节数读取剩余内容（HTTP body 长度已知，避免 readText() 卡在 keep-alive 上）。 */
-private fun java.io.Reader.readText(count: Int): String {
-    val chars = CharArray(count)
+/** 逐字节读一行（HTTP 请求行与头是 ASCII）；换行符本身不返回，行尾 \r 一并去掉。 */
+private fun InputStream.readAsciiLine(): String? {
+    val line = ByteArrayOutputStream(96)
+    while (true) {
+        when (val b = read()) {
+            -1 -> return if (line.size() == 0) null else line.toString("US-ASCII")
+            10 -> return line.toString("US-ASCII")
+            13 -> Unit
+            else -> line.write(b)
+        }
+    }
+}
+
+/** 读满 count 个字节再按正文编码解码（HTTP body 长度已知，避免 readText() 卡在 keep-alive 上）。 */
+private fun InputStream.readBody(count: Int, charset: Charset): String {
+    val bytes = ByteArray(count)
     var read = 0
     while (read < count) {
-        val n = read(chars, read, count - read)
+        val n = read(bytes, read, count - read)
         if (n < 0) break
         read += n
     }
-    return String(chars, 0, read)
+    return String(bytes, 0, read, charset)
 }
