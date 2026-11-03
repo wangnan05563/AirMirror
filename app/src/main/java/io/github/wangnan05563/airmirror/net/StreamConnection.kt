@@ -55,6 +55,11 @@ class StreamConnection(private val socket: Socket) : Closeable {
 
     fun receive(): Protocol.Frame? = Protocol.read(input)
 
+    /** 读超时：等待对端某一条特定帧时用，0 表示不超时 */
+    fun setReadTimeout(timeoutMs: Int) {
+        socket.soTimeout = timeoutMs
+    }
+
     override fun close() {
         runCatching { socket.close() }
     }

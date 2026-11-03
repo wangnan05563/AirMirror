@@ -15,11 +15,19 @@ import android.os.IBinder
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.WindowManager
+import io.github.wangnan05563.airmirror.device.DeviceProbe
+import io.github.wangnan05563.airmirror.device.EncodeProfile
+import io.github.wangnan05563.airmirror.device.NetworkBand
+import io.github.wangnan05563.airmirror.device.QualityTier
+import io.github.wangnan05563.airmirror.device.QualityTiers
+import io.github.wangnan05563.airmirror.error.ErrorNotice
 import io.github.wangnan05563.airmirror.media.VideoEncoder
 import io.github.wangnan05563.airmirror.net.StreamConnection
 import io.github.wangnan05563.airmirror.protocol.Auth
 import io.github.wangnan05563.airmirror.protocol.Handshake
+import io.github.wangnan05563.airmirror.protocol.Limit
 import io.github.wangnan05563.airmirror.protocol.Protocol
+import java.io.InterruptedIOException
 import java.net.InetSocketAddress
 import java.net.Socket
 import kotlin.concurrent.thread
@@ -39,10 +47,27 @@ class CaptureService : Service() {
     @Volatile
     private var running = false
     private var worker: Thread? = null
+    private var peerReader: Thread? = null
     private var projection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var encoder: VideoEncoder? = null
     private var connection: StreamConnection? = null
+
+    /** 采集源尺寸与 dpi，重建编码器时要用，不能只在首次开流时记住 */
+    private var sourceWidth = 0
+    private var sourceHeight = 0
+    private var densityDpi = 0
+
+    @Volatile
+    private var ownCeiling: QualityTier = QualityTier.FHD60
+
+    @Volatile
+    private var band: NetworkBand = NetworkBand.UNKNOWN
+
+    @Volatile
+    private var peerCeiling: Limit.Ceiling = Limit.empty()
+
+    private val reconfigure = java.util.concurrent.atomic.AtomicBoolean(false)
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -80,8 +105,8 @@ class CaptureService : Service() {
         val result = Auth.parseResult(reply.payload)
         SenderReport.last = when {
             result.accepted -> ""
-            result.reason.isBlank() -> "接收端拒绝投屏"
-            else -> result.reason
+            result.reason.isBlank() -> ErrorNotice.textFor(ErrorNotice.Cause.REFUSED_BY_USER)
+            else -> ErrorNotice.textFor(ErrorNotice.causeOfLegacyReason(result.reason))
         }
         return result.accepted
     }
@@ -121,27 +146,29 @@ class CaptureService : Service() {
             val metrics = DisplayMetrics()
             @Suppress("DEPRECATION")
             (getSystemService(WINDOW_SERVICE) as WindowManager).defaultDisplay.getRealMetrics(metrics)
-            val width = metrics.widthPixels and 0xFFFFFFFE.toInt()
-            val height = metrics.heightPixels and 0xFFFFFFFE.toInt()
+            sourceWidth = metrics.widthPixels and 0xFFFFFFFE.toInt()
+            sourceHeight = metrics.heightPixels and 0xFFFFFFFE.toInt()
+            densityDpi = metrics.densityDpi
+            ownCeiling = DeviceProbe.policy(this).maxTier
+            band = DeviceProbe.band(this)
+            peerCeiling = awaitCeiling(conn)
+            if (!negotiatedTier().isUsable) {
+                SenderReport.last = ErrorNotice.textFor(ErrorNotice.Cause.DECODE_UNSUPPORTED)
+                return
+            }
+            watchPeer(conn)
 
-            val videoEncoder = VideoEncoder(width, height)
-            encoder = videoEncoder
-            virtualDisplay = mediaProjection.createVirtualDisplay(
-                "AirMirror",
-                width,
-                height,
-                metrics.densityDpi,
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                videoEncoder.inputSurface,
-                null,
-                null,
-            )
-
-            videoEncoder.requestKeyFrame()
+            openEncoder(mediaProjection, currentProfile())
 
             var sentFrames = 0
             var lastOutputAt = System.currentTimeMillis()
             while (running) {
+                if (reconfigure.getAndSet(false)) restartEncoder()
+                val videoEncoder = encoder
+                if (videoEncoder == null) {
+                    Thread.sleep(20)
+                    continue
+                }
                 val frames = videoEncoder.drain()
                 if (frames.isEmpty()) {
                     val now = System.currentTimeMillis()
@@ -173,15 +200,122 @@ class CaptureService : Service() {
             }
         } catch (e: Exception) {
             Log.w(TAG, "capture session ended: ${e.message}")
-            if (SenderReport.last.isEmpty()) SenderReport.last = "连不上对方，确认两台设备在同一网络"
+            if (SenderReport.last.isEmpty()) SenderReport.last = ErrorNotice.textFor(ErrorNotice.Cause.UNREACHABLE)
         } finally {
             cleanup()
             stopSelf()
         }
     }
 
+    /**
+     * 等接收端把画质上限发过来（PRD 8.4 协商）。老版本不发或发得慢就按本机分级投，
+     * 不能因为缺一条控制帧把整个投屏卡住。
+     */
+    private fun awaitCeiling(conn: StreamConnection): Limit.Ceiling {
+        val deadline = System.currentTimeMillis() + CEILING_WAIT_MS
+        return try {
+            conn.setReadTimeout(CEILING_WAIT_MS)
+            while (System.currentTimeMillis() < deadline) {
+                val frame = try {
+                    conn.receive()
+                } catch (e: InterruptedIOException) {
+                    Log.i(TAG, "no ceiling in time, using local grade")
+                    return Limit.empty()
+                } ?: return Limit.empty()
+                if (frame.type == Protocol.Type.CONTROL) return Limit.decode(frame.payload)
+            }
+            Limit.empty()
+        } catch (e: Exception) {
+            Log.w(TAG, "ceiling wait failed: ${e.message}")
+            Limit.empty()
+        } finally {
+            runCatching { conn.setReadTimeout(0) }
+        }
+    }
+
+    /** 对端的控制帧在这里落地：降档指令换一个更低的档重开编码器 */
+    private fun watchPeer(conn: StreamConnection) {
+        peerReader = thread(name = "airmirror-sender-rx") {
+            try {
+                while (running) {
+                    val frame = conn.receive() ?: break
+                    when (frame.type) {
+                        Protocol.Type.CONTROL -> applyCeiling(Limit.decode(frame.payload))
+                        Protocol.Type.BYE -> {
+                            SenderReport.last = ErrorNotice.textFor(ErrorNotice.Cause.SESSION_ENDED)
+                            running = false
+                            break
+                        }
+
+                        else -> Unit
+                    }
+                }
+            } catch (e: Exception) {
+                if (running) Log.i(TAG, "peer reader ended: ${e.message}")
+            }
+        }
+    }
+
+    private fun applyCeiling(newCeiling: Limit.Ceiling) {
+        if (newCeiling.isEmpty) return
+        val before = negotiatedTier()
+        peerCeiling = newCeiling
+        val after = negotiatedTier()
+        if (after != before) {
+            Log.i(TAG, "tier ${before.label} -> ${after.label}")
+            reconfigure.set(true)
+        }
+    }
+
+    /** 协商档位 = 本机分级上限 ∩ 对端上限 ∩ 网络频段（PRD 8.7 三档适用条件） */
+    private fun negotiatedTier(): QualityTier {
+        val ceiling = peerCeiling
+        val peer = if (ceiling.isEmpty) QualityTier.UHD60 else QualityTiers.tierWithin(ceiling.width, ceiling.height)
+        return QualityTiers.negotiate(ownCeiling, peer, band)
+    }
+
+    private fun currentProfile(): EncodeProfile {
+        val profile = QualityTiers.profile(negotiatedTier(), sourceWidth, sourceHeight)
+        Log.i(TAG, "encode ${profile.width}x${profile.height}@${profile.fps} tier=${profile.tier.label} br=${profile.bitRateKbps}kbps")
+        return profile
+    }
+
+    private fun openEncoder(mediaProjection: MediaProjection, profile: EncodeProfile): VideoEncoder {
+        val videoEncoder = VideoEncoder(profile.width, profile.height, profile.fps, profile.bitRate)
+        encoder = videoEncoder
+        virtualDisplay = mediaProjection.createVirtualDisplay(
+            "AirMirror",
+            profile.width,
+            profile.height,
+            densityDpi,
+            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+            videoEncoder.inputSurface,
+            null,
+            null,
+        )
+        videoEncoder.requestKeyFrame()
+        return videoEncoder
+    }
+
+    /** 换档要重建编码器与虚拟屏：采集尺寸变了，旧 Surface 不能再复用 */
+    private fun restartEncoder() {
+        val mediaProjection = projection ?: return
+        runCatching { virtualDisplay?.release() }
+        virtualDisplay = null
+        runCatching { encoder?.release() }
+        encoder = null
+        runCatching { openEncoder(mediaProjection, currentProfile()) }
+            .onFailure {
+                Log.w(TAG, "reconfigure failed: ${it.message}")
+                SenderReport.last = ErrorNotice.textFor(ErrorNotice.Cause.DECODE_UNSUPPORTED)
+                running = false
+            }
+    }
+
     private fun cleanup() {
         running = false
+        peerReader?.join(500)
+        peerReader = null
         runCatching { connection?.close() }
         connection = null
         runCatching { virtualDisplay?.release() }
@@ -245,5 +379,6 @@ class CaptureService : Service() {
         private const val CHANNEL_ID = "airmirror-capture"
         private const val NOTIFICATION_ID = 1
         private const val CONNECT_TIMEOUT_MS = 5_000
+        private const val CEILING_WAIT_MS = 1_500
     }
 }

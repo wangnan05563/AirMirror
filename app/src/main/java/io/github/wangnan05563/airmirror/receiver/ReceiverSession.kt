@@ -4,6 +4,13 @@ import android.content.Context
 import android.os.Build
 import android.util.Log
 import android.view.Surface
+import io.github.wangnan05563.airmirror.device.DeviceFacts
+import io.github.wangnan05563.airmirror.device.DeviceGrading
+import io.github.wangnan05563.airmirror.device.DeviceProbe
+import io.github.wangnan05563.airmirror.device.GradePolicy
+import io.github.wangnan05563.airmirror.device.QualityTier
+import io.github.wangnan05563.airmirror.device.QualityTiers
+import io.github.wangnan05563.airmirror.error.ErrorNotice
 import io.github.wangnan05563.airmirror.media.VideoDecoder
 import io.github.wangnan05563.airmirror.net.ServiceAdvertiser
 import io.github.wangnan05563.airmirror.net.StreamConnection
@@ -11,6 +18,7 @@ import io.github.wangnan05563.airmirror.pairing.AuthGate
 import io.github.wangnan05563.airmirror.pairing.Pairing
 import io.github.wangnan05563.airmirror.protocol.Auth
 import io.github.wangnan05563.airmirror.protocol.Handshake
+import io.github.wangnan05563.airmirror.protocol.Limit
 import io.github.wangnan05563.airmirror.protocol.Protocol
 import java.io.IOException
 import java.net.ServerSocket
@@ -58,6 +66,17 @@ class ReceiverSession(
     @Volatile
     private var pendingConfig: ByteArray? = null
 
+    /** 本机分级与画质上限，扫能力表有开销，放到首次真正用到时才算（PRD FS-12 步骤 1） */
+    private val gradeFacts: DeviceFacts by lazy { DeviceProbe.facts(context) }
+    private val gradePolicy: GradePolicy by lazy { DeviceGrading.policyFor(gradeFacts) }
+
+    /** 当前会话的画质上限：协商结果，解不动时逐档下调并回写对端 */
+    @Volatile
+    private var ceiling: QualityTier = QualityTier.FHD60
+
+    @Volatile
+    private var activeConn: StreamConnection? = null
+
     fun start(advertisedName: String) {
         if (running) return
         running = true
@@ -92,7 +111,7 @@ class ReceiverSession(
         val codec = VideoDecoder(surface)
         pendingConfig?.let { config ->
             runCatching { codec.configure(config) }
-                .onFailure { onStatus("解码器初始化失败：${it.message}") }
+                .onFailure { fallBackToOneTierLower(it) }
         }
         decoder = codec
     }
@@ -107,6 +126,7 @@ class ReceiverSession(
         StreamConnection(socket).use { conn ->
             val hello = conn.acceptAsServer(Build.MODEL, Handshake.Capability.VIDEO_H264)
             val deviceId = authorize(conn, socket, hello.deviceName) ?: return null
+            activeConn = conn
             var received = 0
             var decoded = 0
             try {
@@ -122,7 +142,7 @@ class ReceiverSession(
                                 pendingConfig = frame.payload
                                 decoder?.let {
                                     runCatching { it.configure(frame.payload) }
-                                        .onFailure { error -> onStatus("解码器初始化失败：${error.message}") }
+                                        .onFailure { error -> fallBackToOneTierLower(error) }
                                 }
                                 Log.i(TAG, "config received: ${frame.payload.size}B, decoder=${decoder != null}")
                                 onStatus("${hello.deviceName} 推流中")
@@ -153,6 +173,7 @@ class ReceiverSession(
             } catch (e: IOException) {
                 if (running) Log.w(TAG, "connection dropped: ${e.message}")
             } finally {
+                activeConn = null
                 decoder?.release()
                 decoder = null
                 pairing.trust.releaseSession(deviceId)
@@ -208,8 +229,40 @@ class ReceiverSession(
     private fun grant(conn: StreamConnection, deviceName: String, permanent: Boolean, deviceId: String) {
         if (permanent) pairing.persistTrusted()
         conn.send(Protocol.Frame(Protocol.Type.AUTH_RESULT, payload = Auth.result(true, if (permanent) "trusted" else "")))
+        sendCeiling(conn)
         onStatus("$deviceName 已连接")
     }
+
+    /**
+     * 授权通过后立刻把本机画质上限告诉发端（PRD 8.4 能力协商）：
+     * 发端原来按自己屏幕原样编码，1080x2400 这种尺寸老盒子根本解不动。
+     */
+    private fun sendCeiling(conn: StreamConnection) {
+        val tier = QualityTiers.receiverCeiling(gradePolicy, gradeFacts)
+        ceiling = tier
+        runCatching { conn.send(Protocol.Frame(Protocol.Type.CONTROL, payload = Limit.encode(ceilingOf(tier)))) }
+            .onFailure { Log.w(TAG, "ceiling not delivered: ${it.message}") }
+    }
+
+    /**
+     * 解不动就降一档重谈（PRD FS-12「已切换到兼容模式」）：不弹窗，
+     * 状态栏提示一次并把新的上限回写对端，对端下一个 CONFIG 会按低档发来。
+     */
+    private fun fallBackToOneTierLower(error: Throwable) {
+        Log.w(TAG, "decoder configure failed: ${error.message}")
+        val lower = QualityTiers.downgrade(ceiling)
+        if (lower == ceiling) {
+            onStatus(ErrorNotice.textFor(ErrorNotice.Cause.DECODE_UNSUPPORTED))
+            return
+        }
+        ceiling = lower
+        activeConn?.let { conn ->
+            runCatching { conn.send(Protocol.Frame(Protocol.Type.CONTROL, payload = Limit.encode(ceilingOf(lower)))) }
+        }
+        onStatus("已切换到兼容模式 · ${lower.label}")
+    }
+
+    private fun ceilingOf(tier: QualityTier) = Limit.Ceiling(tier.width, tier.height, tier.fps, tier.maxBitRateKbps, tier.label)
 
     private fun refuse(conn: StreamConnection, reason: String) {
         runCatching { conn.send(Protocol.Frame(Protocol.Type.AUTH_RESULT, payload = Auth.result(false, reason))) }

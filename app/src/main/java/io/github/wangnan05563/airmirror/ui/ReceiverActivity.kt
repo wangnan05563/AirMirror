@@ -18,6 +18,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import io.github.wangnan05563.airmirror.dlna.DlnaServer
 import io.github.wangnan05563.airmirror.dlna.localIpv4
+import io.github.wangnan05563.airmirror.device.DeviceProbe
 import io.github.wangnan05563.airmirror.pairing.CastCode
 import io.github.wangnan05563.airmirror.pairing.DeviceStore
 import io.github.wangnan05563.airmirror.pairing.Pairing
@@ -41,6 +42,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     private lateinit var ring: CountdownRingView
     private lateinit var qrView: ImageView
     private lateinit var statusText: TextView
+    private lateinit var gradeText: TextView
     private lateinit var overlayName: TextView
     private lateinit var promptBar: LinearLayout
     private lateinit var promptText: TextView
@@ -154,6 +156,19 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             setPadding(0, Theme.dp(this@ReceiverActivity, 12), 0, 0)
         }
         waiting.addView(countdownText, matchWidth())
+
+        // FS-12：本机等级与最高画质如实告知，用户据此判断该投哪一档；探测有开销，后台算完再回填
+        gradeText = TextView(this).apply {
+            textSize = Theme.BODY_SP
+            setTextColor(Theme.TEXT_SECONDARY)
+            gravity = Gravity.CENTER
+            setPadding(0, Theme.dp(this@ReceiverActivity, 12), 0, 0)
+        }
+        waiting.addView(gradeText, matchWidth())
+        Thread {
+            val summary = DeviceProbe.summary(DeviceProbe.policy(this))
+            runOnUiThread { gradeText.text = summary }
+        }.start()
 
         statusText = TextView(this).apply {
             textSize = Theme.BODY_SP
