@@ -22,6 +22,7 @@ import io.github.wangnan05563.airmirror.device.DeviceProbe
 import io.github.wangnan05563.airmirror.pairing.CastCode
 import io.github.wangnan05563.airmirror.pairing.DeviceStore
 import io.github.wangnan05563.airmirror.pairing.Pairing
+import io.github.wangnan05563.airmirror.protocol.ProtocolBoundary
 import io.github.wangnan05563.airmirror.receiver.ReceiverSession
 
 /**
@@ -104,7 +105,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
             setBackgroundColor(Theme.BACKGROUND)
-            setPadding(Theme.dp(this@ReceiverActivity, 32), Theme.dp(this@ReceiverActivity, 48), Theme.dp(this@ReceiverActivity, 32), Theme.dp(this@ReceiverActivity, 32))
+            setPadding(Theme.dp(this@ReceiverActivity, 32), Theme.dp(this@ReceiverActivity, 28), Theme.dp(this@ReceiverActivity, 32), Theme.dp(this@ReceiverActivity, 24))
         }
         deviceNameText = TextView(this).apply {
             textSize = Theme.TITLE_SP
@@ -113,19 +114,27 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             letterSpacing = 0.02f
         }
         waiting.addView(deviceNameText, matchWidth())
+        // PRD §04 / §13.1：只写本机真能做到的入口，AirPlay 与 Miracast 在补齐前明确说不支持
         waiting.addView(TextView(this).apply {
-            text = "iPhone / iPad：控制中心 → 屏幕镜像 → 选本机"
+            text = ProtocolBoundary.receiverMirrorLine()
             textSize = Theme.BODY_SP
             setTextColor(Theme.TEXT_SECONDARY)
             gravity = Gravity.CENTER
             setPadding(0, Theme.dp(this@ReceiverActivity, 8), 0, 0)
         }, matchWidth())
         waiting.addView(TextView(this).apply {
-            text = "Android / 电脑：打开 AirMirror 或扫二维码"
+            text = ProtocolBoundary.receiverPushLine()
             textSize = Theme.BODY_SP
             setTextColor(Theme.TEXT_SECONDARY)
             gravity = Gravity.CENTER
-            setPadding(0, Theme.dp(this@ReceiverActivity, 4), 0, Theme.dp(this@ReceiverActivity, 24))
+            setPadding(0, Theme.dp(this@ReceiverActivity, 4), 0, Theme.dp(this@ReceiverActivity, 12))
+        }, matchWidth())
+        waiting.addView(TextView(this).apply {
+            text = ProtocolBoundary.receiverUnsupportedLine()
+            textSize = Theme.BODY_SP
+            setTextColor(Theme.OFFLINE)
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, Theme.dp(this@ReceiverActivity, 12))
         }, matchWidth())
 
         val side = Theme.dp(this, 190)
@@ -147,7 +156,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             codeText,
             FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT),
         )
-        waiting.addView(codeBlock, centeredBlock(side).apply { topMargin = Theme.dp(this@ReceiverActivity, 24) })
+        waiting.addView(codeBlock, centeredBlock(side).apply { topMargin = Theme.dp(this@ReceiverActivity, 16) })
 
         countdownText = TextView(this).apply {
             textSize = Theme.BODY_SP

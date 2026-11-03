@@ -108,4 +108,37 @@ class QualityTierTest {
         val policy = DeviceGrading.policyFor(facts)
         assertEquals(QualityTier.OFF, QualityTiers.receiverCeiling(policy, facts))
     }
+
+    @Test
+    fun `note names the peer when the receiver is what caps quality`() {
+        val note = QualityTiers.note(QualityTier.FHD60, QualityTier.UHD60, QualityTier.FHD60, NetworkBand.GHZ_5)
+        assertEquals(QualityTier.FHD60, note.tier)
+        assertEquals("对方上限", note.reason)
+        assertEquals("已按 1080p60 投屏 · 对方上限", note.text())
+    }
+
+    @Test
+    fun `note names 2_4ghz when the band is what caps quality`() {
+        val note = QualityTiers.note(QualityTier.HD30, QualityTier.UHD60, QualityTier.UHD60, NetworkBand.GHZ_2)
+        assertEquals("2.4GHz Wi-Fi 上限", note.reason)
+        assertTrue(note.text().contains("720p30"))
+    }
+
+    @Test
+    fun `note names the local ceiling when only this phone is limited`() {
+        val note = QualityTiers.note(QualityTier.HD30, QualityTier.HD30, QualityTier.UHD60, NetworkBand.GHZ_5)
+        assertEquals("本机上限", note.reason)
+    }
+
+    @Test
+    fun `note stays quiet when 4K is actually reachable`() {
+        val note = QualityTiers.note(QualityTier.UHD60, QualityTier.UHD60, QualityTier.UHD60, NetworkBand.GHZ_5)
+        assertEquals("", note.reason)
+        assertEquals("已按 4K 投屏", note.text())
+    }
+
+    @Test
+    fun `note says unavailable instead of inventing a tier`() {
+        assertEquals("当前无法投屏", QualityTiers.note(QualityTier.OFF, QualityTier.UHD60, null, NetworkBand.GHZ_5).text())
+    }
 }

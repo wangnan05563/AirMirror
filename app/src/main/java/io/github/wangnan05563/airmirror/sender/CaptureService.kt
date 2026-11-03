@@ -18,6 +18,7 @@ import android.view.WindowManager
 import io.github.wangnan05563.airmirror.device.DeviceProbe
 import io.github.wangnan05563.airmirror.device.EncodeProfile
 import io.github.wangnan05563.airmirror.device.NetworkBand
+import io.github.wangnan05563.airmirror.device.QualityNote
 import io.github.wangnan05563.airmirror.device.QualityTier
 import io.github.wangnan05563.airmirror.device.QualityTiers
 import io.github.wangnan05563.airmirror.error.ErrorNotice
@@ -36,6 +37,10 @@ import kotlin.concurrent.thread
 object SenderReport {
     @Volatile
     var last: String = ""
+
+    /** 成功建立会话后的画质说明（如「已按 1080p60 投屏 · 对方上限」）；会话结束即清空 */
+    @Volatile
+    var quality: String = ""
 }
 
 /**
@@ -121,6 +126,7 @@ class CaptureService : Service() {
     ) {
         try {
             SenderReport.last = ""
+            SenderReport.quality = ""
             // 先握手、先授权，通过后才开始采集屏幕：被拒时不该已经在录屏（PRD 14.4 最小采集）
             val socket = Socket()
             socket.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
@@ -156,6 +162,7 @@ class CaptureService : Service() {
                 SenderReport.last = ErrorNotice.textFor(ErrorNotice.Cause.DECODE_UNSUPPORTED)
                 return
             }
+            SenderReport.quality = qualityNote().text()
             watchPeer(conn)
 
             openEncoder(mediaProjection, currentProfile())
@@ -263,6 +270,7 @@ class CaptureService : Service() {
         val after = negotiatedTier()
         if (after != before) {
             Log.i(TAG, "tier ${before.label} -> ${after.label}")
+            SenderReport.quality = qualityNote().text()
             reconfigure.set(true)
         }
     }
@@ -272,6 +280,13 @@ class CaptureService : Service() {
         val ceiling = peerCeiling
         val peer = if (ceiling.isEmpty) QualityTier.UHD60 else QualityTiers.tierWithin(ceiling.width, ceiling.height)
         return QualityTiers.negotiate(ownCeiling, peer, band)
+    }
+
+    /** 界面只展示真正可达的档位，并说明被谁压下来（PRD 13.1、T03939 4K 协商） */
+    private fun qualityNote(): QualityNote {
+        val ceiling = peerCeiling
+        val peer = if (ceiling.isEmpty) null else QualityTiers.tierWithin(ceiling.width, ceiling.height)
+        return QualityTiers.note(negotiatedTier(), ownCeiling, peer, band)
     }
 
     private fun currentProfile(): EncodeProfile {
@@ -314,6 +329,7 @@ class CaptureService : Service() {
 
     private fun cleanup() {
         running = false
+        SenderReport.quality = ""
         peerReader?.join(500)
         peerReader = null
         runCatching { connection?.close() }

@@ -46,6 +46,18 @@ data class EncodeProfile(
     val bitRate: Int get() = bitRateKbps * 1000
 }
 
+/**
+ * 协商结论的展示文案（PRD 13.1「能力协商，不展示不可达档位」）：
+ * 档位必须说清楚，被谁压下来也说清楚，用户才不会以为「宣传 4K、实际 720p」。
+ */
+data class QualityNote(val tier: QualityTier, val reason: String) {
+    fun text(): String = when {
+        !tier.isUsable -> "当前无法投屏"
+        reason.isEmpty() -> "已按 ${tier.label} 投屏"
+        else -> "已按 ${tier.label} 投屏 · $reason"
+    }
+}
+
 object QualityTiers {
 
     /**
@@ -131,5 +143,25 @@ object QualityTiers {
         val longEdge = maxOf(width, height)
         if (longEdge <= 0) return QualityTier.OFF
         return QualityTier.Ordered.firstOrNull { maxOf(it.width, it.height) <= longEdge } ?: QualityTier.SD480
+    }
+
+    /**
+     * 说明协商结果是被哪一方压下来的。三者取最低，命中谁就报谁；
+     * 都没被压到 4K 以下时只报档位，不编造理由。
+     */
+    fun note(negotiated: QualityTier, ownCeiling: QualityTier, peerCeiling: QualityTier?, band: NetworkBand): QualityNote {
+        if (!negotiated.isUsable) return QualityNote(negotiated, "")
+        val bandLimit = if (band == NetworkBand.GHZ_2) QualityTier.HD30 else QualityTier.UHD60
+        val peerRank = peerCeiling?.rank ?: QualityTier.UHD60.rank
+        val rank = maxOf(ownCeiling.rank, maxOf(peerRank, bandLimit.rank))
+        if (rank <= QualityTier.UHD60.rank) return QualityNote(negotiated, "")
+        val reason = when {
+            band == NetworkBand.GHZ_2 && bandLimit.rank == rank -> "2.4GHz Wi-Fi 上限"
+            peerCeiling != null && peerRank == rank && ownCeiling.rank < rank -> "对方上限"
+            peerCeiling != null && peerRank == rank -> "双方上限"
+            ownCeiling.rank == rank -> "本机上限"
+            else -> ""
+        }
+        return QualityNote(negotiated, reason)
     }
 }

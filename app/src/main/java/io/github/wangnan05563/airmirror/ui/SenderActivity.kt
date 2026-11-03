@@ -23,6 +23,7 @@ import io.github.wangnan05563.airmirror.net.DeviceRegistry
 import io.github.wangnan05563.airmirror.net.ServiceBrowser
 import io.github.wangnan05563.airmirror.pairing.DeviceStore
 import io.github.wangnan05563.airmirror.pairing.PairingLink
+import io.github.wangnan05563.airmirror.protocol.ProtocolBoundary
 import io.github.wangnan05563.airmirror.sender.CaptureService
 import io.github.wangnan05563.airmirror.sender.SenderReport
 
@@ -55,10 +56,13 @@ class SenderActivity : Activity() {
     /** 采集在后台服务里跑，界面按拍轮询它的结论。 */
     private val refresh = object : Runnable {
         override fun run() {
+            // 异常文案优先；没有异常时展示协商后的画质，两者都不在就保持当前提示
             val report = SenderReport.last
-            if (report != lastReport) {
-                lastReport = report
-                status.text = if (report.isEmpty()) CONNECTING else report
+            val note = if (report.isEmpty()) SenderReport.quality else report
+            if (note != lastReport) {
+                lastReport = note
+                status.text = note.ifEmpty { hint.text.ifEmpty { SEARCHING } }
+                // 出错时把输入放开让用户重试；正常投屏中保持禁用，避免重复发起
                 codeInput.isEnabled = report.isNotEmpty()
             }
             main.postDelayed(this, POLL_MS)
@@ -79,6 +83,13 @@ class SenderActivity : Activity() {
             textSize = 28f
             setTextColor(Theme.TEXT_PRIMARY)
             setTypeface(typeface, Typeface.BOLD)
+        })
+        // PRD §04 / §13.1：能做什么先说清楚，Miracast 不在承诺内
+        root.addView(TextView(this).apply {
+            text = "支持镜像到同网 AirMirror 设备；不支持 Miracast"
+            textSize = Theme.PHONE_BODY_SP
+            setTextColor(Theme.TEXT_SECONDARY)
+            setPadding(0, Theme.dp(this@SenderActivity, 4), 0, 0)
         })
         status = TextView(this).apply {
             text = SEARCHING
@@ -186,6 +197,8 @@ class SenderActivity : Activity() {
         list.removeAllViews()
         for (row in devices.rows()) {
             val target = targetOf(row.fingerprint, row.name) ?: continue
+            // 一台设备可能同时广播多种协议：有能用的就按能用的展示，全都用不了才标不支持
+            val usable = ProtocolBoundary.bestSupported(row.protocols)
             list.addView(LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
@@ -199,11 +212,21 @@ class SenderActivity : Activity() {
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 })
                 addView(TextView(this@SenderActivity).apply {
-                    text = if (row.online) badge(row) else "离线"
+                    text = when {
+                        !row.online -> "离线"
+                        usable != null -> ProtocolBoundary.badgeFor(usable)
+                        else -> "不支持"
+                    }
                     textSize = Theme.PHONE_BODY_SP
-                    setTextColor(if (row.online) Theme.ACCENT else Theme.OFFLINE)
+                    setTextColor(if (row.online && usable != null) Theme.ACCENT else Theme.OFFLINE)
                 })
-                setOnClickListener { connectTo(target) }
+                setOnClickListener {
+                    if (usable != null) {
+                        connectTo(target)
+                    } else {
+                        toast(ProtocolBoundary.describe(row.strongest).text())
+                    }
+                }
             }, matchWidth())
         }
         val reason = when (devices.emptyReason()) {
@@ -222,15 +245,7 @@ class SenderActivity : Activity() {
         return Target(name, address.substringBefore(':'), port, fingerprint)
     }
 
-    private fun badge(row: DeviceRegistry.Row) = when (row.strongest) {
-        "AMRC" -> "镜像 · 私有通道"
-        "AirPlay" -> "AirPlay 镜像"
-        "DLNA" -> "DLNA 推送"
-        "Cast" -> "Cast 推送"
-        else -> "可用"
-    }
-
-    /** 投屏码路径：一台在线设备直接连，多台时先点选，避免投错屏。 */
+    /** 投屏码路径：一台能用 AirMirror 的设备直接连，多台时先点选，避免投错屏。 */
     private fun connectByCode() {
         val code = codeInput.text.toString().trim()
         if (code.length != CODE_LENGTH) {
@@ -238,10 +253,14 @@ class SenderActivity : Activity() {
             return
         }
         val online = devices.rows().filter { it.online }
-        when (online.size) {
-            0 -> toast("没搜到设备，在下面填电视地址")
-            1 -> {
-                val row = online.first()
+        val usable = online.filter { ProtocolBoundary.bestSupported(it.protocols) != null }
+        when {
+            online.isEmpty() -> toast("没搜到设备，在下面填电视地址")
+            usable.isEmpty() -> toast(
+                ProtocolBoundary.describe(online.first().strongest).text(),
+            )
+            usable.size == 1 -> {
+                val row = usable.first()
                 val target = targetOf(row.fingerprint, row.name)
                 if (target == null) toast("设备地址还没解析出来，稍后再试") else connectTo(target, code)
             }
