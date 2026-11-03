@@ -141,4 +141,50 @@ class CastCodeTest {
         clock += 30_500
         assertEquals(30, subject.secondsUntilRotation())
     }
+
+    @Test
+    fun qrTokenRotatesTogetherWithTheDisplayedCode() {
+        val subject = newCode(111_111, 222_222)
+        val first = subject.token()
+        assertEquals(16, first.length)
+        assertEquals("111111", subject.code())
+        clock += 60_000
+        assertEquals("222222", subject.code())
+        val second = subject.token()
+        assertNotEquals(first, second)
+        // 旧令牌沿用同一条宽限期规则
+        assertEquals(CastCode.Outcome.Accepted, subject.submitToken(first))
+    }
+
+    @Test
+    fun scannedTokenWorksOnceAndIsThenRecognisedAsStale() {
+        val subject = newCode(111_111, 222_222)
+        val token = subject.token()
+        assertEquals(CastCode.Outcome.Accepted, subject.submitToken(token))
+        assertEquals(CastCode.Outcome.Expired, subject.submitToken(token))
+        assertNotEquals("111111", subject.code())
+    }
+
+    @Test
+    fun unknownTokenBurnsAnAttemptButAnEmptyOneDoesNot() {
+        val subject = newCode(111_111)
+        subject.code()
+        assertEquals(CastCode.Outcome.Rejected(4), subject.submitToken("0000000000000000"))
+        assertEquals(CastCode.Outcome.Rejected(4), subject.submitToken(""))
+    }
+
+    @Test
+    fun realTokenIsSixteenHexCharacters() {
+        val subject = CastCode(now = { clock })
+        assertTrue(Regex("^[0-9a-f]{16}$").matches(subject.token()))
+        assertTrue(Regex("^\\d{6}$").matches(subject.code()))
+    }
+
+    @Test
+    fun submitWorksBeforeTheWaitingPageHasEverReadTheCode() {
+        // 服务侧可能没人先取过码；校验时按当前时刻生成条目，否则正确的码会被判成输错
+        val subject = newCode(333_333, 444_444)
+        assertEquals(CastCode.Outcome.Accepted, subject.submit("333333"))
+        assertEquals(CastCode.Outcome.Expired, subject.submit("333333"))
+    }
 }

@@ -17,11 +17,18 @@ import android.util.Log
 import android.view.WindowManager
 import io.github.wangnan05563.airmirror.media.VideoEncoder
 import io.github.wangnan05563.airmirror.net.StreamConnection
+import io.github.wangnan05563.airmirror.protocol.Auth
 import io.github.wangnan05563.airmirror.protocol.Handshake
 import io.github.wangnan05563.airmirror.protocol.Protocol
 import java.net.InetSocketAddress
 import java.net.Socket
 import kotlin.concurrent.thread
+
+/** 发送端最近一次投屏的结论文案，界面轮询取用；空串表示没有异常。 */
+object SenderReport {
+    @Volatile
+    var last: String = ""
+}
 
 /**
  * 发送端前台服务：MediaProjection 采集 → H.264 硬编码 → 私有通道发送。
@@ -56,12 +63,48 @@ class CaptureService : Service() {
         }
         startForegroundCompat()
         running = true
-        worker = thread(name = "airmirror-capture") { runSession(host, port, resultCode, resultData) }
+        val deviceId = intent.getStringExtra(EXTRA_DEVICE_ID).orEmpty()
+        val credential = intent.getStringExtra(EXTRA_CREDENTIAL).orEmpty()
+        worker = thread(name = "airmirror-capture") { runSession(host, port, resultCode, resultData, deviceId, credential) }
         return START_NOT_STICKY
     }
 
-    private fun runSession(host: String, port: Int, resultCode: Int, resultData: Intent) {
+    /** 交凭据并等接收端表态；被拒时把原因回写界面，一帧都不推。 */
+    private fun authorize(conn: StreamConnection, deviceId: String, credential: String): Boolean {
+        conn.send(Protocol.Frame(Protocol.Type.AUTH, payload = Auth.request(deviceId, credential)))
+        val reply = conn.receive()
+        if (reply == null || reply.type != Protocol.Type.AUTH_RESULT) {
+            SenderReport.last = "接收端未应答授权"
+            return false
+        }
+        val result = Auth.parseResult(reply.payload)
+        SenderReport.last = when {
+            result.accepted -> ""
+            result.reason.isBlank() -> "接收端拒绝投屏"
+            else -> result.reason
+        }
+        return result.accepted
+    }
+
+    private fun runSession(
+        host: String,
+        port: Int,
+        resultCode: Int,
+        resultData: Intent,
+        deviceId: String,
+        credential: String,
+    ) {
         try {
+            SenderReport.last = ""
+            // 先握手、先授权，通过后才开始采集屏幕：被拒时不该已经在录屏（PRD 14.4 最小采集）
+            val socket = Socket()
+            socket.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
+            val conn = StreamConnection(socket)
+            connection = conn
+            val ack = conn.connectAsClient(Build.MODEL, Handshake.Capability.VIDEO_H264)
+            if (!authorize(conn, deviceId, credential)) return
+            Log.i(TAG, "connected to $host:$port version=${ack.chosenVersion}")
+
             val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
             val mediaProjection = manager.getMediaProjection(resultCode, resultData)
                 ?: throw IllegalStateException("MediaProjection denied")
@@ -94,12 +137,6 @@ class CaptureService : Service() {
                 null,
             )
 
-            val socket = Socket()
-            socket.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
-            val conn = StreamConnection(socket)
-            connection = conn
-            val ack = conn.connectAsClient(Build.MODEL, Handshake.Capability.VIDEO_H264)
-            Log.i(TAG, "connected to $host:$port version=${ack.chosenVersion}")
             videoEncoder.requestKeyFrame()
 
             var sentFrames = 0
@@ -136,6 +173,7 @@ class CaptureService : Service() {
             }
         } catch (e: Exception) {
             Log.w(TAG, "capture session ended: ${e.message}")
+            if (SenderReport.last.isEmpty()) SenderReport.last = "连不上对方，确认两台设备在同一网络"
         } finally {
             cleanup()
             stopSelf()
@@ -200,6 +238,8 @@ class CaptureService : Service() {
         const val EXTRA_PORT = "port"
         const val EXTRA_RESULT_CODE = "resultCode"
         const val EXTRA_RESULT_DATA = "resultData"
+        const val EXTRA_DEVICE_ID = "deviceId"
+        const val EXTRA_CREDENTIAL = "credential"
         const val ACTION_STOP = "io.github.wangnan05563.airmirror.STOP_CAPTURE"
         private const val TAG = "AirMirrorCapture"
         private const val CHANNEL_ID = "airmirror-capture"

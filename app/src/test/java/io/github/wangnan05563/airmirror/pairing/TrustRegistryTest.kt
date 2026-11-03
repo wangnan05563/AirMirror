@@ -45,7 +45,6 @@ class TrustRegistryTest {
     @Test
     fun oneTimeGrantFromQrOrCastCodeDoesNotEnterTheTrustedList() {
         val subject = registry()
-        assertEquals(TrustRegistry.Verdict.ONE_TIME, subject.decide("guest-pad", requiresExplicitGrant = false).verdict)
         subject.allow("guest-pad", "访客平板", permanent = false)
         assertTrue(subject.trusted().isEmpty())
         // 下次再来仍按首次连接处理
@@ -120,6 +119,60 @@ class TrustRegistryTest {
         clock = 10 * 60_000L
         subject.prune()
         assertEquals(TrustRegistry.Verdict.ASK, subject.decide("phone-a").verdict)
+    }
+
+    @Test
+    fun snapshotAndRestoreSurviveARestart() {
+        val subject = registry()
+        subject.allow("phone-a", "小明的手机", permanent = true)
+        clock += 5
+        subject.allow("tv-hall", "客厅 TV", permanent = true)
+        val restored = registry()
+        restored.restore(subject.snapshot())
+        assertEquals(TrustRegistry.Verdict.TRUSTED, restored.decide("phone-a").verdict)
+        assertEquals(listOf("tv-hall", "phone-a"), restored.trusted().map { it.fingerprint })
+        assertEquals(listOf("客厅 TV", "小明的手机"), restored.trusted().map { it.name })
+        // 落盘只带列表，拒绝后的静默期与活动会话不跨重启
+        assertNull(restored.active())
+    }
+
+    @Test
+    fun restoreMergesInsteadOfClearingEntriesItDoesNotRecognise() {
+        val subject = registry()
+        subject.allow("phone-a", "小明的手机", permanent = true)
+        clock += 1
+        subject.allow("phone-b", "客厅 TV", permanent = true)
+        // 落盘文件只剩半截时，恢复不该把内存里认得的设备整张抹掉
+        subject.restore("phone-c\t访客平板\t${Long.MAX_VALUE}\nphone-a\t改名后的手机\t0\n")
+        assertEquals(listOf("phone-c", "phone-b", "phone-a"), subject.trusted().map { it.fingerprint })
+        assertEquals("改名后的手机", subject.trusted().last().name)
+    }
+
+    @Test
+    fun namesWithTabsAndNewlinesStayOnASingleLine() {
+        val subject = registry()
+        subject.allow("p", "坏\t名字\n第二行 = & %", permanent = true)
+        val saved = subject.snapshot()
+        assertEquals(1, saved.split('\n').size)
+        val restored = registry()
+        restored.restore(saved)
+        assertEquals("坏\t名字\n第二行 = & %", restored.trusted().single().name)
+    }
+
+    @Test
+    fun restoreIgnoresDamagedLinesAndCapsAtCapacity() {
+        val subject = registry(capacityOf = 2)
+        subject.restore(
+            """
+            |a	A	1
+            |这行没有分好的字段
+            |b	B	不是数字
+            |	空标识	9
+            |c	C	3
+            |d	D	4
+            """.trimMargin()
+        )
+        assertEquals(listOf("d", "c"), subject.trusted().map { it.fingerprint })
     }
 
     private fun registry(capacityOf: Int, autoAllowMillis: Long = 5_000L) =

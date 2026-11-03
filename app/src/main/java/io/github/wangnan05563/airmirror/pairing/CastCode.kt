@@ -11,6 +11,7 @@ import java.security.SecureRandom
 class CastCode(
     private val now: () -> Long,
     private val random: () -> Int = { SECURE_RANDOM.nextInt(CODE_SPACE) },
+    private val tokenSource: () -> String = { SECURE_RANDOM.nextHex(TOKEN_LENGTH / 2) },
     private val ttlMillis: Long = DEFAULT_TTL,
     private val graceMillis: Long = DEFAULT_GRACE,
     private val maxAttempts: Int = DEFAULT_MAX_ATTEMPTS,
@@ -20,7 +21,7 @@ class CastCode(
     enum class State { SHOWING, LOCKED }
 
     sealed interface Outcome {
-        /** 码校验通过，调用方据此进入 PAIRING。 */
+        /** 码或扫码令牌校验通过，调用方据此进入 PAIRING。 */
         object Accepted : Outcome
 
         /** 屏幕上这个码已经被用过，属于「重新读取当前码」而非「码错」。 */
@@ -31,7 +32,7 @@ class CastCode(
         data class Locked(val secondsLeft: Int) : Outcome
     }
 
-    private class Entry(val code: String, val issuedAt: Long) {
+    private class Entry(val code: String, val token: String, val issuedAt: Long) {
         var used = false
     }
 
@@ -48,7 +49,27 @@ class CastCode(
     /** 接收端待连接页展示的码；到期自动换码，倒计时不因输入而暂停。 */
     fun code(): String {
         advance(now())
-        return (current ?: newEntry(now()).also { current = it }).code
+        return ensureEntry(now()).code
+    }
+
+    /** 二维码里的一次性令牌：与投屏码同生同灭，截图后不能长期复用。 */
+    fun token(): String {
+        advance(now())
+        return ensureEntry(now()).token
+    }
+
+    /** 扫码路径校验令牌而非码，一次性语义与码完全一致。 */
+    fun submitToken(value: String): Outcome {
+        val t = now()
+        advance(t)
+        if (t < lockedUntil) return Outcome.Locked(secondsLeft = ceilSeconds(lockedUntil - t))
+        val entry = ensureEntry(t)
+        val match = entry.takeIf { it.token == value }
+            ?: previous?.takeIf { it.token == value && t - it.issuedAt < ttlMillis + graceMillis }
+        if (match == null) return if (value.isBlank()) Outcome.Rejected(remainingAttempts()) else reject(t)
+        if (match.used) return Outcome.Expired
+        consume(match)
+        return Outcome.Accepted
     }
 
     fun secondsUntilRotation(): Int {
@@ -60,8 +81,9 @@ class CastCode(
         val t = now()
         advance(t)
         if (t < lockedUntil) return Outcome.Locked(secondsLeft = ceilSeconds(lockedUntil - t))
+        val entry = ensureEntry(t)
         val digits = input.filter(Char::isDigit)
-        val match = current?.takeIf { it.code == digits }
+        val match = entry.takeIf { it.code == digits }
             ?: previous?.takeIf { it.code == digits && t - it.issuedAt < ttlMillis + graceMillis }
         if (match != null) {
             if (match.used) return Outcome.Expired
@@ -94,7 +116,10 @@ class CastCode(
 
     private fun remainingAttempts() = maxOf(0, maxAttempts - failures.size)
 
-    private fun newEntry(t: Long) = Entry(formatCode(random()), t)
+    private fun newEntry(t: Long) = Entry(formatCode(random()), tokenSource(), t)
+
+    /** 校验凭据时也要有码可对比：界面还没刷过屏时按当前时刻生成，否则会误判成「码错」。 */
+    private fun ensureEntry(t: Long): Entry = current ?: newEntry(t).also { current = it }
 
     private fun advance(t: Long) {
         if (lockedUntil != NO_LOCK && t >= lockedUntil) {
@@ -114,6 +139,7 @@ class CastCode(
 
     companion object {
         const val CODE_LENGTH = 6
+        const val TOKEN_LENGTH = 16
         private const val CODE_SPACE = 1_000_000
         private const val NO_LOCK = Long.MIN_VALUE
         private const val DEFAULT_TTL = 60_000L
@@ -129,6 +155,12 @@ class CastCode(
             return "0".repeat(CODE_LENGTH - digits.length) + digits
         }
     }
+}
+
+private fun SecureRandom.nextHex(bytes: Int): String {
+    val buffer = ByteArray(bytes)
+    nextBytes(buffer)
+    return buffer.joinToString("") { "%02x".format(it.toInt() and 0xFF) }
 }
 
 /** 倒计时按秒向上取整：显示 0 秒时锁其实还没到期，避免最后一秒被读成已结束。 */

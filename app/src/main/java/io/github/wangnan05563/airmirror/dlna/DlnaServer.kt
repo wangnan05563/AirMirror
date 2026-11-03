@@ -47,6 +47,9 @@ class DlnaServer(
 
     val httpPort: Int get() = server?.localPort ?: 0
 
+    /** 界面据此收起待连接页：投屏中整屏只保留画面。 */
+    var onPlayingChanged: ((Boolean) -> Unit)? = null
+
     init {
         player.onPreparedCallback = {
             machine.onLoaded()
@@ -54,6 +57,7 @@ class DlnaServer(
         }
         player.onCompletedCallback = {
             machine.onCompleted(loop = false)
+            onPlayingChanged?.invoke(false)
             onStatus("DLNA 播放结束")
         }
     }
@@ -70,7 +74,7 @@ class DlnaServer(
             it.startAliveBeacon()
         }
         worker = thread(name = "airmirror-dlna") { acceptLoop(socket, friendlyName, ip) }
-        onStatus("DLNA 就绪 · $ip:${socket.localPort}")
+        onStatus("DLNA 就绪 · 可接收推送")
         Log.i(TAG, "DMR up at $location")
     }
 
@@ -205,6 +209,7 @@ class DlnaServer(
             machine.canPlay()?.let { throw SoapError(it, "no media present") }
             player.play()
             machine.onPlayInvoked()
+            onPlayingChanged?.invoke(true)
             emptyList()
         }
 
@@ -212,12 +217,14 @@ class DlnaServer(
             machine.canPauseOrSeek()?.let { throw SoapError(it, "not playing") }
             player.pause()
             machine.onPauseInvoked()
+            onPlayingChanged?.invoke(false)
             emptyList()
         }
 
         "Stop" -> {
             player.stop()
             machine.onStopInvoked()
+            onPlayingChanged?.invoke(false)
             emptyList()
         }
 

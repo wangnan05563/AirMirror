@@ -27,7 +27,9 @@ object Protocol {
         PING(6),
         PONG(7),
         BYE(8),
-        ERROR(9);
+        ERROR(9),
+        AUTH(10),
+        AUTH_RESULT(11);
 
         companion object {
             fun fromCode(code: Int): Type? = entries.firstOrNull { it.code == code }

@@ -13,7 +13,7 @@ class TrustRegistry(
     private val suppressMillis: Long = DEFAULT_SUPPRESS,
     private val autoAllowMillis: Long = DEFAULT_AUTO_ALLOW,
 ) {
-    enum class Verdict { TRUSTED, ASK, SUPPRESSED, ONE_TIME }
+    enum class Verdict { TRUSTED, ASK, SUPPRESSED }
 
     data class Decision(val verdict: Verdict, val autoAllowAt: Long)
 
@@ -29,9 +29,8 @@ class TrustRegistry(
     private val suppressed = HashMap<String, Long>()
     private var activeSession: String? = null
 
-    fun decide(fingerprint: String, requiresExplicitGrant: Boolean = true): Decision {
+    fun decide(fingerprint: String): Decision {
         val t = now()
-        if (!requiresExplicitGrant) return Decision(Verdict.ONE_TIME, t)
         if (records.containsKey(fingerprint)) return Decision(Verdict.TRUSTED, t)
         suppressed[fingerprint]?.let { if (t < it) return Decision(Verdict.SUPPRESSED, t) else suppressed.remove(fingerprint) }
         return Decision(Verdict.ASK, if (autoAllowMillis > 0L) t + autoAllowMillis else Long.MAX_VALUE)
@@ -81,6 +80,32 @@ class TrustRegistry(
     fun prune() {
         val t = now()
         suppressed.entries.removeAll { t >= it.value }
+    }
+
+    /** 落盘格式：每行 `id<TAB>name<TAB>lastUsedAt`，字段按 [PairingLink.escape] 转义。 */
+    fun snapshot(): String = records.values.joinToString("\n") { record ->
+        listOf(
+            PairingLink.escape(record.fingerprint),
+            PairingLink.escape(record.name),
+            record.lastUsedAt.toString(),
+        ).joinToString("\t")
+    }
+
+    /** 读取落盘数据并按指纹合并（只增不删，半截文件不会清空列表）；损坏行与超出上限的行按最近使用顺序丢弃。 */
+    fun restore(text: String) {
+        val lines = text.split('\n').map { it.trim() }.filter { it.isNotEmpty() }
+        val parsed = lines.mapNotNull { line ->
+            val parts = line.split('\t')
+            if (parts.size != 3) return@mapNotNull null
+            val usedAt = parts[2].toLongOrNull() ?: return@mapNotNull null
+            val fingerprint = PairingLink.unescape(parts[0])
+            if (fingerprint.isEmpty()) return@mapNotNull null
+            Triple(fingerprint, PairingLink.unescape(parts[1]), usedAt)
+        }.sortedByDescending { it.third }
+        for ((fingerprint, name, usedAt) in parsed.take(capacity)) {
+            records[fingerprint] = Record(fingerprint, name, usedAt)
+        }
+        trim()
     }
 
     private fun trim() {
