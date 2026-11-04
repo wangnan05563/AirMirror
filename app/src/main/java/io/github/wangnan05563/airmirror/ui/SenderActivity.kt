@@ -58,6 +58,10 @@ class SenderActivity : Activity() {
     private var pendingTarget: Pair<Target, String>? = null
     private var pendingAudio = false
     private var lastCasting = false
+    /** 当前展开的设备卡片；同一时刻只展开一张（PRD §11.3）。 */
+    private var expandedFingerprint: String? = null
+    private lateinit var controlBar: LinearLayout
+    private lateinit var listScroller: ScrollView
 
     private val devices = DeviceRegistry(now = { System.currentTimeMillis() }, sameSubnet = ::sameSubnet)
     private val main = Handler(Looper.getMainLooper())
@@ -83,11 +87,13 @@ class SenderActivity : Activity() {
             val casting = SenderReport.quality.isNotEmpty()
             if (casting != lastCasting) {
                 lastCasting = casting
-                pauseButton.visibility = if (casting) View.VISIBLE else View.GONE
-                audioButton.visibility = if (casting) View.VISIBLE else View.GONE
+                controlBar.visibility = if (casting) View.VISIBLE else View.GONE
+                // PRD §11.3「投屏中列表收起」
+                listScroller.visibility = if (casting) View.GONE else View.VISIBLE
+                if (casting) expandedFingerprint = null
             }
             if (casting) {
-                pauseButton.text = if (SenderControl.paused) "继续投屏" else "暂停投屏"
+                pauseButton.text = DeviceCardPolicy.pauseLabel(SenderControl.paused)
                 audioButton.text = audioLabel()
             }
             refreshTakeover(casting)
@@ -124,22 +130,6 @@ class SenderActivity : Activity() {
             setPadding(0, Theme.dp(this@SenderActivity, 6), 0, Theme.dp(this@SenderActivity, 14))
         }
         root.addView(status)
-        pauseButton = Button(this).apply {
-            text = "暂停投屏"
-            setTextColor(Theme.ACCENT)
-            visibility = View.GONE
-            setOnClickListener { SenderControl.paused = !SenderControl.paused }
-        }
-        root.addView(pauseButton, matchWidth())
-        // PRD FS-01 参数「音频：开启/关闭（默认开启）」：投屏中随时可切，切换即时生效且落盘
-        audioButton = Button(this).apply {
-            setTextColor(Theme.ACCENT)
-            visibility = View.GONE
-            setOnClickListener {
-                if (SenderControl.audio) setMirrorAudio(false) else enableMirrorAudio()
-            }
-        }
-        root.addView(audioButton, matchWidth())
         root.addView(buildTakeoverBar(), matchWidth())
 
         codeInput = makeInput("投屏码", InputType.TYPE_CLASS_NUMBER)
@@ -166,8 +156,9 @@ class SenderActivity : Activity() {
             addView(hint, matchWidth())
             addView(list, matchWidth())
         }
+        listScroller = ScrollView(this).apply { addView(column) }
         root.addView(
-            ScrollView(this).apply { addView(column) },
+            listScroller,
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f),
         )
 
@@ -180,6 +171,39 @@ class SenderActivity : Activity() {
             gravity = Gravity.CENTER
             setPadding(0, Theme.dp(this@SenderActivity, 10), 0, 0)
         }, matchWidth())
+        // PRD §11.3：投屏中列表收起，底部固定一条「暂停 / 停止 / 声音」控制条
+        controlBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            visibility = View.GONE
+            setBackgroundColor(Theme.SURFACE)
+            val inset = Theme.dp(this@SenderActivity, 8)
+            setPadding(inset, inset, inset, inset)
+        }
+        pauseButton = Button(this).apply {
+            text = DeviceCardPolicy.pauseLabel(false)
+            setTextColor(Theme.ACCENT)
+            setOnClickListener { SenderControl.paused = !SenderControl.paused }
+        }
+        controlBar.addView(pauseButton, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        controlBar.addView(Button(this).apply {
+            text = "停止"
+            setTextColor(Theme.DANGER)
+            setOnClickListener {
+                // 复用已有的停止通道：发 ACTION_STOP 让前台服务收尾，不直接杀进程
+                startService(Intent(this@SenderActivity, CaptureService::class.java).setAction(CaptureService.ACTION_STOP))
+                expandedFingerprint = null
+            }
+        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        audioButton = Button(this).apply {
+            text = audioLabel()
+            setTextColor(Theme.ACCENT)
+            setOnClickListener {
+                if (SenderControl.audio) setMirrorAudio(false) else enableMirrorAudio()
+            }
+        }
+        controlBar.addView(audioButton, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        root.addView(controlBar, matchWidth())
         setContentView(root)
 
         // PRD §04「权限申请在真正用到时才弹出，并说明用途」：这里不弹任何权限框，
@@ -289,33 +313,69 @@ class SenderActivity : Activity() {
             val target = targetOf(row.fingerprint, row.name) ?: continue
             // 一台设备可能同时广播多种协议：有能用的就按能用的展示，全都用不了才标不支持
             val usable = ProtocolBoundary.bestSupported(row.protocols)
-            list.addView(LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
+            val card = DeviceCardPolicy.Card(
+                fingerprint = row.fingerprint,
+                online = row.online,
+                supported = usable != null,
+                lastConnectedAt = row.lastConnectedAt,
+            )
+            val actions = DeviceCardPolicy.actions(card)
+            list.addView(LinearLayout(this@SenderActivity).apply {
+                orientation = LinearLayout.VERTICAL
                 setBackgroundColor(if (row.online) Theme.SURFACE else Theme.BACKGROUND)
                 val gap = Theme.dp(this@SenderActivity, 12)
                 setPadding(gap, gap, gap, gap)
-                addView(TextView(this@SenderActivity).apply {
-                    text = row.name
-                    textSize = 18f
-                    setTextColor(if (row.online) Theme.TEXT_PRIMARY else Theme.OFFLINE)
-                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                })
-                addView(TextView(this@SenderActivity).apply {
-                    text = when {
-                        !row.online -> "离线"
-                        usable != null -> ProtocolBoundary.badgeFor(usable)
-                        else -> "不支持"
+                addView(LinearLayout(this@SenderActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    addView(TextView(this@SenderActivity).apply {
+                        text = row.name
+                        textSize = 18f
+                        setTextColor(if (row.online) Theme.TEXT_PRIMARY else Theme.OFFLINE)
+                        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    })
+                    addView(TextView(this@SenderActivity).apply {
+                        text = when {
+                            !row.online -> DeviceCardPolicy.offlineLabel(row.lastConnectedAt, System.currentTimeMillis())
+                            usable != null -> ProtocolBoundary.badgeFor(usable)
+                            else -> "不支持"
+                        }
+                        textSize = Theme.PHONE_BODY_SP
+                        setTextColor(if (row.online && usable != null) Theme.ACCENT else Theme.OFFLINE)
+                    })
+                    // PRD §11.3：点击先展开两个动作，不再「点一下就先连上再选」
+                    setOnClickListener {
+                        if (actions.isEmpty()) {
+                            toast(if (row.online) ProtocolBoundary.describe(row.strongest).text() else DeviceCardPolicy.offlineHint())
+                        } else {
+                            expandedFingerprint = DeviceCardPolicy.toggle(expandedFingerprint, row.fingerprint)
+                            renderList()
+                        }
                     }
-                    textSize = Theme.PHONE_BODY_SP
-                    setTextColor(if (row.online && usable != null) Theme.ACCENT else Theme.OFFLINE)
-                })
-                setOnClickListener {
-                    if (usable != null) {
-                        connectTo(target)
-                    } else {
-                        toast(ProtocolBoundary.describe(row.strongest).text())
-                    }
+                }, matchWidth())
+                if (row.fingerprint == expandedFingerprint && actions.isNotEmpty()) {
+                    addView(LinearLayout(this@SenderActivity).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        setPadding(0, gap, 0, 0)
+                        for (action in actions) {
+                            addView(Button(this@SenderActivity).apply {
+                                text = when (action) {
+                                    DeviceCardPolicy.CardAction.MIRROR -> "镜像屏幕"
+                                    DeviceCardPolicy.CardAction.PUSH_VIDEO -> "推送视频"
+                                }
+                                setTextColor(Theme.ACCENT)
+                                setOnClickListener {
+                                    expandedFingerprint = null
+                                    renderList()
+                                    when (action) {
+                                        DeviceCardPolicy.CardAction.MIRROR -> connectTo(target)
+                                        // 本片不伪装修好推送链路：按 7.3 给可执行替代路径
+                                        DeviceCardPolicy.CardAction.PUSH_VIDEO -> toast(DeviceCardPolicy.pushVideoFallback())
+                                    }
+                                }
+                            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                        }
+                    }, matchWidth())
                 }
             }, matchWidth())
         }
