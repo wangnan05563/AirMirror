@@ -12,6 +12,9 @@ class Pairing(
     val trust = TrustRegistry(now = now, autoAllowMillis = if (autoAllowEnabled) DEFAULT_AUTO_ALLOW else 0L)
     val code = CastCode(now = now)
     val gate = AuthGate(trust, code)
+
+    /** PRD 8.9 防滥用：与被拒次数挂钩的连接频率闸门，与投屏码错误限流各管一段。 */
+    val throttle = ConnectThrottle(now = now)
     val deviceId: String = store.deviceId()
 
     init {

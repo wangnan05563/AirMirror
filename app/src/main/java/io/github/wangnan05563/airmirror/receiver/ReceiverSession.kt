@@ -321,12 +321,28 @@ class ReceiverSession(
 
     /** @return 真正被放行并服务的发送端名称；未授权的连接返回 null，不打扰界面上的推流状态。 */
     private fun handle(socket: Socket): String? {
+        val peer = peerAddress(socket)
+        pairing.throttle.prune()
+        // PRD 8.9 防滥用：这个来源还在静默期里，连握手都不做，直接关门
+        if (pairing.throttle.blockedFor(peer) > 0L) {
+            Log.i(TAG, "connection shed: peer in silent window ${pairing.throttle.secondsLeft(peer)}s left")
+            // 这条路径连 StreamConnection 都不建，socket 得自己关：留着不放就等于让刷子用连接数拖垮服务
+            runCatching { socket.close() }
+            return null
+        }
         StreamConnection(socket).use { conn ->
             // 能力位带音频：老发送端不带时协商结果自动只剩画面，不会硬起一条播不出声的流水线
-            val hello = conn.acceptAsServer(
-                Build.MODEL,
-                Handshake.Capability.VIDEO_H264 or Handshake.Capability.AUDIO_AAC,
-            )
+            val hello = try {
+                conn.acceptAsServer(
+                    Build.MODEL,
+                    Handshake.Capability.VIDEO_H264 or Handshake.Capability.AUDIO_AAC,
+                )
+            } catch (e: Exception) {
+                // 握手没走完就断（半帧、乱码、版本谈不拢、写完就撤）也算一次被拒：
+                // 不记这笔的话，「发半个 HELLO 就撤」就是绕过闸门最省事的写法
+                pairing.throttle.refuse(peer)
+                throw e
+            }
             // PRD 8.9：两端都递了公钥才加密；对面是没升级的老发送端时如实记一行，别让它悄悄裸奔
             Log.i(TAG, "media ${if (conn.secure) "encrypted (ECDH-P256/AES-GCM)" else "in clear, legacy peer"}")
             avSync = AvSync.Tracker()
@@ -341,9 +357,11 @@ class ReceiverSession(
             var droppedLate = 0
             val request = readAuth(conn, socket) ?: run {
                 refuse(conn, "缺少授权")
+                // 连 AUTH 都不发的空连接正是刷子最爱，这类一次都不会记进投屏码的失败账，只能在这里拦
+                pairing.throttle.refuse(peer)
                 return null
             }
-            val deviceId = admit(conn, request, hello.deviceName) ?: return null
+            val deviceId = admit(conn, request, hello.deviceName, peer) ?: return null
             val done = CountDownLatch(1)
             sessionDone = done
             activeConn = conn
@@ -565,16 +583,17 @@ class ReceiverSession(
      * HELLO 之后的第一道判定（PRD FS-10）：恢复请求只认保留窗口内的原设备；
      * 窗口期内其他设备一律「正在恢复中，请稍候」，避免断线一瞬被抢占。
      */
-    private fun admit(conn: StreamConnection, request: Auth.Request, senderName: String): String? {
+    private fun admit(conn: StreamConnection, request: Auth.Request, senderName: String, peer: String): String? {
         val window = recovery.active()
         if (request.resume) {
             if (window == null || window.deviceId != request.deviceId) {
                 Log.i(TAG, "resume refused for ${request.deviceId}, window=${window?.deviceId}")
                 refuse(conn, Resume.REASON_LOST)
                 onStatus("$senderName 恢复失败，需要重新连接")
+                // 恢复失败不记账：FS-10 本来就是短时间内重试三次，拦它等于自己掐自己的恢复路径
                 return null
             }
-            return resumeSession(conn, window, senderName)
+            return resumeSession(conn, window, senderName, peer)
         }
         if (window != null && window.deviceId != request.deviceId) {
             Log.i(TAG, "recovery busy, ${request.deviceId} denied")
@@ -582,13 +601,13 @@ class ReceiverSession(
             onStatus("$senderName 连接被拒绝：正在恢复中")
             return null
         }
-        return authorize(conn, request, senderName)
+        return authorize(conn, request, senderName, peer)
     }
 
     /** 原设备在保留窗口内回来：不弹授权、不重发投屏码，直接续上会话。 */
-    private fun resumeSession(conn: StreamConnection, window: RecoveryWindow.Holder, senderName: String): String {
+    private fun resumeSession(conn: StreamConnection, window: RecoveryWindow.Holder, senderName: String, peer: String): String {
         Log.i(TAG, "session resumed by ${window.deviceId}")
-        grant(conn, senderName, permanent = false, window.deviceId)
+        grant(conn, senderName, permanent = false, window.deviceId, peer)
         onStatus("$senderName 已恢复投屏")
         onNotice("$senderName 已恢复投屏")
         return window.deviceId
@@ -625,11 +644,20 @@ class ReceiverSession(
     }
 
     /** 未授权设备不上屏：HELLO 之后必须先过 AUTH，过不了就直接回错误并断开。 @return 放行后的设备标识 */
-    private fun authorize(conn: StreamConnection, request: Auth.Request, senderName: String): String? {
+    private fun authorize(conn: StreamConnection, request: Auth.Request, senderName: String, peer: String): String? {
+        // 来源维度拦「换 IP 重来的同一台设备」，设备维度拦「换设备标识重来的同一个来源」，两道门各挡一半
+        val secondsLeft = pairing.throttle.secondsLeft(request.deviceId)
+        if (secondsLeft > 0) {
+            val reason = throttledText(secondsLeft)
+            refuse(conn, reason)
+            Log.i(TAG, "device throttled: $secondsLeft left")
+            onStatus("$senderName 连接过于频繁，请 $secondsLeft 秒后再试")
+            return null
+        }
         val verdict = pairing.gate.authorize(request.deviceId, senderName, request.credential)
         return when (verdict) {
             is AuthGate.Verdict.Authorized -> {
-                grant(conn, verdict.deviceName, verdict.permanent, request.deviceId)
+                grant(conn, verdict.deviceName, verdict.permanent, request.deviceId, peer)
                 request.deviceId
             }
             is AuthGate.Verdict.PendingPrompt -> {
@@ -637,16 +665,17 @@ class ReceiverSession(
                 val allowed = awaitDecision(verdict.autoAllowAt)
                 if (allowed) {
                     val confirmed = pairing.gate.confirm(verdict.deviceId, verdict.deviceName, permanent = true)
-                    grant(conn, confirmed.deviceName, confirmed.permanent, verdict.deviceId)
+                    grant(conn, confirmed.deviceName, confirmed.permanent, verdict.deviceId, peer)
                     verdict.deviceId
                 } else {
                     pairing.gate.decline(verdict.deviceId)
                     refuse(conn, "已拒绝")
                     onStatus("已拒绝 $senderName 的投屏请求")
+                    countRefusal(peer, verdict.deviceId)
                     null
                 }
             }
-            is AuthGate.Verdict.TakeoverRequired -> handOver(conn, verdict)
+            is AuthGate.Verdict.TakeoverRequired -> handOver(conn, verdict, peer)
             is AuthGate.Verdict.Rejected -> {
                 val reason = when (verdict.reason) {
                     AuthGate.Refused.TOO_MANY_ATTEMPTS -> "投屏码错误次数过多"
@@ -659,8 +688,24 @@ class ReceiverSession(
                 }
                 refuse(conn, reason)
                 onStatus("$senderName 连接被拒绝：$reason")
+                blockedOut(verdict.reason, peer, request.deviceId)
                 null
             }
+        }
+    }
+
+    /** 被拒连接记账。会话被占用属正常产品状态（FS-09 走接管），不计进来，否则正常用户多点几次就被自己拦死。 */
+    private fun blockedOut(refused: AuthGate.Refused, peer: String, deviceId: String) {
+        if (refused != AuthGate.Refused.SESSION_BUSY) countRefusal(peer, deviceId)
+    }
+
+    /** 来源与设备各记一笔，任一维度撞满阈值就进静默期。 */
+    private fun countRefusal(peer: String, deviceId: String) {
+        val peerBlock = pairing.throttle.refuse(peer)
+        val deviceBlock = pairing.throttle.refuse(deviceId)
+        val secondsLeft = maxOf(pairing.throttle.secondsLeft(peer), pairing.throttle.secondsLeft(deviceId))
+        if (secondsLeft > 0) {
+            Log.i(TAG, "abuse guard on: peer=${peerBlock / 1000}s device=${deviceBlock / 1000}s silent")
         }
     }
 
@@ -668,10 +713,10 @@ class ReceiverSession(
      * 第二台设备凭据有效但已有会话（PRD FS-09 步骤 4/5）：先请当前发送端表态；
      * 允许则「先停旧会话，再让新设备上屏」，拒绝或 60 秒无响应则保留原会话。
      */
-    private fun handOver(conn: StreamConnection, verdict: AuthGate.Verdict.TakeoverRequired): String? {
+    private fun handOver(conn: StreamConnection, verdict: AuthGate.Verdict.TakeoverRequired, peer: String): String? {
         val old = activeConn
         val oldId = activeDeviceId
-        if (old == null || oldId == null) return promoteDirectly(conn, verdict)
+        if (old == null || oldId == null) return promoteDirectly(conn, verdict, peer)
         handoverInProgress = true
         try {
             Log.i(TAG, "takeover: ${verdict.deviceName} requests, current=$oldId")
@@ -687,7 +732,7 @@ class ReceiverSession(
                 runCatching { old.close() }
                 sessionDone?.await(TAKEOVER_STOP_WAIT_MS, TimeUnit.MILLISECONDS)
                 pairing.trust.releaseSession(oldId)
-                return promoteDirectly(conn, verdict)
+                return promoteDirectly(conn, verdict, peer)
             }
             when (awaitTakeoverAnswer(old)) {
                 false -> {
@@ -713,14 +758,14 @@ class ReceiverSession(
             old.close()
             sessionDone?.await(TAKEOVER_STOP_WAIT_MS, TimeUnit.MILLISECONDS)
             pairing.trust.releaseSession(oldId)
-            return promoteDirectly(conn, verdict)
+            return promoteDirectly(conn, verdict, peer)
         } finally {
             handoverInProgress = false
         }
     }
 
     /** 没有可通知的旧发送端（会话刚好结束）或旧会话已释放时，直接按接管结果建立新会话。 */
-    private fun promoteDirectly(conn: StreamConnection, verdict: AuthGate.Verdict.TakeoverRequired): String? {
+    private fun promoteDirectly(conn: StreamConnection, verdict: AuthGate.Verdict.TakeoverRequired, peer: String): String? {
         val promoted = pairing.gate.promote(verdict.deviceId, verdict.deviceName, verdict.permanent)
         if (promoted == null) {
             refuse(conn, "已有设备在投屏")
@@ -729,7 +774,7 @@ class ReceiverSession(
             return null
         }
         Log.i(TAG, "takeover complete: ${promoted.deviceName}")
-        grant(conn, promoted.deviceName, promoted.permanent, verdict.deviceId)
+        grant(conn, promoted.deviceName, promoted.permanent, verdict.deviceId, peer)
         onCasting(true, promoted.deviceName)
         return verdict.deviceId
     }
@@ -747,10 +792,13 @@ class ReceiverSession(
         return null
     }
 
-    private fun grant(conn: StreamConnection, deviceName: String, permanent: Boolean, deviceId: String) {
+    private fun grant(conn: StreamConnection, deviceName: String, permanent: Boolean, deviceId: String, peer: String) {
         grantedAtNano = System.nanoTime()
         configAtNano = 0L
         if (permanent) pairing.persistTrusted()
+        // 授权成功是这个闸门唯一的清零点：之前打错几次码的正常用户，不该继续背着静默期
+        pairing.throttle.allow(peer)
+        pairing.throttle.allow(deviceId)
         // 正常授权 / 恢复成功都代表窗口结束，收掉大屏上的恢复提示
         recovery.close()
         onRecovery(false)
@@ -1099,6 +1147,12 @@ class ReceiverSession(
     private fun refuse(conn: StreamConnection, reason: String) {
         runCatching { conn.send(Protocol.Frame(Protocol.Type.AUTH_RESULT, payload = Auth.result(false, reason))) }
     }
+
+    /** 记账键取对端地址；拿不到就返回空串，[ConnectThrottle] 对空键一律不拦，免得把无关设备捆一起误伤。 */
+    private fun peerAddress(socket: Socket): String =
+        runCatching { socket.inetAddress.hostAddress }.getOrNull().orEmpty()
+
+    private fun throttledText(secondsLeft: Int) = "连接过于频繁，请 $secondsLeft 秒后再试"
 
     private fun readAuth(conn: StreamConnection, socket: Socket): Auth.Request? {
         runCatching { socket.soTimeout = AUTH_TIMEOUT_MS }
