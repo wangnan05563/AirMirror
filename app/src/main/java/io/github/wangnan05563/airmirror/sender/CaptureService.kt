@@ -589,7 +589,11 @@ class CaptureService : Service() {
                 throw it
             }
         peerAcceptsAudio = ack.capabilities and Handshake.Capability.AUDIO_AAC != 0
-        Log.i(TAG, "connected to $host:$port version=${ack.chosenVersion} audio=$peerAcceptsAudio")
+        Log.i(
+            TAG,
+            "connected to $host:$port version=${ack.chosenVersion} audio=$peerAcceptsAudio " +
+                "media=${if (conn.secure) "encrypted" else "in clear, legacy peer"}",
+        )
         if (!authorize(conn, deviceId, credential)) {
             conn.close()
             throw IllegalStateException("authorization refused")

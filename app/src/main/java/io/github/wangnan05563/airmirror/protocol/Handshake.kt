@@ -19,7 +19,26 @@ object Handshake {
         val maxVersion: Int,
         val capabilities: Int,
         val deviceName: String,
+        /** 本端临时公钥（SPKI DER）；不带表示这一版还不做端到端加密，见 [KeyExchange] */
+        val keyShare: ByteArray? = null,
     ) {
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is Hello) return false
+            return minVersion == other.minVersion && maxVersion == other.maxVersion &&
+                capabilities == other.capabilities && deviceName == other.deviceName &&
+                sameKeyShare(keyShare, other.keyShare)
+        }
+
+        override fun hashCode(): Int {
+            var result = minVersion
+            result = 31 * result + maxVersion
+            result = 31 * result + capabilities
+            result = 31 * result + deviceName.hashCode()
+            result = 31 * result + (keyShare?.contentHashCode() ?: 0)
+            return result
+        }
+
         fun encode(): ByteArray = ByteArrayOutputStream().use { bytes ->
             val out = java.io.DataOutputStream(bytes)
             out.writeShort(minVersion)
@@ -28,6 +47,11 @@ object Handshake {
             val name = deviceName.toByteArray(Charsets.UTF_8)
             out.writeShort(name.size)
             out.write(name)
+            // 公钥追加在末尾：老接收端读到名字就返回，多余字节直接忽略，所以老版本照旧能握手
+            keyShare?.let {
+                out.writeShort(it.size)
+                out.write(it)
+            }
             out.flush()
             bytes.toByteArray()
         }
@@ -42,16 +66,43 @@ object Handshake {
                 require(nameLength <= input.available()) { "truncated device name" }
                 val nameBytes = ByteArray(nameLength)
                 input.readFully(nameBytes)
-                return Hello(min, max, caps, String(nameBytes, Charsets.UTF_8))
+                return Hello(min, max, caps, String(nameBytes, Charsets.UTF_8), keyShare(input))
             }
         }
+    }
+
+    /** 名字之后还留着两字节以上才认为带公钥；长度非法一律当作「这一端不懂加密」。 */
+    private fun keyShare(input: java.io.DataInputStream): ByteArray? {
+        if (input.available() < 2) return null
+        val length = input.readUnsignedShort()
+        if (length !in 1..KeyExchange.MAX_PUBLIC_KEY || length > input.available()) return null
+        val key = ByteArray(length)
+        input.readFully(key)
+        return key
     }
 
     data class HelloAck(
         val chosenVersion: Int,
         val capabilities: Int,
         val deviceName: String,
+        /** 接收端自己的临时公钥；不带表示这一版还不做端到端加密 */
+        val keyShare: ByteArray? = null,
     ) {
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is HelloAck) return false
+            return chosenVersion == other.chosenVersion && capabilities == other.capabilities &&
+                deviceName == other.deviceName && sameKeyShare(keyShare, other.keyShare)
+        }
+
+        override fun hashCode(): Int {
+            var result = chosenVersion
+            result = 31 * result + capabilities
+            result = 31 * result + deviceName.hashCode()
+            result = 31 * result + (keyShare?.contentHashCode() ?: 0)
+            return result
+        }
+
         fun encode(): ByteArray = ByteArrayOutputStream().use { bytes ->
             val out = java.io.DataOutputStream(bytes)
             out.writeShort(chosenVersion)
@@ -59,6 +110,10 @@ object Handshake {
             val name = deviceName.toByteArray(Charsets.UTF_8)
             out.writeShort(name.size)
             out.write(name)
+            keyShare?.let {
+                out.writeShort(it.size)
+                out.write(it)
+            }
             out.flush()
             bytes.toByteArray()
         }
@@ -72,10 +127,13 @@ object Handshake {
                 require(nameLength <= input.available()) { "truncated device name" }
                 val nameBytes = ByteArray(nameLength)
                 input.readFully(nameBytes)
-                return HelloAck(version, caps, String(nameBytes, Charsets.UTF_8))
+                return HelloAck(version, caps, String(nameBytes, Charsets.UTF_8), keyShare(input))
             }
         }
     }
+
+    private fun sameKeyShare(a: ByteArray?, b: ByteArray?): Boolean =
+        a == null && b == null || a != null && b != null && a.contentEquals(b)
 
     class HandshakeException(message: String) : java.io.IOException(message)
 

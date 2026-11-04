@@ -46,6 +46,12 @@ object Protocol {
          * 才可能看到这个位（PRD 8.7 协商），老接收端因此永远不会被喂进认不出的码流。
          */
         const val CODEC_HEVC = 0x08
+
+        /**
+         * 载荷是 [MediaCipher] 的密文（PRD 8.9 端到端加密）。只有握手时两端都递了公钥
+         * 才可能看到这个位；老对端没递就整条会话保持明文，老接收端因此不会收到解不开的帧。
+         */
+        const val ENCRYPTED = 0x10
     }
 
     class ProtocolException(message: String) : IOException(message)

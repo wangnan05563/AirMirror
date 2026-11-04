@@ -327,6 +327,8 @@ class ReceiverSession(
                 Build.MODEL,
                 Handshake.Capability.VIDEO_H264 or Handshake.Capability.AUDIO_AAC,
             )
+            // PRD 8.9：两端都递了公钥才加密；对面是没升级的老发送端时如实记一行，别让它悄悄裸奔
+            Log.i(TAG, "media ${if (conn.secure) "encrypted (ECDH-P256/AES-GCM)" else "in clear, legacy peer"}")
             avSync = AvSync.Tracker()
             pacer = AvSync.Pacer()
             bandwidth.reset()
