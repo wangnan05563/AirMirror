@@ -38,6 +38,12 @@ object SystemAudio {
         context.packageManager.checkPermission(Manifest.permission.RECORD_AUDIO, context.packageName) ==
             PackageManager.PERMISSION_GRANTED
 
+    /**
+     * 这台机器的系统是否开放声音采集（API 30 起才有 AudioPlaybackCapture）。
+     * 申请录音权限前先问这个：采不到声音的系统不该去要一个用不上的权限。
+     */
+    fun capable(): Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+
     fun open(projection: MediaProjection, hasPermission: Boolean): Opened {
         if (!hasPermission) return Opened.NoPermission
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {

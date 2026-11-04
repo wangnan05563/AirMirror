@@ -1,7 +1,9 @@
 package io.github.wangnan05563.airmirror.ui
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Typeface
 import android.media.projection.MediaProjectionManager
 import android.os.Build
@@ -10,6 +12,7 @@ import android.os.Handler
 import android.os.Looper
 import android.text.InputFilter
 import android.text.InputType
+import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
@@ -26,6 +29,7 @@ import io.github.wangnan05563.airmirror.pairing.DeviceStore
 import io.github.wangnan05563.airmirror.pairing.PairingLink
 import io.github.wangnan05563.airmirror.protocol.ProtocolBoundary
 import io.github.wangnan05563.airmirror.sender.CaptureService
+import io.github.wangnan05563.airmirror.sender.RuntimePermission
 import io.github.wangnan05563.airmirror.sender.SenderControl
 import io.github.wangnan05563.airmirror.sender.SenderReport
 import io.github.wangnan05563.airmirror.sender.SystemAudio
@@ -51,6 +55,8 @@ class SenderActivity : Activity() {
     private var browser: ServiceBrowser? = null
     private var pending: Target? = null
     private var pendingCredential: String = ""
+    private var pendingTarget: Pair<Target, String>? = null
+    private var pendingAudio = false
     private var lastCasting = false
 
     private val devices = DeviceRegistry(now = { System.currentTimeMillis() }, sameSubnet = ::sameSubnet)
@@ -130,9 +136,7 @@ class SenderActivity : Activity() {
             setTextColor(Theme.ACCENT)
             visibility = View.GONE
             setOnClickListener {
-                SenderControl.audio = !SenderControl.audio
-                store.saveMirrorAudioEnabled(SenderControl.audio)
-                text = audioLabel()
+                if (SenderControl.audio) setMirrorAudio(false) else enableMirrorAudio()
             }
         }
         root.addView(audioButton, matchWidth())
@@ -178,13 +182,8 @@ class SenderActivity : Activity() {
         }, matchWidth())
         setContentView(root)
 
-        if (Build.VERSION.SDK_INT >= 33) {
-            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 100)
-        }
-        // 镜像带声音要用系统的录音权限（只采本机播放的声音，不碰麦克风）；不给也能投画面
-        if (Build.VERSION.SDK_INT >= 23 && !SystemAudio.hasPermission(this)) {
-            requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 101)
-        }
+        // PRD §04「权限申请在真正用到时才弹出，并说明用途」：这里不弹任何权限框，
+        // 通知权限在发起投屏时申请、录音权限在要出声时申请（见 requestCapture / enableMirrorAudio）。
         SenderControl.audio = store.mirrorAudioEnabled()
         startBrowsing()
         main.post(refresh)
@@ -388,9 +387,108 @@ class SenderActivity : Activity() {
     }
 
     private fun requestCapture(target: Target, credential: String) {
+        // 发起投屏才是「真正用到」前台服务通知与声音采集的时刻；缺什么先说明用途再一起申请一次
+        val missing = RuntimePermission.needs(
+            wantsAudio = SenderControl.audio && SystemAudio.capable(),
+            wantsCastingNotification = Build.VERSION.SDK_INT >= 33,
+            granted = grantedKeys(),
+        )
+        if (missing.isEmpty()) {
+            startCapture(target, credential)
+            return
+        }
+        askPermission(missing, "投屏前要这些权限") { agreed ->
+            if (!agreed) {
+                // 明确不用这两个权限：画面照投，声音按缺权限的口径关掉
+                if (missing.contains(RuntimePermission.MIRROR_AUDIO)) setMirrorAudio(false)
+                noteDeclined(missing)
+                startCapture(target, credential)
+            } else {
+                pendingTarget = target to credential
+                requestPermissions(missing.map { it.key }.toTypedArray(), REQUEST_PERMISSION)
+            }
+        }
+    }
+
+    private fun startCapture(target: Target, credential: String) {
         pending = target
         pendingCredential = credential
         startActivityForResult(projectionManager.createScreenCaptureIntent(), REQUEST_CAPTURE)
+    }
+
+    /** 「声音：开」是采集本机播放的声音，用到这一刻才申请；关声音永远不需要权限 */
+    private fun enableMirrorAudio() {
+        if (!SystemAudio.capable()) {
+            toast("当前系统未开放声音采集")
+            return
+        }
+        if (grantedKeys().contains(RuntimePermission.MIRROR_AUDIO.key)) {
+            setMirrorAudio(true)
+            return
+        }
+        askPermission(listOf(RuntimePermission.MIRROR_AUDIO), "镜像带声音需要这个权限") { agreed ->
+            if (agreed) {
+                pendingAudio = true
+                requestPermissions(arrayOf(RuntimePermission.MIRROR_AUDIO.key), REQUEST_PERMISSION)
+            } else {
+                toast(RuntimePermission.MIRROR_AUDIO.declined)
+            }
+        }
+    }
+
+    private fun setMirrorAudio(enabled: Boolean) {
+        SenderControl.audio = enabled
+        store.saveMirrorAudioEnabled(enabled)
+        audioButton.text = audioLabel()
+    }
+
+    private fun grantedKeys(): Set<String> =
+        RuntimePermission.entries
+            .filter { packageManager.checkPermission(it.key, packageName) == PackageManager.PERMISSION_GRANTED }
+            .mapTo(mutableSetOf()) { it.key }
+
+    private fun askPermission(missing: List<RuntimePermission>, title: String, onAnswer: (Boolean) -> Unit) {
+        Log.i(TAG, "permission ask: " + missing.joinToString(",") { it.key })
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setMessage(RuntimePermission.explain(missing))
+            .setPositiveButton("继续申请") { _, _ -> onAnswer(true) }
+            .setNegativeButton("先不用") { _, _ -> onAnswer(false) }
+            .setOnCancelListener { onAnswer(false) }
+            .show()
+    }
+
+    /** 拒绝之后界面要说清「少了什么、还能用什么」，不能留一个看起来是坏的开关 */
+    private fun noteDeclined(missing: List<RuntimePermission>) {
+        val line = missing.joinToString("；") { it.declined }
+        Log.i(TAG, "permission declined: " + missing.joinToString(",") { it.key })
+        status.text = line
+        toast(line)
+    }
+
+    @Deprecated("Activity result API kept dependency-free")
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != REQUEST_PERMISSION) return
+        val granted = permissions.filterIndexed { i, _ -> grantResults[i] == PackageManager.PERMISSION_GRANTED }
+            .toSet()
+        // 只报这一刻真被拒的那些：没问过的权限不能算进拒绝名单
+        val missing = RuntimePermission.entries.filter { it.key in permissions && it.key !in granted }
+        if (missing.isNotEmpty()) noteDeclined(missing)
+        val audioAsked = permissions.contains(RuntimePermission.MIRROR_AUDIO.key)
+        val audioGranted = granted.contains(RuntimePermission.MIRROR_AUDIO.key)
+        // 声音开关必须跟着权限走：批了才开（从开关发起时）、拒了就关（从投屏发起时也一样），
+        // 否则按钮会显示一个做不到的状态
+        if (audioAsked && !audioGranted) setMirrorAudio(false)
+        if (audioAsked && audioGranted && pendingAudio) setMirrorAudio(true)
+        pendingAudio = false
+        val next = pendingTarget
+        pendingTarget = null
+        if (next != null) startCapture(next.first, next.second)
     }
 
     @Deprecated("Activity result API kept dependency-free")
@@ -437,7 +535,9 @@ class SenderActivity : Activity() {
     }
 
     companion object {
+        private const val TAG = "AirMirrorSender"
         private const val REQUEST_CAPTURE = 1
+        private const val REQUEST_PERMISSION = 2
         private const val SEARCHING = "正在搜索同一网络里的电视…"
         private const val CONNECTING = "正在连接…"
         private const val PROTOCOL = "AMRC"
