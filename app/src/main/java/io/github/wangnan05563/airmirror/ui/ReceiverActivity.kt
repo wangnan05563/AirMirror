@@ -208,6 +208,8 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         ).apply { setMargins(Theme.dp(this@ReceiverActivity, 32), 0, Theme.dp(this@ReceiverActivity, 32), 0) })
         root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> refitVideo() }
         setContentView(root)
+        // 待连接页 / 设置面板 / 授权与结束按钮统一接遥控器焦点
+        TvFocus.applyTree(root)
 
         deviceNameText.text = receiverName()
         startSessions(receiverName())
@@ -694,6 +696,8 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         badgeRow.text = "画质角标：${if (store.qualityBadgeEnabled()) "开" else "关"}"
         diagnosticsRow.text = "崩溃日志：${if (diagnostics.enabled()) "开（仅本机 · 7 天自动清除）" else "关（默认）"}"
         clearDataRow.text = "清除本地日志与缓存（${diagnostics.count()} 条）"
+        // 画质档位行是探完能力后动态 addView 的，刷新时再扫一次树；不抢当前焦点
+        TvFocus.applyTree(settingsPanel, requestInitialFocus = false)
     }
 
     /** PRD FS-11：诊断默认关闭；开启前把口径说明白，不做静默开启。 */
@@ -960,6 +964,14 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         if (senderName.isEmpty()) return
         overlayName.text = senderName
         overlayName.visibility = View.VISIBLE
+        // PRD §11.5「连接成功 200ms 淡入」；C 级按 8.8 关闭动效，直接置终态
+        val fadeMs = FocusPolicy.fadeDurationMs(DeviceProbe.policy(this).animationsEnabled)
+        if (fadeMs == 0L) {
+            overlayName.alpha = 1f
+        } else {
+            overlayName.alpha = 0f
+            overlayName.animate().alpha(1f).setDuration(fadeMs).start()
+        }
         main.removeCallbacks(hideOverlay)
         main.postDelayed(hideOverlay, OVERLAY_MS)
     }

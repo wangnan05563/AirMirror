@@ -20,6 +20,9 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Diagnostics(this).install()
+        // PRD §11.5：TV 上按 3 米观看距离取字号，手机端仍用 14sp 正文
+        val isTv = TvFocus.isTvMode(this)
+        val bodySp = FocusPolicy.bodySp(isTv)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
@@ -29,14 +32,14 @@ class MainActivity : Activity() {
         }
         root.addView(TextView(this).apply {
             text = "AirMirror"
-            textSize = 32f
+            textSize = FocusPolicy.titleSp(isTv)
             setTextColor(Theme.TEXT_PRIMARY)
             setTypeface(typeface, Typeface.BOLD)
             gravity = Gravity.CENTER
         })
         root.addView(TextView(this).apply {
             text = "同一网络里，把画面投到另一块屏"
-            textSize = Theme.PHONE_BODY_SP
+            textSize = bodySp
             setTextColor(Theme.TEXT_SECONDARY)
             gravity = Gravity.CENTER
             setPadding(0, Theme.dp(this@MainActivity, 6), 0, Theme.dp(this@MainActivity, 32))
@@ -53,7 +56,7 @@ class MainActivity : Activity() {
         })
         root.addView(TextView(this).apply {
             text = "局域网直连 · 无广告 · 不需要账号"
-            textSize = Theme.PHONE_BODY_SP
+            textSize = bodySp
             setTextColor(Theme.OFFLINE)
             gravity = Gravity.CENTER
             setPadding(0, Theme.dp(this@MainActivity, 24), 0, 0)
@@ -61,14 +64,14 @@ class MainActivity : Activity() {
         // PRD FS-11 首次启动：一句话数据边界说明，不用长文弹窗；「查看完整说明」按需展开
         root.addView(TextView(this).apply {
             text = "内容不出门，数据不落地 · 画面、文件名、地址都不保存"
-            textSize = Theme.PHONE_BODY_SP
+            textSize = bodySp
             setTextColor(Theme.OFFLINE)
             gravity = Gravity.CENTER
             setPadding(0, Theme.dp(this@MainActivity, 8), 0, 0)
         })
         root.addView(TextView(this).apply {
             text = "查看完整说明"
-            textSize = Theme.PHONE_BODY_SP
+            textSize = bodySp
             setTextColor(Theme.ACCENT)
             gravity = Gravity.CENTER
             setPadding(0, Theme.dp(this@MainActivity, 12), 0, 0)
@@ -81,6 +84,8 @@ class MainActivity : Activity() {
             }
         })
         setContentView(root)
+        // 全站可点控件统一接遥控器焦点（含「查看完整说明」这类 TextView 入口）
+        TvFocus.applyTree(root)
     }
 
     private companion object {
