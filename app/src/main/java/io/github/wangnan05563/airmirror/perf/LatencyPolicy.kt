@@ -47,6 +47,12 @@ class LatencyLadder(base: QualityTier, private val fpsFloor: Int = MIN_FPS_FLOOR
     fun step(index: Int): Step = steps[index.coerceIn(0, steps.size - 1)]
 
     /**
+     * 序列里第一个「不高于 [tier]」的一步，用于带宽骤降时一步跳过去（PRD FS-05「直接跳到可维持档位」）。
+     * 回 -1 表示当前画质已经不比 [tier] 好，没什么可跳的。
+     */
+    fun indexOfTierAtOrBelow(tier: QualityTier): Int = steps.indexOfFirst { it.tier.rank >= tier.rank }
+
+    /**
      * 序列里与 ([tier], [fps]) 最贴近的一档，用于阶梯重建后接着往下走：
      * 当前画质比整条新序列还好，说明这次重建本身就是降档，落在新序列的基线；
      * 比整条序列都差，说明已经在新序列的底部，落在最后。
@@ -87,8 +93,8 @@ class LatencyLadder(base: QualityTier, private val fpsFloor: Int = MIN_FPS_FLOOR
     }
 }
 
-/** 策略对当前窗口表态：保持不变、降一档、还是回升一档。 */
-enum class LatencyMove { KEEP, DEGRADE, RECOVER }
+/** 策略对当前窗口表态：保持不变、降一档、回升一档，或「已锁定、只提示」。 */
+enum class LatencyMove { KEEP, DEGRADE, RECOVER, NOTIFY }
 
 data class LatencyDecision(val move: LatencyMove, val stepIndex: Int, val reason: String)
 
@@ -111,9 +117,19 @@ class LatencyPolicy(
     private var goodStreak = 0
     private var settling = 0
 
+    /** 锁定后「放不稳」提示的静默窗数，避免 3 秒浮层被同一句话反复顶掉 */
+    private var notifyQuiet = 0
+
     /** 当前处在降档序列的第几档（0 = 基线） */
     var stepIndex = 0
         private set
+
+    /**
+     * 用户锁定画质（PRD FS-05「手动锁定 | 锁定后不再自动升降，仅在严重卡顿时提示」）。
+     * 锁定时策略照旧观察，但表态改成 NOTIFY：画质一格不动，只把「放不稳」说给用户。
+     */
+    @Volatile
+    var locked: Boolean = false
 
     /** 会话重新开始：画质回到基线，观察计数全清 */
     fun reset() = anchorAt(0)
@@ -127,6 +143,7 @@ class LatencyPolicy(
         badStreak = 0
         goodStreak = 0
         settling = 0
+        notifyQuiet = 0
         stepIndex = index.coerceAtLeast(0)
     }
 
@@ -148,22 +165,30 @@ class LatencyPolicy(
             goodStreak = 0
             badStreak++
             if (badStreak < badWindowsNeeded) return keep("超标 ${badStreak}/${badWindowsNeeded} 窗")
-            if (stepIndex >= steps - 1) {
-                badStreak = 0
-                return keep("已到最低档（第 $stepIndex 档），保画面不黑屏")
-            }
-            stepIndex++
             badStreak = 0
+            if (locked) {
+                // 锁定 = 用户表了态，画质一格都不能动；但「放不稳」得说，只说不降（PRD FS-05）
+                if (notifyQuiet > 0) {
+                    notifyQuiet--
+                    return keep("锁定中，提示静默剩 $notifyQuiet 窗")
+                }
+                notifyQuiet = NOTIFY_QUIET_WINDOWS
+                return LatencyDecision(LatencyMove.NOTIFY, stepIndex, "档位已锁定，p90 ${window.p90Ms}ms 超 ${targetP90Ms}ms")
+            }
+            if (stepIndex >= steps - 1) return keep("已到最低档（第 $stepIndex 档），保画面不黑屏")
+            stepIndex++
             settling = settleWindows
             return LatencyDecision(LatencyMove.DEGRADE, stepIndex, "p90 ${window.p90Ms}ms 超 ${targetP90Ms}ms")
         }
         badStreak = 0
+        notifyQuiet = 0
         goodStreak++
         if (goodStreak < goodWindowsNeeded) return keep(if (stepIndex > 0) "达标 ${goodStreak}/${goodWindowsNeeded} 窗，等回升" else "达标")
         if (stepIndex == 0) {
             goodStreak = 0
             return keep("达标")
         }
+        if (locked) return keep("档位已锁定，不自动回升")
         stepIndex--
         goodStreak = 0
         settling = settleWindows
@@ -183,5 +208,8 @@ class LatencyPolicy(
         const val DEFAULT_BAD_WINDOWS = 2
         const val DEFAULT_GOOD_WINDOWS = 12
         const val DEFAULT_SETTLE_WINDOWS = 4
+
+        /** 一次 30 帧窗口约 0.5～1 秒，静默 10 窗≈10 秒才再说一次「放不稳」 */
+        const val NOTIFY_QUIET_WINDOWS = 10
     }
 }

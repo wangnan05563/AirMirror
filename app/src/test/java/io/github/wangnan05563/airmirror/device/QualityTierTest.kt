@@ -151,4 +151,53 @@ class QualityTierTest {
     fun `note says unavailable instead of inventing a tier`() {
         assertEquals("当前无法投屏", QualityTiers.note(QualityTier.OFF, QualityTier.UHD60, null, NetworkBand.GHZ_5).text())
     }
+
+    @Test
+    fun `merging ceilings takes the worse tier`() {
+        assertEquals(QualityTier.FHD60, QualityTiers.lower(QualityTier.UHD60, QualityTier.FHD60))
+        assertEquals(QualityTier.FHD60, QualityTiers.lower(QualityTier.FHD60, QualityTier.UHD60))
+        assertEquals(QualityTier.SD480, QualityTiers.lower(QualityTier.HD30, QualityTier.SD480))
+    }
+
+    @Test
+    fun `a locked tier above the machine ceiling is clamped`() {
+        assertEquals(QualityTier.FHD60, QualityTiers.lockWithin(QualityTier.FHD60, QualityTier.UHD60))
+        assertEquals(QualityTier.HD30, QualityTiers.lockWithin(QualityTier.FHD60, QualityTier.HD30))
+        // 没锁（null）就是不设限，上限照旧
+        assertEquals(QualityTier.FHD60, QualityTiers.lockWithin(QualityTier.FHD60, null))
+        assertEquals(QualityTier.FHD60, QualityTiers.lockWithin(QualityTier.FHD60, QualityTier.OFF))
+    }
+
+    @Test
+    fun `unmeasured bandwidth does not cap anything`() {
+        assertEquals(QualityTier.UHD60, QualityTiers.tierWithinBandwidth(0))
+        assertEquals(QualityTier.UHD60, QualityTiers.tierWithinBandwidth(-5))
+    }
+
+    @Test
+    fun `bandwidth is read against each tier floor`() {
+        assertEquals(QualityTier.UHD60, QualityTiers.tierWithinBandwidth(40_000))
+        assertEquals(QualityTier.UHD60, QualityTiers.tierWithinBandwidth(20_000))
+        assertEquals(QualityTier.QHD, QualityTiers.tierWithinBandwidth(19_999))
+        assertEquals(QualityTier.FHD60, QualityTiers.tierWithinBandwidth(8_000))
+        assertEquals(QualityTier.HD30, QualityTiers.tierWithinBandwidth(3_000))
+        assertEquals(QualityTier.SD480, QualityTiers.tierWithinBandwidth(1_000))
+        // 静止画面实测约 50kbps：按 Mbps 取整是 0，会被读成「还没量到」；按 kbps 落到保底档
+        assertEquals(QualityTier.SD480, QualityTiers.tierWithinBandwidth(50))
+    }
+
+    @Test
+    fun `unreachable tiers are not offered at all`() {
+        assertEquals(
+            listOf(QualityTier.UHD60, QualityTier.QHD, QualityTier.FHD60, QualityTier.HD30, QualityTier.SD480),
+            QualityTiers.reachable(QualityTier.UHD60),
+        )
+        // 老设备：设置页里 4K 与 1440p 连行都不出现（PRD FS-05 验收「不可达隐藏」）
+        assertEquals(
+            listOf(QualityTier.FHD60, QualityTier.HD30, QualityTier.SD480),
+            QualityTiers.reachable(QualityTier.FHD60),
+        )
+        assertEquals(listOf(QualityTier.SD480), QualityTiers.reachable(QualityTier.SD480))
+        assertEquals(emptyList<QualityTier>(), QualityTiers.reachable(QualityTier.OFF))
+    }
 }

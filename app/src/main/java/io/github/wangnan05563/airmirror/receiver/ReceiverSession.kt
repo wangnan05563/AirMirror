@@ -8,6 +8,8 @@ import io.github.wangnan05563.airmirror.device.CodecProbe
 import io.github.wangnan05563.airmirror.device.DeviceFacts
 import io.github.wangnan05563.airmirror.device.DeviceGrading
 import io.github.wangnan05563.airmirror.device.DeviceProbe
+import io.github.wangnan05563.airmirror.device.FourGates
+import io.github.wangnan05563.airmirror.device.GateReport
 import io.github.wangnan05563.airmirror.device.GradePolicy
 import io.github.wangnan05563.airmirror.device.QualityTier
 import io.github.wangnan05563.airmirror.device.QualityTiers
@@ -23,6 +25,7 @@ import io.github.wangnan05563.airmirror.net.StreamConnection
 import io.github.wangnan05563.airmirror.pairing.AuthGate
 import io.github.wangnan05563.airmirror.pairing.Pairing
 import io.github.wangnan05563.airmirror.perf.AvSync
+import io.github.wangnan05563.airmirror.perf.BandwidthGauge
 import io.github.wangnan05563.airmirror.perf.LatencyLadder
 import io.github.wangnan05563.airmirror.perf.LatencyMove
 import io.github.wangnan05563.airmirror.perf.LatencyPolicy
@@ -58,6 +61,8 @@ class ReceiverSession(
     private val onVideoSize: (Int, Int) -> Unit = { _, _ -> },
     /** 断线保留窗口的开关：true 显示「连接中断，正在恢复」，恢复或收口后收起（PRD FS-10）。 */
     private val onRecovery: (Boolean) -> Unit = {},
+    /** 画面角标的读数：真实在跑的画幅与实测码率（PRD FS-05「用户可开启角标查看当前分辨率与码率」）。 */
+    private val onQualityReadout: (Int, Int, Int) -> Unit = { _, _, _ -> },
 ) {
     /** 首次连接的大屏确认请求；界面必须在 [autoAllowAt] 之前调用 [ReceiverSession.resolve]。 */
     data class Prompt(val deviceId: String, val deviceName: String, val autoAllowAt: Long)
@@ -120,6 +125,25 @@ class ReceiverSession(
     /** 本机分级与画质上限，扫能力表有开销，放到首次真正用到时才算（PRD FS-12 步骤 1） */
     private val gradeFacts: DeviceFacts by lazy { DeviceProbe.facts(context) }
     private val gradePolicy: GradePolicy by lazy { DeviceGrading.policyFor(gradeFacts) }
+
+    /**
+     * 4K 四道门的判定结果（PRD FS-05）。建连时还没实测带宽，网络那一道只看频段，
+     * 运行中的「带宽骤降」由 [bandwidth] 接管——两者合起来才是需求里那句「稳定可用带宽」。
+     */
+    private val gateReport: GateReport by lazy { FourGates.evaluate(DeviceProbe.gates(context)) }
+
+    /** 会话内实测的媒体入流速率，用于「带宽骤降直接跳到可维持档位」（PRD FS-05 异常表） */
+    private val bandwidth = BandwidthGauge()
+
+    /** 上一次做带宽判决的墙钟时刻（判决按时间跑，见 [BANDWIDTH_POLL_MS]） */
+    private var lastBandwidthPollAtMs = 0L
+
+    /**
+     * 大屏手动锁定的画质档位；null = 自动。锁定后本机上报的上限就是这一档，
+     * 且延迟策略只提示不动画质（PRD FS-05「手动锁定 | 锁定后不再自动升降」）。
+     */
+    @Volatile
+    private var qualityLock: QualityTier? = null
 
     /** 当前会话的画质上限：协商结果，解不动时逐档下调并回写对端 */
     @Volatile
@@ -304,6 +328,8 @@ class ReceiverSession(
             )
             avSync = AvSync.Tracker()
             pacer = AvSync.Pacer()
+            bandwidth.reset()
+            lastBandwidthPollAtMs = 0L
             lastAudioAtMs = 0L
             audioGone = false
             lastDriftMs = 0
@@ -361,6 +387,15 @@ class ReceiverSession(
                                 onCasting(true, hello.deviceName)
                             } else {
                                 received++
+                                // 实测带宽只数画面字节：档位码率表写的就是视频，掺进声音会把「撑不住」读成撑得住
+                                val arrivedAtMs = System.currentTimeMillis()
+                                bandwidth.add(frame.payload.size, frame.ptsUs, arrivedAtMs)
+                                // 判决按墙钟时间跑，不按帧数：拥塞时帧数自己就先掉了，
+                                // 借「每 30 帧查一次」的班车会让最该快的时候反而拖到十几秒
+                                if (arrivedAtMs - lastBandwidthPollAtMs >= BANDWIDTH_POLL_MS) {
+                                    lastBandwidthPollAtMs = arrivedAtMs
+                                    pollBandwidth(hello.deviceName)
+                                }
                                 val codec = decoder
                                 val key = frame.flags and Protocol.Flags.KEY_FRAME != 0
                                 if (awaitKeyFrame && !key) {
@@ -420,6 +455,7 @@ class ReceiverSession(
                                             qualitySuffix(),
                                     )
                                     pollLatency(codec, hello.deviceName)
+                                    reportQuality(codec)
                                     watchAudioInterrupt(hello.deviceName)
                                 }
                             }
@@ -724,16 +760,36 @@ class ReceiverSession(
     /**
      * 授权通过后立刻把本机画质上限告诉发端（PRD 8.4 能力协商）：
      * 发端原来按自己屏幕原样编码，1080x2400 这种尺寸老盒子根本解不动。
+     *
+     * 上限取三者中最低的一档：分级 ∩ 硬解、4K 四道门、用户锁定的档位（PRD FS-05）。
+     * 四道门没过就不上报 4K，设置页里也不出现那一档——承诺了放不出来才是问题。
      */
     private fun sendCeiling(conn: StreamConnection) {
-        val tier = QualityTiers.receiverCeiling(gradePolicy, gradeFacts)
+        val capability = QualityTiers.receiverCeiling(gradePolicy, gradeFacts)
+        val tier = QualityTiers.lockWithin(QualityTiers.lower(capability, gateReport.maxTier), qualityLock)
         ceiling = tier
         hevcDeclared = !hevcBanned && CodecProbe.hardwareDecoder(VideoCodec.HEVC, tier.width, tier.height)
-        Log.i(TAG, "ceiling ${tier.label} decode ${if (hevcDeclared) "H.264+H.265" else VideoCodec.AVC.display}")
+        latencyPolicy.locked = qualityLock != null
+        Log.i(TAG, "ceiling ${tier.label} decode ${if (hevcDeclared) "H.264+H.265" else VideoCodec.AVC.display}" +
+            " gates=${gateReport.maxTier.label} lock=${qualityLock?.label ?: "auto"}")
         latencyPolicy.reset()
         rebuildLadder(tier)
         runCatching { conn.send(Protocol.Frame(Protocol.Type.CONTROL, payload = Limit.encode(ceilingOf(tier)))) }
             .onFailure { Log.w(TAG, "ceiling not delivered: ${it.message}") }
+    }
+
+    /**
+     * 大屏改了画质锁定（设置页 → 自动/某一档）：重新谈一次上限。
+     * 没有活动连接时只记下锁定值，等下次授权建会话时 [sendCeiling] 自然带上。
+     * 重谈会把延迟降级状态带回新基线：用户刚做过选择，从这一格重新观察才是对的。
+     */
+    fun applyQualityLock(lock: QualityTier?) {
+        if (lock == qualityLock) return
+        qualityLock = lock
+        latencyPolicy.locked = lock != null
+        Log.i(TAG, "quality lock -> ${lock?.label ?: "auto"}")
+        val conn = activeConn ?: return
+        sendCeiling(conn)
     }
 
     /**
@@ -811,6 +867,13 @@ class ReceiverSession(
         val decision = latencyPolicy.onWindow(window, ladder.steps.size)
         Log.i(TAG, "latency ${window.text()} ${decision.move} ${decision.reason}")
         if (decision.move == LatencyMove.KEEP) return
+        if (decision.move == LatencyMove.NOTIFY) {
+            // 用户锁了档位：一格画质都不动，只把「这一档放不稳」说清楚（PRD FS-05 手动锁定）
+            val text = ErrorNotice.tierUnstable(ladder.step(decision.stepIndex).tier.label)
+            onNotice("$deviceName · $text")
+            onStatus("$deviceName · $text")
+            return
+        }
         val step = ladder.step(decision.stepIndex)
         sendControl(Limit.encode(ceilingOf(step.tier, step.fps)), "latency ${step.text()}")
         val text = when (decision.move) {
@@ -819,6 +882,64 @@ class ReceiverSession(
         }
         onNotice("$deviceName · $text")
         onStatus("$deviceName · $text")
+    }
+
+    /**
+     * 带宽骤降直跳（PRD FS-05 异常表「可用带宽低于当前档位下限 → 不弹窗，直接跳到可维持档位」）。
+     * 与延迟降级分开看：延迟超标是「体验不达标」，逐级试探有意义；
+     * 实测带宽撑不住这一档是「根本放不下」，逐级降等于把同一个失败重复好几遍，每遍还要等 IDR。
+     * 锁定时不跳，只提示——PRD 写明锁定后不自动升降。
+     * 调用节奏由墙钟时间决定（[BANDWIDTH_POLL_MS]），不搭「每 30 帧」那趟车：
+     * 拥塞时帧数先掉，搭车的判决会在最需要快的时候拖到十几秒（实测 10.8 秒）。
+     *
+     * 「撑不住」的证据分两种，取用顺序不能反：
+     * ① 发送端给了可用 pts → 只看媒体时钟是否被压住。这与内容无关，静止画面字节再少也不会被误判成骤降；
+     * ② 老发送端 pts 恒为 0（无从判断）→ 只能退回字节速率低于档位下限，此时静止画面会误判，
+     *    但代价只是降一档画质，比链路真崩了却不动要好。
+     */
+    private fun pollBandwidth(deviceName: String) {
+        val sustained = bandwidth.sustainedKbps()
+        val current = ladder.step(latencyPolicy.stepIndex)
+        val collapse = if (bandwidth.hasMediaClock) {
+            bandwidth.isStarved()
+        } else {
+            sustained in 1 until current.tier.minBitRateKbps
+        }
+        if (!collapse) return
+        val byRate = QualityTiers.tierWithinBandwidth(sustained)
+        // 媒体时钟已经压住了：这一档既然放不下，至少让出一档，
+        // 哪怕到达速率读数看着还踩着下限（时钟堵 = 编码器想发的比链路给的多）
+        val byClock = if (bandwidth.isStarved()) QualityTiers.downgrade(current.tier) else QualityTier.UHD60
+        val fit = QualityTiers.lower(byRate, byClock)
+        if (fit.rank <= current.tier.rank) return
+        val index = ladder.indexOfTierAtOrBelow(fit)
+        if (index < 0 || index <= latencyPolicy.stepIndex) return
+        val step = ladder.step(index)
+        val cause = if (bandwidth.isStarved()) "媒体时间落后墙钟" else "仅到达 ${sustained}kbps"
+        Log.i(TAG, "bandwidth $cause cannot hold ${current.tier.label}, jump to ${step.text()} (step $index)")
+        if (latencyPolicy.locked) {
+            val text = ErrorNotice.tierUnstable(current.tier.label)
+            onNotice("$deviceName · $text")
+            onStatus("$deviceName · $text")
+            return
+        }
+        latencyPolicy.anchorAt(index)
+        sendControl(Limit.encode(ceilingOf(step.tier, step.fps)), "bandwidth ${sustained}kbps")
+        val headline = ErrorNotice.noticeFor(ErrorNotice.Cause.BANDWIDTH_JUMP).headline
+        onNotice("$deviceName · $headline · 现在 ${step.text()}")
+        onStatus("$deviceName · $headline · 现在 ${step.text()}")
+    }
+
+    /**
+     * 画面角标的读数（PRD FS-05「用户可开启角标查看当前分辨率与码率」）：
+     * 分辨率取编码器真正送来的画幅，码率取本窗实测的入流速率——都来自链路事实，不报协商意图。
+     * 传 kbps：镜像静止画面约 50kbps，换成 Mbps 取整角标就会写「0 Mbps」。
+     */
+    private fun reportQuality(codec: VideoDecoder?) {
+        val decoder = codec ?: return
+        val width = decoder.codedWidth
+        if (width <= 0) return
+        onQualityReadout(width, decoder.codedHeight, bandwidth.liveKbps(System.currentTimeMillis()))
     }
 
     /**
@@ -1029,6 +1150,8 @@ class ReceiverSession(
         const val TAKEOVER_STOP_WAIT_MS = 3_000L
         const val TAKEOVER_POLL_MS = 200L
         const val RECOVERY_POLL_MS = 200L
+        /** 带宽判决的最短间隔：判决本身只看两个已关闭窗口，1 秒一轮足够跟上，又不至于每帧算一遍 */
+        const val BANDWIDTH_POLL_MS = 1_000L
         const val PREFERRED_PORT = 41523
 
         /** 48kHz 下一个 AAC 访问单元约 21ms，5 帧一采约 105ms，与 PRD「每 100ms 采样」同口径 */

@@ -3,6 +3,7 @@ package io.github.wangnan05563.airmirror.pairing
 import android.content.Context
 import android.content.SharedPreferences
 import io.github.wangnan05563.airmirror.device.DisplayMode
+import io.github.wangnan05563.airmirror.device.QualityTier
 import java.util.UUID
 
 /**
@@ -74,6 +75,27 @@ class DeviceStore(context: Context) {
         prefs.edit().putBoolean(KEY_MIRROR_AUDIO, enabled).apply()
     }
 
+    /**
+     * 画质档位锁定（PRD FS-05「手动锁定」）：null 表示自动升降档。
+     * 认不出的落盘值一律按自动处理——宁可自动降档，也不要锁在一个已被四道门判不可达的档上。
+     */
+    fun qualityLock(): QualityTier? {
+        val stored = prefs.getString(KEY_QUALITY_LOCK, null)
+        if (stored.isNullOrEmpty() || stored == AUTO) return null
+        return QualityTier.entries.firstOrNull { it.name == stored && it.isUsable }
+    }
+
+    fun saveQualityLock(tier: QualityTier?) {
+        prefs.edit().putString(KEY_QUALITY_LOCK, tier?.name ?: AUTO).apply()
+    }
+
+    /** 画面标识（PRD FS-05「默认不显示画质信息；用户可开启角标」），默认关。 */
+    fun qualityBadgeEnabled(): Boolean = prefs.getBoolean(KEY_QUALITY_BADGE, false)
+
+    fun saveQualityBadgeEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_QUALITY_BADGE, enabled).apply()
+    }
+
     private companion object {
         const val FILE = "airmirror-pairing"
         const val KEY_ID = "device_id"
@@ -85,5 +107,8 @@ class DeviceStore(context: Context) {
         const val KEY_PORTRAIT_LABEL = "portrait_label"
         const val KEY_AUTO_START = "auto_start"
         const val KEY_MIRROR_AUDIO = "mirror_audio"
+        const val KEY_QUALITY_LOCK = "quality_lock"
+        const val KEY_QUALITY_BADGE = "quality_badge"
+        const val AUTO = "auto"
     }
 }

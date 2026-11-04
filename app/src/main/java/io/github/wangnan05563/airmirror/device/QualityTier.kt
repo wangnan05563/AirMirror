@@ -132,6 +132,37 @@ object QualityTiers {
     }
 
     /**
+     * 取两个上限里更低的一档（rank 越大画质越低）。
+     * 四道门、分级、硬解、手动锁定都是「上限」，合并时只能取最低，
+     * 取高了的后果是承诺一个自己放不出来的档位。
+     */
+    fun lower(a: QualityTier, b: QualityTier): QualityTier = if (b.rank > a.rank) b else a
+
+    /** 手动锁定的档位永远不能超过本机能力；null 表示「自动」，不设限。 */
+    fun lockWithin(ceiling: QualityTier, locked: QualityTier?): QualityTier =
+        if (locked == null || !locked.isUsable) ceiling else lower(ceiling, locked)
+
+    /**
+     * 实测带宽能撑到哪一档（PRD FS-05「可用带宽低于当前档位下限」）。
+     * [kbps] 为 0 表示还没量到，此时不设限——量不到不等于带宽为零。
+     * 单位用 kbps 而不是 Mbps：档位下限本身就是 kbps，换算成 Mbps 取整会把 19_500 读成 19
+     * （刚好卡在 4K 门槛下），更会把静止画面的 500 读成 0（被当成「还没量到」）。
+     */
+    fun tierWithinBandwidth(kbps: Int): QualityTier {
+        if (kbps <= 0) return QualityTier.UHD60
+        return QualityTier.Ordered.firstOrNull { kbps >= it.minBitRateKbps } ?: QualityTier.SD480
+    }
+
+    /**
+     * 设置页可列的档位：上限以上的一档连行都不生成
+     * （PRD FS-05 验收「不可达隐藏 | 老设备界面中不存在 4K 选项」），
+     * 上限以下仍然要列——用户锁档时可以主动选更低的一档换稳定。
+     * rank 越大画质越低，所以「可达」是 rank ≥ 上限；上限为「不支持」时自然一档都不列。
+     */
+    fun reachable(ceiling: QualityTier): List<QualityTier> =
+        QualityTier.Ordered.filter { it.rank >= ceiling.rank }
+
+    /**
      * 接收端能放的最大档 = 分级封顶 ∩ 本机硬解能力。
      * 分级表按 PRD 写的门槛封顶，硬解探测可能更低（比如 B 级系统只解到 720p），取两者中更低的一档，
      * 这样上报给发送端的上限不会承诺一个自己放不出来的分辨率。

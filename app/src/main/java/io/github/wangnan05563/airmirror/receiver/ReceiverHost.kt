@@ -27,6 +27,8 @@ class ReceiverHost private constructor(context: Context) {
         fun onVideoSize(width: Int, height: Int)
         fun onDlnaStatus(text: String)
         fun onDlnaPlaying(playing: Boolean)
+        /** 画面角标的读数（PRD FS-05）：默认不显示，界面开了才渲染，所以给个空实现。[kiloBits] 为实测入流码率 kbps */
+        fun onQualityReadout(width: Int, height: Int, kiloBits: Int) = Unit
     }
 
     val store = DeviceStore(appContext)
@@ -58,6 +60,19 @@ class ReceiverHost private constructor(context: Context) {
 
     @Volatile
     var videoHeight = 0
+        private set
+
+    /** 画面角标的数据源（PRD FS-05）：实际在跑的画幅与实测入流码率 kbps，界面开了角标才渲染 */
+    @Volatile
+    var qualityWidth = 0
+        private set
+
+    @Volatile
+    var qualityHeight = 0
+        private set
+
+    @Volatile
+    var qualityKbps = 0
         private set
 
     @Volatile
@@ -100,7 +115,15 @@ class ReceiverHost private constructor(context: Context) {
                 videoHeight = height
                 post { it.onVideoSize(width, height) }
             },
+            onQualityReadout = { width, height, kiloBits ->
+                qualityWidth = width
+                qualityHeight = height
+                qualityKbps = kiloBits
+                post { it.onQualityReadout(width, height, kiloBits) }
+            },
         )
+        // 大屏锁过的档位要立刻带上，第一次上报的上限就得是锁定后的那一档
+        active.applyQualityLock(store.qualityLock())
         active.start(deviceName)
         session = active
         Log.i(TAG, "host session started port=${active.port}")
@@ -121,14 +144,23 @@ class ReceiverHost private constructor(context: Context) {
         holder?.let { mount(it) }
     }
 
-    /** 界面回到前台：先订阅后续变化，再按宿主快照把当前画面/横幅补回界面。 */
+    /** 界面回到前台：先订阅后续变化，再按宿主快照补回画面、横幅与角标读数。 */
     fun attachUi(next: Ui) {
         ui = next
         if (lastStatus.isNotEmpty()) next.onStatus(lastStatus)
         next.onCasting(casting, senderName)
         if (videoWidth > 0 && videoHeight > 0) next.onVideoSize(videoWidth, videoHeight)
+        if (qualityWidth > 0) next.onQualityReadout(qualityWidth, qualityHeight, qualityKbps)
         if (dlnaPlaying) next.onDlnaPlaying(true)
         if (recovering) next.onRecovery(true)
+    }
+
+    /**
+     * 设置页改了画质锁定：把落盘值交给会话。投屏中改会立刻重谈一次上限，
+     * 没在投屏时只记账，下次授权自然带上（PRD FS-05 手动锁定）。
+     */
+    fun applyQualityLock() {
+        session?.applyQualityLock(store.qualityLock())
     }
 
     fun detachUi(next: Ui) {

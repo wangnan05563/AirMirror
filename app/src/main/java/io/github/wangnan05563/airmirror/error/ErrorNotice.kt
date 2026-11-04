@@ -86,6 +86,10 @@ object ErrorNotice {
         AUDIO_INTERRUPTED,
         /** 声明了解 H.265 硬解却建不起解码器（PRD 8.7 异常表「不支持 H.265 硬解」） */
         CODEC_FALLBACK,
+        /** 用户锁了档位又连续超标：只提示，画质一格不动（PRD FS-05「手动锁定」） */
+        TIER_UNSTABLE,
+        /** 实测带宽低于当前档位下限：不逐级试探，一步跳到可维持档位（PRD FS-05「带宽骤降」） */
+        BANDWIDTH_JUMP,
     }
 
     private val table: Map<Cause, Notice> = mapOf(
@@ -124,6 +128,14 @@ object ErrorNotice {
         Cause.CODEC_FALLBACK to Notice(
             Category.CAPABILITY, "已切换到兼容编码", "这台设备解不动 H.265，改用 H.264 并降一档，画质可能下降。",
             listOf(Action.DOWNGRADE),
+        ),
+        Cause.TIER_UNSTABLE to Notice(
+            Category.SESSION, "当前画质放不稳", "你锁定了画质档位，系统不会自动降档；取消锁定就能自动降到能稳住的一档。",
+            listOf(Action.OPEN_SETTINGS, Action.AUTO_RECOVER),
+        ),
+        Cause.BANDWIDTH_JUMP to Notice(
+            Category.NETWORK, "带宽不够已直接降档", "这条链路撑不住当前码率，一步降到能维持的档位，不用重新投屏。",
+            listOf(Action.AUTO_RECOVER),
         ),
         Cause.CODE_EXPIRED to Notice(
             Category.PAIRING, "投屏码已过期", "投屏码每 60 秒换一次，请在大屏看新码后重新输入。",
@@ -223,4 +235,10 @@ object ErrorNotice {
 
     /** 界面用的一行文案：先说什么事，再说下一步 */
     fun textFor(cause: Cause): String = noticeFor(cause).let { "${it.headline}，${it.nextStep}" }
+
+    /**
+     * PRD FS-05「4K 播放卡顿」的原话，档位随实际那一档代入（4K 时与需求文档逐字一致）。
+     * 单独抽出来是因为它要说清「限制在哪一端、哪一档」，是 7.3 自解释口径的要求。
+     */
+    fun tierUnstable(tierLabel: String): String = "当前网络或设备不足以稳定播放 $tierLabel"
 }

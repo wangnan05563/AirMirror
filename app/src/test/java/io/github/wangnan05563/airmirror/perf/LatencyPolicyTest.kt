@@ -43,6 +43,18 @@ class LatencyLadderTest {
         assertEquals(ladder.step(0), ladder.step(-5))
         assertEquals(ladder.steps.last(), ladder.step(99))
     }
+
+    @Test
+    fun `the bandwidth jump lands on the first rung at or below the sustained tier`() {
+        val ladder = LatencyLadder(QualityTier.FHD60)
+        // 阶梯是 1080p60/60 → 1080p60/30 → 1080p60/15 → 720p30/15 → 480p/15
+        assertEquals(3, ladder.indexOfTierAtOrBelow(QualityTier.HD30))
+        assertEquals(4, ladder.indexOfTierAtOrBelow(QualityTier.SD480))
+        assertEquals(0, ladder.indexOfTierAtOrBelow(QualityTier.FHD60))
+        // 基线本身就已经不比目标档好：落在第 0 档，调用方按「不必跳」处理
+        assertEquals(0, ladder.indexOfTierAtOrBelow(QualityTier.QHD))
+        assertEquals(-1, ladder.indexOfTierAtOrBelow(QualityTier.OFF))
+    }
 }
 
 class LatencyPolicyTest {
@@ -54,6 +66,12 @@ class LatencyPolicyTest {
 
     /** 策略每次判定都要拿到阶梯长度，测试统一按完整阶梯喂 */
     private fun LatencyPolicy.feed(window: LatencyWindow, ladder: LatencyLadder = fullLadder) = onWindow(window, ladder.steps.size)
+
+    /** 降档要连两窗超标才表态，锁定的「只提示」同样要两窗，按一次超标周期喂 */
+    private fun LatencyPolicy.badCycle(): LatencyDecision {
+        feed(window(400))
+        return feed(window(400))
+    }
 
     @Test
     fun `one bad window is not enough to touch the picture`() {
@@ -186,5 +204,57 @@ class LatencyPolicyTest {
         assertEquals(LatencyMove.KEEP, policy.feed(window(150)).move)
         assertEquals(LatencyMove.KEEP, policy.feed(window(151)).move)
         assertEquals(LatencyMove.DEGRADE, policy.feed(window(151)).move)
+    }
+
+    @Test
+    fun `a locked tier warns instead of moving the picture`() {
+        val policy = LatencyPolicy()
+        policy.locked = true
+        assertEquals(LatencyMove.KEEP, policy.feed(window(400)).move)
+        val decision = policy.feed(window(400))
+        assertEquals(LatencyMove.NOTIFY, decision.move)
+        assertEquals("锁定后画质一格都不能动", 0, policy.stepIndex)
+        assertEquals(0, decision.stepIndex)
+        assertTrue(decision.reason, decision.reason.contains("锁定"))
+    }
+
+    @Test
+    fun `the lock warning goes quiet so the overlay is not retriggered every window`() {
+        val policy = LatencyPolicy()
+        policy.locked = true
+        assertEquals(LatencyMove.NOTIFY, policy.badCycle().move)
+        repeat(LatencyPolicy.NOTIFY_QUIET_WINDOWS) {
+            assertEquals("静默期内只保持，不再提示", LatencyMove.KEEP, policy.badCycle().move)
+        }
+        assertEquals(LatencyMove.NOTIFY, policy.badCycle().move)
+        assertEquals("锁定期间画质一格都没动", 0, policy.stepIndex)
+    }
+
+    @Test
+    fun `a locked tier never climbs back on its own`() {
+        val policy = LatencyPolicy()
+        repeat(2) { policy.feed(window(400)) }
+        assertEquals(1, policy.stepIndex)
+        policy.locked = true
+        repeat(4) { policy.feed(window(80)) }
+        repeat(20) { assertEquals(LatencyMove.KEEP, policy.feed(window(80)).move) }
+        assertEquals(1, policy.stepIndex)
+        // 取消锁定后同一批达标窗口就该回升：锁的是动作，不是观察
+        policy.locked = false
+        repeat(2) { policy.feed(window(80)) }
+        assertEquals(0, policy.stepIndex)
+    }
+
+    @Test
+    fun `reaching the picture again clears the notify quiet`() {
+        val policy = LatencyPolicy()
+        policy.locked = true
+        assertEquals(LatencyMove.NOTIFY, policy.badCycle().move)
+        repeat(2) { policy.feed(window(80)) }
+        // 达标一窗就拆掉静默：画面好转后再次卡住要立刻说，不能让用户等满静默期
+        assertEquals(LatencyMove.NOTIFY, policy.badCycle().move)
+        // 重新锚定（换档/带宽直跳之后）同样拆掉静默
+        policy.anchorAt(0)
+        assertEquals(LatencyMove.NOTIFY, policy.badCycle().move)
     }
 }

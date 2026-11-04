@@ -84,4 +84,25 @@ class ErrorNoticeTest {
         assertTrue(text.contains(notice.headline))
         assertTrue(text.contains(notice.nextStep))
     }
+
+    @Test
+    fun `a locked tier that cannot hold says how to get it back`() {
+        val notice = ErrorNotice.noticeFor(ErrorNotice.Cause.TIER_UNSTABLE)
+        // 锁是用户自己上的，提示只能教他取消，不能擅自动画质（PRD FS-05「锁定后不再自动升降，仅在严重卡顿时提示」）
+        assertTrue(notice.nextStep, notice.actions.contains(ErrorNotice.Action.OPEN_SETTINGS))
+        assertTrue(notice.nextStep, notice.actions.contains(ErrorNotice.Action.AUTO_RECOVER))
+        assertFalse(notice.nextStep, notice.actions.contains(ErrorNotice.Action.DOWNGRADE))
+    }
+
+    @Test
+    fun `a bandwidth jump tells the user nothing has to be redone`() {
+        val notice = ErrorNotice.noticeFor(ErrorNotice.Cause.BANDWIDTH_JUMP)
+        assertEquals(ErrorNotice.Category.NETWORK, notice.category)
+        assertTrue(notice.nextStep, notice.actions.contains(ErrorNotice.Action.AUTO_RECOVER))
+    }
+
+    @Test
+    fun `the 4K unstable wording matches the PRD exception table`() {
+        assertEquals("当前网络或设备不足以稳定播放 4K", ErrorNotice.tierUnstable("4K"))
+    }
 }

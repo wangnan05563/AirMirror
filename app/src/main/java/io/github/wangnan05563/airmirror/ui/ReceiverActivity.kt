@@ -21,6 +21,10 @@ import io.github.wangnan05563.airmirror.device.DisplayFit
 import io.github.wangnan05563.airmirror.device.DisplayMode
 import io.github.wangnan05563.airmirror.dlna.localIpv4
 import io.github.wangnan05563.airmirror.device.DeviceProbe
+import io.github.wangnan05563.airmirror.device.FourGates
+import io.github.wangnan05563.airmirror.device.GateReport
+import io.github.wangnan05563.airmirror.device.QualityTier
+import io.github.wangnan05563.airmirror.device.QualityTiers
 import io.github.wangnan05563.airmirror.pairing.CastCode
 import io.github.wangnan05563.airmirror.pairing.DeviceStore
 import io.github.wangnan05563.airmirror.pairing.Pairing
@@ -55,6 +59,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     private lateinit var recoveryBar: TextView
     private lateinit var cornerHint: TextView
     private lateinit var settingsPanel: LinearLayout
+    private lateinit var settingsScroller: ScrollView
     private lateinit var settingsEntry: TextView
     /** 投屏中盖在画面上接长按：ScrollView 会吃掉落在画面上的触摸，根布局收不到长按。 */
     private lateinit var longPressCatcher: View
@@ -66,6 +71,17 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     private lateinit var rotationRow: TextView
     private lateinit var labelRow: TextView
     private lateinit var autoStartRow: TextView
+    /** 画质角标：默认不显示，用户在设置页打开后常驻右下角（PRD FS-05「画面标识」） */
+    private lateinit var qualityBadge: TextView
+    /** 设置页里「自动 + 各可达档位」的行；null 键 = 自动。不可达的档位连行都不生成。 */
+    private val qualityRows = LinkedHashMap<QualityTier?, TextView>()
+    private lateinit var qualityContainer: LinearLayout
+    private lateinit var gateLine: TextView
+    private lateinit var badgeRow: TextView
+    /** 本机上限（分级 ∩ 硬解 ∩ 四道门）与门判定结果，后台探测完回填；未探到为 null */
+    private var localCeiling: QualityTier? = null
+    private var gateReport: GateReport? = null
+    private var qualityLock: QualityTier? = null
 
     private var displayMode = DisplayMode.FIT
     private var followRotation = true
@@ -100,6 +116,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         displayMode = store.displayMode()
         followRotation = store.followRotation()
         portraitLabel = store.portraitLabel()
+        qualityLock = store.qualityLock()
         root = FrameLayout(this).apply { setBackgroundColor(Theme.BACKGROUND) }
 
         surfaceView = SurfaceView(this)
@@ -148,6 +165,15 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             rightMargin = Theme.dp(this@ReceiverActivity, 24)
             bottomMargin = Theme.dp(this@ReceiverActivity, 32)
         })
+        // 画质角标固定左下角：右下角留给竖屏/模式提示，两处同时出现会互相盖住
+        root.addView(buildQualityBadge(), FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            Gravity.BOTTOM or Gravity.START,
+        ).apply {
+            leftMargin = Theme.dp(this@ReceiverActivity, 24)
+            bottomMargin = Theme.dp(this@ReceiverActivity, 32)
+        })
         root.addView(buildSettingsEntry(), FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
             FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -166,7 +192,8 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             FrameLayout.LayoutParams.WRAP_CONTENT,
             Gravity.BOTTOM,
         ))
-        root.addView(buildSettingsPanel(), FrameLayout.LayoutParams(
+        // 画质档位行加上来后面板比屏幕高，套一层滚动容器：角标开关和「完成」不能永远够不着
+        root.addView(buildSettingsScroller(), FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.WRAP_CONTENT,
             Gravity.CENTER,
@@ -251,7 +278,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         }
         waiting.addView(countdownText, matchWidth())
 
-        // FS-12：本机等级与最高画质如实告知，用户据此判断该投哪一档；探测有开销，后台算完再回填
+        // FS-12 本机等级 + FS-05 四道门结论：探测要遍历解码器和显示模式表，放后台算完再回填
         gradeText = TextView(this).apply {
             textSize = Theme.BODY_SP
             setTextColor(Theme.TEXT_SECONDARY)
@@ -259,10 +286,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             setPadding(0, Theme.dp(this@ReceiverActivity, 12), 0, 0)
         }
         waiting.addView(gradeText, matchWidth())
-        Thread {
-            val summary = DeviceProbe.summary(DeviceProbe.policy(this))
-            runOnUiThread { gradeText.text = summary }
-        }.start()
+        Thread { probeLocalQuality() }.start()
 
         statusText = TextView(this).apply {
             textSize = Theme.BODY_SP
@@ -287,6 +311,22 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             setPadding(0, Theme.dp(this@ReceiverActivity, 6), 0, 0)
         }, matchWidth())
         return waiting
+    }
+
+    /**
+     * 本机画质上限（分级 ∩ 硬解 ∩ 四道门）。设置页与接收端上报必须用同一个数，
+     * 所以两边都从 [DeviceProbe.localCeiling] 取；不可达的档位在这里之后就再也拿不到。
+     */
+    private fun probeLocalQuality() {
+        val report = FourGates.evaluate(DeviceProbe.gates(this))
+        val ceiling = DeviceProbe.localCeiling(this)
+        val summary = DeviceProbe.summary(DeviceProbe.policy(this))
+        runOnUiThread {
+            gateReport = report
+            localCeiling = ceiling
+            gradeText.text = "$summary\n${FourGates.headline(ceiling, report)}"
+            populateQualityRows()
+        }
     }
 
     private fun buildNameOverlay(): TextView {
@@ -367,6 +407,39 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
 
     private val hideCornerHint = Runnable { cornerHint.visibility = View.GONE }
 
+    /** 画面标识（PRD FS-05）：默认不显示画质信息，用户在设置页开启后才常驻当前画幅与码率。 */
+    private fun buildQualityBadge(): TextView {
+        qualityBadge = TextView(this).apply {
+            textSize = Theme.BODY_SP
+            setTextColor(Theme.TEXT_SECONDARY)
+            setPadding(
+                Theme.dp(this@ReceiverActivity, 16), Theme.dp(this@ReceiverActivity, 8),
+                Theme.dp(this@ReceiverActivity, 16), Theme.dp(this@ReceiverActivity, 8),
+            )
+            visibility = View.GONE
+        }
+        return qualityBadge
+    }
+
+    /** 读数只反映「此刻真的在放画面」：没在投屏时角标留着会把最后一帧的码率当成现状。 */
+    private fun refreshQualityBadge() {
+        val width = host.qualityWidth
+        if (!store.qualityBadgeEnabled() || !isCasting || width <= 0) {
+            qualityBadge.visibility = View.GONE
+            return
+        }
+        qualityBadge.text = "${width}x${host.qualityHeight} · ${bitRateText(host.qualityKbps)}"
+        qualityBadge.visibility = View.VISIBLE
+    }
+
+    /**
+     * 角标上的码率写法：够 1 Mbps 才写成 Mbps（带一位小数），否则直接写 kbps。
+     * 镜像一屏静止内容约 50kbps，取整成 Mbps 就会写成「0 Mbps」，
+     * 用户读到的是「没在传」，实际是「画面没变化」——这两件事必须能分清。
+     */
+    private fun bitRateText(kbps: Int): String =
+        if (kbps < 1_000) "$kbps kbps" else "${kbps / 1000}.${kbps % 1000 / 100} Mbps"
+
     /** 待连接页右上角的显示设置入口；投屏中收起，长按画面仍可唤出。 */
     private fun buildSettingsEntry(): TextView {
         settingsEntry = TextView(this).apply {
@@ -421,12 +494,21 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         surfaceView.layoutParams = params
     }
 
+    private fun buildSettingsScroller(): ScrollView {
+        val panel = buildSettingsPanel()
+        settingsScroller = ScrollView(this).apply {
+            isFillViewport = true
+            addView(panel, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            visibility = View.GONE
+        }
+        return settingsScroller
+    }
+
     private fun buildSettingsPanel(): LinearLayout {
         settingsPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(0xFF0B1F3A.toInt())
             setPadding(Theme.dp(this@ReceiverActivity, 24), Theme.dp(this@ReceiverActivity, 20), Theme.dp(this@ReceiverActivity, 24), Theme.dp(this@ReceiverActivity, 16))
-            visibility = View.GONE
         }
         settingsPanel.addView(TextView(this).apply {
             text = "显示设置"
@@ -484,6 +566,31 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             }
         }
         settingsPanel.addView(autoStartRow, matchWidth())
+        settingsPanel.addView(divider(), LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            Theme.dp(this@ReceiverActivity, 1),
+        ))
+        // FS-05：先把「本机最高支持哪一档、为什么没有 4K」写在档位列表上方，
+        // 再列出可选档位——不可达的档位由 populateQualityRows 决定连行都不生成
+        gateLine = TextView(this).apply {
+            textSize = Theme.BODY_SP
+            setTextColor(Theme.TEXT_SECONDARY)
+            setPadding(0, 0, 0, Theme.dp(this@ReceiverActivity, 8))
+        }
+        settingsPanel.addView(gateLine, matchWidth())
+        qualityContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        settingsPanel.addView(qualityContainer, matchWidth())
+        badgeRow = TextView(this).apply {
+            textSize = Theme.BODY_SP
+            setTextColor(Theme.TEXT_PRIMARY)
+            setPadding(0, Theme.dp(this@ReceiverActivity, 10), 0, Theme.dp(this@ReceiverActivity, 12))
+            setOnClickListener {
+                store.saveQualityBadgeEnabled(!store.qualityBadgeEnabled())
+                refreshSettings()
+                refreshQualityBadge()
+            }
+        }
+        settingsPanel.addView(badgeRow, matchWidth())
         settingsPanel.addView(Button(this).apply {
             text = "完成"
             setTextColor(Theme.ACCENT)
@@ -491,6 +598,41 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         }, matchWidth())
         refreshSettings()
         return settingsPanel
+    }
+
+    private fun divider() = View(this).apply { setBackgroundColor(0x3312314F.toInt()) }
+
+    /** 探测结果到位后才建档位行：列表内容取决于本机上限，早建会把 4K 行留在页面上。 */
+    private fun populateQualityRows() {
+        val ceiling = localCeiling ?: return
+        if (qualityRows.isNotEmpty()) return
+        gateLine.text = gateReport?.let { FourGates.headline(ceiling, it) } ?: "本机最高支持 ${ceiling.label}"
+        val options = ArrayList<QualityTier?>()
+        options += null
+        options += QualityTiers.reachable(ceiling)
+        for (tier in options) {
+            val row = TextView(this).apply {
+                textSize = Theme.BODY_SP
+                setPadding(0, Theme.dp(this@ReceiverActivity, 10), 0, Theme.dp(this@ReceiverActivity, 10))
+                setOnClickListener { chooseQuality(tier) }
+            }
+            qualityRows[tier] = row
+            qualityContainer.addView(row, matchWidth())
+        }
+        refreshSettings()
+    }
+
+    private fun chooseQuality(tier: QualityTier?) {
+        if (tier == qualityLock) {
+            hideSettings()
+            return
+        }
+        qualityLock = tier
+        store.saveQualityLock(tier)
+        // 投屏中改锁定要立刻重谈上限，否则这一档要到下次投屏才生效
+        host.applyQualityLock()
+        Log.i(TAG, "quality lock -> ${tier?.name ?: "auto"}")
+        refreshSettings()
     }
 
     private fun refreshSettings() {
@@ -501,15 +643,25 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         rotationRow.text = "旋转跟随：${if (followRotation) "开" else "关"}"
         labelRow.text = "竖屏标签：${if (portraitLabel) "开" else "关"}"
         autoStartRow.text = "开机自启：${if (store.autoStartEnabled()) "开" else "关"}"
+        for ((tier, row) in qualityRows) {
+            row.text = if (tier == null) {
+                "${if (qualityLock == null) "●" else "○"} 自动（推荐）"
+            } else {
+                "${if (qualityLock == tier) "●" else "○"} ${tier.label} · ${tier.width}x${tier.height} ${tier.fps}帧"
+            }
+            row.setTextColor(if (tier == qualityLock) Theme.ACCENT else Theme.TEXT_SECONDARY)
+        }
+        badgeRow.visibility = if (qualityRows.isEmpty()) View.GONE else View.VISIBLE
+        badgeRow.text = "画质角标：${if (store.qualityBadgeEnabled()) "开" else "关"}"
     }
 
     private fun showSettings() {
         refreshSettings()
-        settingsPanel.visibility = View.VISIBLE
+        settingsScroller.visibility = View.VISIBLE
     }
 
     private fun hideSettings() {
-        settingsPanel.visibility = View.GONE
+        settingsScroller.visibility = View.GONE
     }
 
     private fun chooseMode(mode: DisplayMode) {
@@ -656,6 +808,8 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         override fun onRecovery(active: Boolean) = runOnUiThread { showRecovery(active) }
         override fun onVideoSize(width: Int, height: Int) =
             runOnUiThread { this@ReceiverActivity.onVideoSize(width, height) }
+        override fun onQualityReadout(width: Int, height: Int, kiloBits: Int) =
+            runOnUiThread { refreshQualityBadge() }
         override fun onDlnaStatus(text: String) = runOnUiThread { statusText.text = text }
         override fun onDlnaPlaying(playing: Boolean) = runOnUiThread {
             if (playing) {
@@ -699,6 +853,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         isCasting = casting
         settingsEntry.visibility = if (casting) View.GONE else View.VISIBLE
         longPressCatcher.visibility = if (casting) View.VISIBLE else View.GONE
+        refreshQualityBadge()
         if (casting) {
             // CONFIG 每次换方向都会再报一次投屏中，设备名只在真正开始投屏时叠一次
             if (!wasCasting) showCasting(senderName)
@@ -712,7 +867,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         } else {
             waiting.visibility = View.VISIBLE
             promptBar.visibility = View.GONE
-            settingsPanel.visibility = View.GONE
+            settingsScroller.visibility = View.GONE
             main.removeCallbacks(hideNotice)
             main.removeCallbacks(hideCornerHint)
             noticeOverlay.visibility = View.GONE

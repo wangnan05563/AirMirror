@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.StatFs
 import android.util.Log
 import android.view.Display
+import io.github.wangnan05563.airmirror.media.VideoCodec
 
 /**
  * 采集 [DeviceFacts]：系统版本、内存、H.264 硬解能力、输出分辨率、可用存储与网络。
@@ -17,6 +18,8 @@ import android.view.Display
  */
 object DeviceProbe {
     private const val TAG = "AirMirrorProbe"
+    private const val UHD_WIDTH = 3840
+    private const val UHD_HEIGHT = 2160
 
     fun facts(context: Context): DeviceFacts {
         val decode = decoderCoverage()
@@ -44,6 +47,53 @@ object DeviceProbe {
 
     /** 设置页/待连接页用一句话如实告知本机等级与最高画质（PRD FS-12 步骤 1、2） */
     fun summary(policy: GradePolicy): String = DeviceGrading.summary(policy)
+
+    /**
+     * 采集 4K 四道门的输入（PRD FS-05）。建连协商时尚无实测带宽，[GateInputs.sustainedKbps] 留 0，
+     * 会话中由 BandwidthGauge 的量接管（那时判的是「带宽骤降」，见 ReceiverSession）。
+     */
+    fun gates(context: Context): GateInputs = GateInputs(
+        screenReaches4K = outputSupports4K(context),
+        hevc4KHardDecode = CodecProbe.hardwareDecoder(VideoCodec.HEVC, UHD_WIDTH, UHD_HEIGHT),
+        interfaceReaches4K = interfaceReaches4K(context),
+        band = band(context),
+    )
+
+    /**
+     * 本机实际可达的最高档 = 分级 ∩ 硬解 ∩ 四道门。设置页拿它决定列哪几档，
+     * 接收端拿它上报上限，两边必须是同一个数，否则会出现「页面上写着 4K、对面收到 1080p」。
+     */
+    fun localCeiling(context: Context): QualityTier {
+        val policy = policy(context)
+        val capability = QualityTiers.receiverCeiling(policy, facts(context))
+        return QualityTiers.lower(capability, FourGates.evaluate(gates(context)).maxTier)
+    }
+
+    /**
+     * 输出接口能否承载 4K。Android 不暴露 HDMI 版本与 TMDS 速率，能拿到的最硬证据是
+     * 显示子系统按 EDID 给出的模式表：表里有 4K@≥30 的模式，说明这条输出真的扫描得出 4K。
+     * 内置屏同样按模式表判。API 23 以前没有模式表，退回按当前输出像素判。
+     */
+    private fun interfaceReaches4K(context: Context): Boolean = try {
+        if (Build.VERSION.SDK_INT < 17) {
+            false
+        } else {
+            val manager = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+            manager.displays.any { it.modes4K() }
+        }
+    } catch (e: Exception) {
+        Log.w(TAG, "interface probe failed: ${e.message}")
+        false
+    }
+
+    private fun Display.modes4K(): Boolean {
+        if (Build.VERSION.SDK_INT < 23) return reaches(UHD_WIDTH, UHD_HEIGHT)
+        return runCatching {
+            supportedModes.any {
+                it.physicalWidth >= UHD_WIDTH && it.physicalHeight >= UHD_HEIGHT && it.refreshRate >= 30.0
+            }
+        }.getOrElse { reaches(UHD_WIDTH, UHD_HEIGHT) }
+    }
 
     /**
      * H.264 硬解能到哪个档位：直接问解码器「这个尺寸支持吗」，比读能力区间表更准，

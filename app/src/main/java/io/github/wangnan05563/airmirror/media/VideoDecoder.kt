@@ -14,6 +14,10 @@ class VideoDecoder(private val surface: Surface) {
     private var width = 0
     private var height = 0
 
+    /** 当前流水线在解的画幅（收到编码配置后才有值，未出画为 0）：画面角标按它显示分辨率。 */
+    val codedWidth: Int get() = width
+    val codedHeight: Int get() = height
+
     /** 摘 Surface 与收流线程并发：界面已销毁后仍可能拿到旧引用，此时喂帧要静默跳过而不是抛「codec is released」。 */
     @Volatile
     private var released = false
