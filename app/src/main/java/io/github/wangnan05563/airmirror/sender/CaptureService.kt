@@ -16,6 +16,7 @@ import android.os.IBinder
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.WindowManager
+import io.github.wangnan05563.airmirror.device.CodecProbe
 import io.github.wangnan05563.airmirror.device.DeviceProbe
 import io.github.wangnan05563.airmirror.device.EncodeProfile
 import io.github.wangnan05563.airmirror.device.NetworkBand
@@ -26,6 +27,8 @@ import io.github.wangnan05563.airmirror.dlna.localIpv4
 import io.github.wangnan05563.airmirror.error.ErrorNotice
 import io.github.wangnan05563.airmirror.media.AudioEncoder
 import io.github.wangnan05563.airmirror.media.AudioFormat
+import io.github.wangnan05563.airmirror.media.CodecChoice
+import io.github.wangnan05563.airmirror.media.VideoCodec
 import io.github.wangnan05563.airmirror.media.VideoEncoder
 import io.github.wangnan05563.airmirror.net.ServiceLocator
 import io.github.wangnan05563.airmirror.net.StreamConnection
@@ -133,6 +136,13 @@ class CaptureService : Service() {
 
     @Volatile
     private var peerCeiling: Limit.Ceiling = Limit.empty()
+
+    /**
+     * 本次会话实际在用的编码（PRD 8.7）。默认 H.264：对端没上报过硬解能力时，
+     * 任何一帧都不该用 H.265 发出去，否则老接收端只会收到一条解不出来的码流。
+     */
+    @Volatile
+    private var videoCodec: VideoCodec = VideoCodec.AVC
 
     @Volatile
     private var yielded = false
@@ -279,6 +289,7 @@ class CaptureService : Service() {
             ownCeiling = DeviceProbe.policy(this).maxTier
             band = DeviceProbe.band(this)
             peerCeiling = awaitCeiling(conn)
+            chooseCodec()
             if (!negotiatedTier().isUsable) {
                 SenderReport.last = ErrorNotice.textFor(ErrorNotice.Cause.DECODE_UNSUPPORTED)
                 return
@@ -384,7 +395,7 @@ class CaptureService : Service() {
                 var delivered = true
                 for (frame in frames) {
                     val flags = when {
-                        frame.config -> Protocol.Flags.CONFIG
+                        frame.config -> Protocol.Flags.CONFIG or hevcFlag(videoEncoder.codec)
                         frame.keyFrame -> Protocol.Flags.KEY_FRAME
                         else -> 0
                     }
@@ -695,6 +706,7 @@ class CaptureService : Service() {
                 return if (result.reason == Resume.REASON_LOST) ResumeAttempt.Restarted else ResumeAttempt.Failed
             }
             peerCeiling = awaitCeiling(conn)
+            chooseCodec()
             ResumeAttempt.Ok(conn)
         } catch (e: Exception) {
             Log.w(TAG, "resume to $host:$port failed: ${e.message}")
@@ -809,15 +821,40 @@ class CaptureService : Service() {
         if (newCeiling.isEmpty) return
         val before = negotiatedPlan()
         peerCeiling = newCeiling
+        chooseCodec()
         val after = negotiatedPlan()
         if (after != before) {
-            Log.i(TAG, "tier ${before.first.label}@${before.second} -> ${after.first.label}@${after.second}")
+            Log.i(TAG, "plan ${before.first.label}@${before.second}/${before.third.display} -> " +
+                "${after.first.label}@${after.second}/${after.third.display}")
             SenderReport.quality = qualityText()
             // 恢复期收到新上限，回档目标也跟着改，但计时从头算，仍然是「先低一档」
             if (recoveryQuality.active) recoveryQuality.start(after.first)
             reconfigure.set(true)
         }
     }
+
+    /**
+     * 按对端声明的硬解能力重选编码（PRD 8.7 编码选择顺序）。
+     *
+     * 每次收到上限都要重算，而不是只在连上时算一次：接收端「解不动 H.265」的回复
+     * 就是把 H.265 从声明里去掉的下一条上限，本机要立刻换回 H.264 重开编码器。
+     */
+    private fun chooseCodec(): VideoCodec {
+        val local = CodecProbe.hardwareEncoders()
+        val chosen = CodecChoice.select(peerCeiling.codecs, local, band)
+        if (chosen != videoCodec) {
+            Log.i(TAG, "codec ${videoCodec.display} -> ${chosen.display} · ${CodecChoice.reason(chosen, peerCeiling.codecs, local, band)}")
+            videoCodec = chosen
+        } else {
+            // 首次选定（默认值就是 H.264）也要留一句成因，否则「为什么没用 H.265」只能靠猜
+            Log.i(TAG, "codec ${chosen.display} · ${CodecChoice.reason(chosen, peerCeiling.codecs, local, band)}")
+        }
+        return chosen
+    }
+
+    /** 只有 H.265 需要额外标记位；H.264 保持老接收端的默认解读路径。 */
+    private fun hevcFlag(codec: VideoCodec): Int =
+        if (codec == VideoCodec.HEVC) Protocol.Flags.CODEC_HEVC else 0
 
     /** 协商档位 = 本机分级上限 ∩ 对端上限 ∩ 网络频段（PRD 8.7 三档适用条件） */
     private fun negotiatedTier(): QualityTier {
@@ -827,11 +864,12 @@ class CaptureService : Service() {
     }
 
     /**
-     * 协商到的「档位 + 帧率」组合：接收端按延迟降级时只改帧率、档位标签不变（PRD REQ-077），
-     * 只看档位会漏掉这次变更，编码器就永远停在原帧率上。
+     * 协商到的「档位 + 帧率 + 编码」组合：接收端按延迟降级时只改帧率、档位标签不变（PRD REQ-077），
+     * 只看档位会漏掉这次变更，编码器就永远停在原帧率上。编码也在比较里——
+     * 接收端解不动 H.265 后去掉声明，画面尺寸可能一档没变，但流水线必须换。
      */
-    private fun negotiatedPlan(): Pair<QualityTier, Int> =
-        negotiatedTier() to QualityTiers.effectiveFps(negotiatedTier(), peerCeiling.fps)
+    private fun negotiatedPlan(): Triple<QualityTier, Int, VideoCodec> =
+        Triple(negotiatedTier(), QualityTiers.effectiveFps(negotiatedTier(), peerCeiling.fps), videoCodec)
 
     /** 界面只展示真正可达的档位，并说明被谁压下来（PRD 13.1、T03939 4K 协商） */
     private fun qualityNote(): QualityNote {
@@ -845,8 +883,10 @@ class CaptureService : Service() {
         val tier = currentTier()
         val fps = QualityTiers.effectiveFps(tier, peerCeiling.fps)
         val withFps = if (fps in 1 until tier.fps) "$base · ${fps}fps" else base
+        // 编码写在档位后面（PRD 13.1「说清用的什么编码」）：省带宽换成 H.265 时用户要能看出来
+        val withCodec = "$withFps · ${videoCodec.display}"
         // 声音的结论跟在画质后面同一条展示：投屏中界面不额外弹窗，但「现在有没有声音」必须看得见
-        return if (audioNote.isEmpty()) withFps else "$withFps · $audioNote"
+        return if (audioNote.isEmpty()) withCodec else "$withCodec · $audioNote"
     }
 
     /**
@@ -860,12 +900,12 @@ class CaptureService : Service() {
         val profile = QualityTiers.profile(tier, sourceWidth, sourceHeight)
         val fps = QualityTiers.effectiveFps(tier, peerCeiling.fps)
         val capped = if (fps == profile.fps) profile else profile.copy(fps = fps)
-        Log.i(TAG, "encode ${capped.width}x${capped.height}@${capped.fps} tier=${capped.tier.label} br=${capped.bitRateKbps}kbps")
+        Log.i(TAG, "encode ${capped.width}x${capped.height}@${capped.fps} tier=${capped.tier.label} br=${capped.bitRateKbps}kbps codec=${videoCodec.wire}")
         return capped
     }
 
     private fun openEncoder(mediaProjection: MediaProjection, profile: EncodeProfile): VideoEncoder {
-        val videoEncoder = VideoEncoder(profile.width, profile.height, profile.fps, profile.bitRate)
+        val videoEncoder = newEncoder(profile)
         encoder = videoEncoder
         virtualDisplay = mediaProjection.createVirtualDisplay(
             "AirMirror",
@@ -909,7 +949,7 @@ class CaptureService : Service() {
         }
         runCatching {
             val previous = encoder
-            val videoEncoder = VideoEncoder(profile.width, profile.height, profile.fps, profile.bitRate)
+            val videoEncoder = newEncoder(profile)
             encoder = videoEncoder
             display.setSurface(videoEncoder.inputSurface)
             display.resize(profile.width, profile.height, densityDpi)
@@ -917,6 +957,29 @@ class CaptureService : Service() {
             videoEncoder.requestKeyFrame()
             runCatching { previous?.release() }
         }.onFailure { failReconfigure(it) }
+    }
+
+    /**
+     * 按当前协商编码建编码器。
+     *
+     * H.265 建不起来时换回 H.264 重试，而不是直接判死整场投屏：能力表在某些机型上会把
+     * 「有 HEVC 编码器实例」写成「能配这个尺寸」，尤其分辨率换档时更容易踩到。
+     * 编码是可选优化，档位是底线——宁可多耗带宽，也不能让画面断掉（PRD 8.7「否则使用 H.264」）。
+     */
+    private fun newEncoder(profile: EncodeProfile): VideoEncoder {
+        val codec = videoCodec
+        if (codec == VideoCodec.AVC) {
+            return VideoEncoder(profile.width, profile.height, profile.fps, profile.bitRate, codec)
+        }
+        return try {
+            VideoEncoder(profile.width, profile.height, profile.fps, profile.bitRate, codec)
+        } catch (e: Exception) {
+            Log.w(TAG, "no working ${codec.display} encoder at ${profile.width}x${profile.height}" +
+                "@${profile.fps}, fall back to ${VideoCodec.AVC.display}", e)
+            videoCodec = VideoCodec.AVC
+            SenderReport.quality = qualityText()
+            VideoEncoder(profile.width, profile.height, profile.fps, profile.bitRate, VideoCodec.AVC)
+        }
     }
 
     private fun failReconfigure(error: Throwable) {

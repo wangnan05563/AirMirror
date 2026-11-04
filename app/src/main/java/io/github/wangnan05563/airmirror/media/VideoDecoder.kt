@@ -8,7 +8,7 @@ import io.github.wangnan05563.airmirror.perf.FrameLatency
 import io.github.wangnan05563.airmirror.perf.LatencyWindow
 import java.nio.ByteBuffer
 
-/** 接收端 H.264 硬解码，输出到 [Surface]。 */
+/** 接收端 H.264/H.265 硬解码，输出到 [Surface]。编码由配置帧的标记位决定，见 [configure]。 */
 class VideoDecoder(private val surface: Surface) {
     private var codec: MediaCodec? = null
     private var width = 0
@@ -44,8 +44,12 @@ class VideoDecoder(private val surface: Surface) {
     var lastRenderedPtsUs = 0L
         private set
 
-    /** 用发送端的 SPS/PPS（内含宽高）配置解码器。 */
-    fun configure(configPayload: ByteArray) {
+    /**
+     * 用发送端的配置帧（内含宽高）建解码器。
+     * [videoCodec] 由调用方从 CONFIG 帧的标记位得出：标记位只在对端声明过对应硬解时才会出现，
+     * 所以这里不需要再判「能不能解」，只需按编码取 MIME 与配置块结构。
+     */
+    fun configure(configPayload: ByteArray, videoCodec: VideoCodec = VideoCodec.AVC) {
         if (released) return
         val config = H264.unpackConfig(configPayload)
         width = config.width
@@ -57,17 +61,47 @@ class VideoDecoder(private val surface: Surface) {
         pendingWindow.set(null)
         firstRenderAtNano = 0L
         lastRenderedPtsUs = 0L
-        val units = H264.splitAnnexB(H264.normalize(config.annexB))
-        require(units.isNotEmpty()) { "empty codec config" }
-        codec?.let { runCatching { it.stop() }; runCatching { it.release() } }
-        val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height).apply {
-            setByteBuffer("csd-0", ByteBuffer.wrap(units[0]))
-            if (units.size > 1) setByteBuffer("csd-1", ByteBuffer.wrap(units[1]))
+        val format = when (videoCodec) {
+            VideoCodec.AVC -> {
+                val units = H264.splitAnnexB(H264.normalize(config.annexB))
+                require(units.isNotEmpty()) { "empty codec config" }
+                MediaFormat.createVideoFormat(videoCodec.mimeType, width, height).apply {
+                    setByteBuffer("csd-0", ByteBuffer.wrap(units[0]))
+                    if (units.size > 1) setByteBuffer("csd-1", ByteBuffer.wrap(units[1]))
+                }
+            }
+
+            VideoCodec.HEVC -> {
+                // H.265 多一段 VPS。少任何一段都不建解码器：那样是「配成功、画面全黑」，
+                // 报错反而好查，交给调用方按 PRD 回退 H.264
+                val units = requireNotNull(H265.csdUnits(config.annexB)) { "incomplete hevc codec config" }
+                MediaFormat.createVideoFormat(videoCodec.mimeType, width, height).apply {
+                    units.forEachIndexed { index, unit -> setByteBuffer("csd-$index", ByteBuffer.wrap(unit)) }
+                }
+            }
         }
-        val decoder = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
-        decoder.configure(format, surface, null, 0)
-        decoder.start()
+        codec?.let { runCatching { it.stop() }; runCatching { it.release() } }
+        // 旧实例已经不在手上了，先把字段清空：建解码器失败时若还挂着它，
+        // 之后每一个视频帧都在已释放的实例上抛异常，画面再也回不来
+        codec = null
+        val decoder = MediaCodec.createDecoderByType(videoCodec.mimeType)
+        try {
+            decoder.configure(format, surface, null, 0)
+            decoder.start()
+        } catch (e: Exception) {
+            runCatching { decoder.release() }
+            throw e
+        }
         codec = decoder
+    }
+
+    /**
+     * 解码器跑着跑着报了致命错误（MediaCodec 出错后不再接受任何调用）：把这个实例丢掉，
+     * 但保留本对象，下一个 CONFIG 会重建流水线。留着死实例等于让后续每帧都撞异常。
+     */
+    fun discardUnusable() {
+        codec?.let { runCatching { it.stop() }; runCatching { it.release() } }
+        codec = null
     }
 
     /** 解码器只认宽高非零，配置前用占位值；真实尺寸由 SPS 决定。 */

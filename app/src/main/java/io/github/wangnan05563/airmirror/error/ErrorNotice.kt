@@ -84,6 +84,8 @@ object ErrorNotice {
         NO_SPEAKER,
         /** 音频轨被来电或其他应用占用超过 1 秒，画面不受影响 */
         AUDIO_INTERRUPTED,
+        /** 声明了解 H.265 硬解却建不起解码器（PRD 8.7 异常表「不支持 H.265 硬解」） */
+        CODEC_FALLBACK,
     }
 
     private val table: Map<Cause, Notice> = mapOf(
@@ -118,6 +120,10 @@ object ErrorNotice {
         Cause.AUDIO_INTERRUPTED to Notice(
             Category.SESSION, "声音被其他应用占用", "画面继续投，等声音空出来会自动接上，不用重新投屏。",
             listOf(Action.AUTO_RECOVER),
+        ),
+        Cause.CODEC_FALLBACK to Notice(
+            Category.CAPABILITY, "已切换到兼容编码", "这台设备解不动 H.265，改用 H.264 并降一档，画质可能下降。",
+            listOf(Action.DOWNGRADE),
         ),
         Cause.CODE_EXPIRED to Notice(
             Category.PAIRING, "投屏码已过期", "投屏码每 60 秒换一次，请在大屏看新码后重新输入。",

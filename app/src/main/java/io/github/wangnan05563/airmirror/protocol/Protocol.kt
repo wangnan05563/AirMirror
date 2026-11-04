@@ -40,6 +40,12 @@ object Protocol {
         const val KEY_FRAME = 0x01
         const val CONFIG = 0x02
         const val END_OF_STREAM = 0x04
+
+        /**
+         * 配置帧带这个位表示码流是 H.265。只有对端在画质上限里声明过 H.265 硬解
+         * 才可能看到这个位（PRD 8.7 协商），老接收端因此永远不会被喂进认不出的码流。
+         */
+        const val CODEC_HEVC = 0x08
     }
 
     class ProtocolException(message: String) : IOException(message)

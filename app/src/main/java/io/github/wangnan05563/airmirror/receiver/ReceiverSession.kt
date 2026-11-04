@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Build
 import android.util.Log
 import android.view.Surface
+import io.github.wangnan05563.airmirror.device.CodecProbe
 import io.github.wangnan05563.airmirror.device.DeviceFacts
 import io.github.wangnan05563.airmirror.device.DeviceGrading
 import io.github.wangnan05563.airmirror.device.DeviceProbe
@@ -15,6 +16,7 @@ import io.github.wangnan05563.airmirror.media.AudioDevices
 import io.github.wangnan05563.airmirror.media.AudioFormat
 import io.github.wangnan05563.airmirror.media.AudioOut
 import io.github.wangnan05563.airmirror.media.H264
+import io.github.wangnan05563.airmirror.media.VideoCodec
 import io.github.wangnan05563.airmirror.media.VideoDecoder
 import io.github.wangnan05563.airmirror.net.ServiceAdvertiser
 import io.github.wangnan05563.airmirror.net.StreamConnection
@@ -39,7 +41,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 /**
- * 接收端会话：固定端口 TCP 服务（占用则退回随机端口）+ NSD 广播 + 版本握手 + 授权门禁 + H.264 解码渲染。
+ * 接收端会话：固定端口 TCP 服务（占用则退回随机端口）+ NSD 广播 + 版本握手 + 授权门禁 + H.264/H.265 解码渲染。
  *
  * 会话生命周期与 Activity 的 Surface 解耦：界面切到后台时继续收流，
  * 有 Surface 才建解码器；回到前台重新挂 Surface 后用缓存的编码配置重建解码器。
@@ -86,6 +88,10 @@ class ReceiverSession(
     @Volatile
     private var pendingConfig: ByteArray? = null
 
+    /** 缓存的配置帧是不是 H.265：Surface 比配置后到时，重建解码器要用同一个编码 */
+    @Volatile
+    private var pendingHevc = false
+
     /**
      * 音频输出流水线（PRD FS-01「持续发送画面与音频」）。它就是音画同步的主时钟：
      * 画面按它给出的播放时刻对齐，而不是各放各的。
@@ -118,6 +124,14 @@ class ReceiverSession(
     /** 当前会话的画质上限：协商结果，解不动时逐档下调并回写对端 */
     @Volatile
     private var ceiling: QualityTier = QualityTier.FHD60
+
+    /** 发给对端的上限里有没有声明 H.265 硬解（PRD 8.7 编码选择只看硬解） */
+    @Volatile
+    private var hevcDeclared = false
+
+    /** 解码器为 H.265 建不起来过一次就不再声明：换个尺寸重新声明只会反复踩同一个坑 */
+    @Volatile
+    private var hevcBanned = false
 
     /**
      * 延迟降级用的档位序列与策略（PRD REQ-077「不达标时先降帧率再降分辨率，不出现黑屏」）。
@@ -241,7 +255,7 @@ class ReceiverSession(
         val holder = surface ?: return
         val codec = VideoDecoder(holder)
         if (config != null) {
-            runCatching { codec.configure(config) }
+            runCatching { codec.configure(config, if (pendingHevc) VideoCodec.HEVC else VideoCodec.AVC) }
                 .onFailure { fallBackToOneTierLower(it) }
         }
         decoder = codec
@@ -308,6 +322,7 @@ class ReceiverSession(
             endRequested = false
             var received = 0
             var decoded = 0
+            var decodeFailures = 0
             var droppedUntilKey = 0
             var byeReceived = false
             try {
@@ -322,7 +337,9 @@ class ReceiverSession(
                             if (frame.flags and Protocol.Flags.CONFIG != 0) {
                                 hasCast = true
                                 configAtNano = System.nanoTime()
+                                val hevc = frame.flags and Protocol.Flags.CODEC_HEVC != 0
                                 pendingConfig = frame.payload
+                                pendingHevc = hevc
                                 runCatching { H264.unpackConfig(frame.payload) }
                                     .onSuccess {
                                         onVideoSize(it.width, it.height)
@@ -333,12 +350,13 @@ class ReceiverSession(
                                     // Surface 可能早就在前台等着了，配置到了才建流水线
                                     startPipeline(frame.payload)
                                 } else {
-                                    runCatching { existing.configure(frame.payload) }
+                                    val videoCodec = if (hevc) VideoCodec.HEVC else VideoCodec.AVC
+                                    runCatching { existing.configure(frame.payload, videoCodec) }
                                         .onFailure { error -> fallBackToOneTierLower(error) }
                                     // 配置后面紧跟着的就是 IDR，从 IDR 起才算新流水线的第一帧
                                     awaitKeyFrame = true
                                 }
-                                Log.i(TAG, "config received: ${frame.payload.size}B, decoder=${decoder != null}")
+                                Log.i(TAG, "config received: ${frame.payload.size}B codec=${if (hevc) VideoCodec.HEVC.display else VideoCodec.AVC.display} decoder=${decoder != null}")
                                 onStatus("${hello.deviceName} 推流中")
                                 onCasting(true, hello.deviceName)
                             } else {
@@ -364,8 +382,24 @@ class ReceiverSession(
                                             Log.i(TAG, "video late beyond tolerance, dropping until key frame")
                                         } else {
                                             runCatching { codec.decode(frame.payload, frame.ptsUs) }
-                                                .onSuccess { decoded++ }
-                                                .onFailure { Log.w(TAG, "decode failed", it) }
+                                                .onSuccess { decoded++; decodeFailures = 0 }
+                                                .onFailure { error ->
+                                                    // IllegalStateException 表示这个实例已不在执行态：MediaCodec 报致命错误后
+                                                    // 不再接受任何调用，再喂下一帧只是刷异常。等计数器走完要拖到几十个
+                                                    // 「丢到关键帧」的周期，画面回不来得太久，所以这种当场判死。
+                                                    // 其余异常（单帧码流问题）仍然连着几次才算解不动，避免瞬时抖动触发重谈。
+                                                    decodeFailures =
+                                                        if (error is IllegalStateException) DECODE_FAILURE_LIMIT else decodeFailures + 1
+                                                    Log.w(TAG, "decode failed ($decodeFailures/$DECODE_FAILURE_LIMIT)", error)
+                                                    if (decodeFailures >= DECODE_FAILURE_LIMIT) {
+                                                        decodeFailures = 0
+                                                        // 先摘掉 H.265 声明（PRD 8.7 异常表「改用 H.264 并降档」）：
+                                                        // 只要还在声明，发端就一直按 H.265 推，光降尺寸救不回来
+                                                        codec.discardUnusable()
+                                                        awaitKeyFrame = true
+                                                        fallBackToOneTierLower(error)
+                                                    }
+                                                }
                                         }
                                     }
                                 }
@@ -694,6 +728,8 @@ class ReceiverSession(
     private fun sendCeiling(conn: StreamConnection) {
         val tier = QualityTiers.receiverCeiling(gradePolicy, gradeFacts)
         ceiling = tier
+        hevcDeclared = !hevcBanned && CodecProbe.hardwareDecoder(VideoCodec.HEVC, tier.width, tier.height)
+        Log.i(TAG, "ceiling ${tier.label} decode ${if (hevcDeclared) "H.264+H.265" else VideoCodec.AVC.display}")
         latencyPolicy.reset()
         rebuildLadder(tier)
         runCatching { conn.send(Protocol.Frame(Protocol.Type.CONTROL, payload = Limit.encode(ceilingOf(tier)))) }
@@ -703,9 +739,25 @@ class ReceiverSession(
     /**
      * 解不动就降一档重谈（PRD FS-12「已切换到兼容模式」）：不弹窗，
      * 状态栏提示一次并把新的上限回写对端，对端下一个 CONFIG 会按低档发来。
+     *
+     * 建解码器失败和跑着跑着一直解不出画面都走这里，因为对用户是同一件事：画面回不来。
+     *
+     * 先摘编码再降档（PRD 8.7 异常表「不支持 H.265 硬解 → 改用 H.264 并降档」）：
+     * 只要本机声明过 H.265，发端就会一直按 H.265 推流，光降尺寸救不回来——
+     * 每来一个 CONFIG 都会在同一处失败。所以第一步是把 H.265 从声明里去掉、
+     * 按同一档重谈（发端换回 H.264），仍然解不动才继续降档。
      */
     private fun fallBackToOneTierLower(error: Throwable) {
-        Log.w(TAG, "decoder configure failed: ${error.message}")
+        Log.w(TAG, "decoder unusable: ${error.message}")
+        if (hevcDeclared) {
+            hevcBanned = true
+            hevcDeclared = false
+            val notice = ErrorNotice.textFor(ErrorNotice.Cause.CODEC_FALLBACK)
+            sendControl(Limit.encode(ceilingOf(ceiling)), "drop H.265 declaration")
+            onStatus(notice)
+            onNotice(notice)
+            return
+        }
         val lower = QualityTiers.downgrade(ceiling)
         if (lower == ceiling) {
             onStatus(ErrorNotice.textFor(ErrorNotice.Cause.DECODE_UNSUPPORTED))
@@ -719,8 +771,15 @@ class ReceiverSession(
         onNotice("已切换到兼容模式 · ${lower.label}")
     }
 
-    private fun ceilingOf(tier: QualityTier, fps: Int = tier.fps) =
-        Limit.Ceiling(tier.width, tier.height, fps, tier.maxBitRateKbps, tier.label)
+    private fun ceilingOf(tier: QualityTier, fps: Int = tier.fps) = Limit.Ceiling(
+        tier.width,
+        tier.height,
+        fps,
+        tier.maxBitRateKbps,
+        tier.label,
+        // 只声明真探测到的硬解；没 H.265 硬解时发出去的上限和老版本逐字节一致
+        if (hevcDeclared) setOf(VideoCodec.AVC, VideoCodec.HEVC) else setOf(VideoCodec.AVC),
+    )
 
     /**
      * 降档序列的基线取「本机上限 ∩ 对端实际推流档位」中更低的一档：
@@ -975,5 +1034,8 @@ class ReceiverSession(
         /** 48kHz 下一个 AAC 访问单元约 21ms，5 帧一采约 105ms，与 PRD「每 100ms 采样」同口径 */
         const val AV_SAMPLE_FRAMES = 5L
         const val AV_LOG_INTERVAL_MS = 2_000L
+
+        /** 连着几帧都解不动就重谈编码：一帧就重谈会被瞬时抖动牵着走，几十帧才谈画面回不来得太慢 */
+        const val DECODE_FAILURE_LIMIT = 10
     }
 }
