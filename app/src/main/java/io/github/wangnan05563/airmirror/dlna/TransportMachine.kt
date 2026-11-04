@@ -103,6 +103,16 @@ class TransportMachine {
         if (media != null) state = State.STOPPED
     }
 
+    /**
+     * 服务停止时清掉会话内容：片名与片源地址只活在当前进程内存里，
+     * 既不落盘也不跨会话保留（PRD FS-11「投屏内容留存：不保存」）。
+     */
+    fun clear() {
+        media = null
+        playRequested = false
+        state = State.NO_MEDIA
+    }
+
     /** Play 前置校验：返回 null 表示允许。 */
     fun canPlay(): Int? = if (media == null) Upnp.FAULT_NO_MEDIA else null
 

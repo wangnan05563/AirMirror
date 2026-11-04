@@ -9,6 +9,7 @@ import android.view.SurfaceHolder
 import io.github.wangnan05563.airmirror.dlna.DlnaServer
 import io.github.wangnan05563.airmirror.pairing.DeviceStore
 import io.github.wangnan05563.airmirror.pairing.Pairing
+import io.github.wangnan05563.airmirror.privacy.Diagnostics
 
 /**
  * 接收端常驻宿主（PRD FS-13 / 8.2「后台常驻与发现」）：
@@ -17,6 +18,11 @@ import io.github.wangnan05563.airmirror.pairing.Pairing
  */
 class ReceiverHost private constructor(context: Context) {
     private val appContext: Context = context.applicationContext ?: context
+
+    init {
+        // 开机自启路径不经过 MainActivity，诊断接管要在进程宿主起来时就装好（install 幂等）
+        Diagnostics(appContext).install()
+    }
 
     interface Ui {
         fun onStatus(text: String)

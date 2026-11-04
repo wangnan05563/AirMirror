@@ -7,6 +7,7 @@ import android.os.Build
 import android.util.Log
 import android.view.Surface
 import java.nio.ByteBuffer
+import io.github.wangnan05563.airmirror.privacy.Redactor
 
 /**
  * 发送端硬编码：MediaProjection 的 VirtualDisplay 直接渲染到 [inputSurface]。
@@ -41,7 +42,7 @@ class VideoEncoder(
         } catch (e: IllegalArgumentException) {
             // 有的厂商编码器对不认识的键直接抛。关掉 B 帧是低延迟要求，但不值得为它把投屏弄断：
             // 摘掉这个键重配一次（同一实例在 start 之前允许重复 configure）
-            Log.w(tag, "encoder ${codecInstance.name} rejected max-bframes=0 (${e.javaClass.simpleName}: ${e.message}), retry without it")
+            Log.w(tag, "encoder ${codecInstance.name} rejected max-bframes=0 (${e.javaClass.simpleName}: ${Redactor.throwable(e)}), retry without it")
             codecInstance.configure(newFormat(null), null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
         }
         inputSurface = codecInstance.createInputSurface()

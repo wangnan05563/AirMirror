@@ -28,6 +28,7 @@ import io.github.wangnan05563.airmirror.device.QualityTiers
 import io.github.wangnan05563.airmirror.pairing.CastCode
 import io.github.wangnan05563.airmirror.pairing.DeviceStore
 import io.github.wangnan05563.airmirror.pairing.Pairing
+import io.github.wangnan05563.airmirror.privacy.Diagnostics
 import io.github.wangnan05563.airmirror.protocol.ProtocolBoundary
 import io.github.wangnan05563.airmirror.receiver.ReceiverHost
 import io.github.wangnan05563.airmirror.receiver.ReceiverService
@@ -78,6 +79,10 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     private lateinit var qualityContainer: LinearLayout
     private lateinit var gateLine: TextView
     private lateinit var badgeRow: TextView
+    /** 隐私分组（PRD FS-11）：诊断默认关、可清除，说明与清理入口都在设置页里。 */
+    private lateinit var diagnostics: Diagnostics
+    private lateinit var diagnosticsRow: TextView
+    private lateinit var clearDataRow: TextView
     /** 本机上限（分级 ∩ 硬解 ∩ 四道门）与门判定结果，后台探测完回填；未探到为 null */
     private var localCeiling: QualityTier? = null
     private var gateReport: GateReport? = null
@@ -117,6 +122,9 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         followRotation = store.followRotation()
         portraitLabel = store.portraitLabel()
         qualityLock = store.qualityLock()
+        diagnostics = Diagnostics(this)
+        diagnostics.install()
+        diagnostics.purge()
         root = FrameLayout(this).apply { setBackgroundColor(Theme.BACKGROUND) }
 
         surfaceView = SurfaceView(this)
@@ -591,6 +599,37 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             }
         }
         settingsPanel.addView(badgeRow, matchWidth())
+        settingsPanel.addView(divider(), LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            Theme.dp(this@ReceiverActivity, 1),
+        ))
+        settingsPanel.addView(TextView(this).apply {
+            text = "隐私"
+            textSize = Theme.TITLE_SP
+            setTextColor(Theme.TEXT_PRIMARY)
+            setPadding(0, Theme.dp(this@ReceiverActivity, 12), 0, Theme.dp(this@ReceiverActivity, 8))
+        }, matchWidth())
+        settingsPanel.addView(TextView(this).apply {
+            // PRD FS-11「首次启动一句话数据边界说明」在设置页也要有一句，不使用长文弹窗
+            text = "画面、文件名、地址都不保存；投屏内容只在本次会话内使用"
+            textSize = Theme.BODY_SP
+            setTextColor(Theme.TEXT_SECONDARY)
+            setPadding(0, 0, 0, Theme.dp(this@ReceiverActivity, 10))
+        }, matchWidth())
+        diagnosticsRow = TextView(this).apply {
+            textSize = Theme.BODY_SP
+            setTextColor(Theme.TEXT_PRIMARY)
+            setPadding(0, Theme.dp(this@ReceiverActivity, 10), 0, Theme.dp(this@ReceiverActivity, 10))
+            setOnClickListener { toggleDiagnostics() }
+        }
+        settingsPanel.addView(diagnosticsRow, matchWidth())
+        clearDataRow = TextView(this).apply {
+            textSize = Theme.BODY_SP
+            setTextColor(Theme.TEXT_PRIMARY)
+            setPadding(0, Theme.dp(this@ReceiverActivity, 10), 0, Theme.dp(this@ReceiverActivity, 12))
+            setOnClickListener { clearLocalData() }
+        }
+        settingsPanel.addView(clearDataRow, matchWidth())
         settingsPanel.addView(Button(this).apply {
             text = "完成"
             setTextColor(Theme.ACCENT)
@@ -653,9 +692,46 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         }
         badgeRow.visibility = if (qualityRows.isEmpty()) View.GONE else View.VISIBLE
         badgeRow.text = "画质角标：${if (store.qualityBadgeEnabled()) "开" else "关"}"
+        diagnosticsRow.text = "崩溃日志：${if (diagnostics.enabled()) "开（仅本机 · 7 天自动清除）" else "关（默认）"}"
+        clearDataRow.text = "清除本地日志与缓存（${diagnostics.count()} 条）"
+    }
+
+    /** PRD FS-11：诊断默认关闭；开启前把口径说明白，不做静默开启。 */
+    private fun toggleDiagnostics() {
+        if (diagnostics.enabled()) {
+            diagnostics.setEnabled(false)
+            refreshSettings()
+            showCornerHint("崩溃日志已关闭并清除")
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("开启崩溃日志？")
+            .setMessage("只在本机记录崩溃堆栈与设备型号，不含画面、文件名和地址；不上传，7 天后自动清除。可随时关闭并清除。")
+            .setPositiveButton("开启") { _, _ ->
+                diagnostics.setEnabled(true)
+                refreshSettings()
+                showCornerHint("崩溃日志已开启（仅本机）")
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /** PRD FS-11「用户清理缓存：二次确认；清空后不影响已授权设备」。 */
+    private fun clearLocalData() {
+        AlertDialog.Builder(this)
+            .setTitle("清除本地日志与缓存？")
+            .setMessage("删除本机崩溃日志与临时缓存；已授权设备、投屏码和显示设置不受影响。")
+            .setPositiveButton("清除") { _, _ ->
+                val removed = diagnostics.clearCaches()
+                refreshSettings()
+                showCornerHint("已清除 $removed 项 · 已授权设备保留")
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     private fun showSettings() {
+        diagnostics.purge()
         refreshSettings()
         settingsScroller.visibility = View.VISIBLE
     }

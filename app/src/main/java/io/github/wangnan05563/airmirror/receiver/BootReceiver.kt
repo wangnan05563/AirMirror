@@ -6,6 +6,7 @@ import android.content.Intent
 import android.util.Log
 import io.github.wangnan05563.airmirror.pairing.DeviceStore
 import io.github.wangnan05563.airmirror.ui.ReceiverActivity
+import io.github.wangnan05563.airmirror.privacy.Redactor
 
 /**
  * 开机自启（PRD FS-13）：用户开关默认开启。系统拦截 Activity 拉起时
@@ -21,14 +22,14 @@ class BootReceiver : BroadcastReceiver() {
             return
         }
         val started = runCatching { ReceiverService.start(context) }
-            .onFailure { Log.w(TAG, "foreground service not started: ${it.message}") }
+            .onFailure { Log.w(TAG, "foreground service not started: ${Redactor.throwable(it)}") }
             .isSuccess
         val opened = runCatching {
             context.startActivity(
                 Intent(context, ReceiverActivity::class.java)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
             )
-        }.onFailure { Log.w(TAG, "receiver page not opened: ${it.message}") }.isSuccess
+        }.onFailure { Log.w(TAG, "receiver page not opened: ${Redactor.throwable(it)}") }.isSuccess
         Log.i(TAG, "auto start $action service=$started page=$opened")
     }
 

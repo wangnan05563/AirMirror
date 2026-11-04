@@ -44,6 +44,7 @@ import java.io.InterruptedIOException
 import java.net.InetSocketAddress
 import java.net.Socket
 import kotlin.concurrent.thread
+import io.github.wangnan05563.airmirror.privacy.Redactor
 
 /** 发送端最近一次投屏的结论文案，界面轮询取用；空串表示没有异常。 */
 object SenderReport {
@@ -371,7 +372,7 @@ class CaptureService : Service() {
                     val encoderHere = encoder
                     Log.i(TAG, "sync requested, encoder=${if (encoderHere == null) "null" else "alive"}")
                     runCatching { encoderHere?.requestKeyFrame() }
-                        .onFailure { Log.w(TAG, "sync frame request failed: ${it.message}") }
+                        .onFailure { Log.w(TAG, "sync frame request failed: ${Redactor.throwable(it)}") }
                 }
                 if (reconfigure.getAndSet(false)) restartEncoder()
                 val videoEncoder = encoder
@@ -424,7 +425,7 @@ class CaptureService : Service() {
                 if (!delivered) continue
             }
         } catch (e: Exception) {
-            Log.w(TAG, "capture session ended: ${e.message}")
+            Log.w(TAG, "capture session ended: ${Redactor.throwable(e)}")
             if (SenderReport.last.isEmpty()) SenderReport.last = ErrorNotice.textFor(ErrorNotice.Cause.UNREACHABLE)
         } finally {
             cleanup()
@@ -709,7 +710,7 @@ class CaptureService : Service() {
             chooseCodec()
             ResumeAttempt.Ok(conn)
         } catch (e: Exception) {
-            Log.w(TAG, "resume to $host:$port failed: ${e.message}")
+            Log.w(TAG, "resume failed: ${Redactor.throwable(e)}")
             runCatching { socket.close() }
             ResumeAttempt.Failed
         }
@@ -732,7 +733,7 @@ class CaptureService : Service() {
         conn.send(frame)
         true
     } catch (e: IOException) {
-        Log.w(TAG, "send failed: ${e.message}")
+        Log.w(TAG, "send failed: ${Redactor.throwable(e)}")
         if (connection === conn) peerGone = true
         false
     }
@@ -756,7 +757,7 @@ class CaptureService : Service() {
             }
             Limit.empty()
         } catch (e: Exception) {
-            Log.w(TAG, "ceiling wait failed: ${e.message}")
+            Log.w(TAG, "ceiling wait failed: ${Redactor.throwable(e)}")
             Limit.empty()
         } finally {
             runCatching { conn.setReadTimeout(0) }
@@ -810,7 +811,7 @@ class CaptureService : Service() {
                 if (running && connection === conn) peerGone = true
             } catch (e: Exception) {
                 if (running) {
-                    Log.i(TAG, "peer reader ended: ${e.message}")
+                    Log.i(TAG, "peer reader ended: ${Redactor.throwable(e)}")
                     if (connection === conn) peerGone = true
                 }
             }

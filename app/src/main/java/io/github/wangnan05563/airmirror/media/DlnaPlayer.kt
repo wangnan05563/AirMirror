@@ -6,6 +6,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.SurfaceHolder
+import io.github.wangnan05563.airmirror.privacy.Redactor
 import java.io.IOException
 
 /**
@@ -149,7 +150,8 @@ class DlnaPlayer {
         } catch (e: IOException) {
             lastError = e.message
             failed = true
-            Log.w(TAG, "load failed: ${e.message}")
+            // MediaPlayer 的 IOException 常自带片源地址，进日志前统一脱敏
+            Log.w(TAG, "load failed: ${Redactor.throwable(e)}")
             // 建不起来同样要通知：否则状态停在 TRANSITIONING，控制点会一直等到超时
             onErrorCallback?.invoke(1, -1004)
         }
@@ -159,7 +161,7 @@ class DlnaPlayer {
         val target = surfaceHolder ?: return
         if (Build.VERSION.SDK_INT >= 21) {
             runCatching { mediaPlayer.setSurface(target.surface) }
-                .onFailure { Log.w(TAG, "setSurface failed: ${it.message}") }
+                .onFailure { Log.w(TAG, "setSurface failed: ${Redactor.throwable(it)}") }
         } else {
             @Suppress("DEPRECATION")
             runCatching { mediaPlayer.setDisplay(target) }

@@ -3,6 +3,7 @@ package io.github.wangnan05563.airmirror.dlna
 import android.content.Context
 import android.net.wifi.WifiManager
 import android.util.Log
+import io.github.wangnan05563.airmirror.privacy.Redactor
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.MulticastSocket
@@ -144,10 +145,11 @@ class SsdpResponder(
                 if (!Ssdp.matches(st, targets)) continue
                 val reply = Ssdp.searchResponse(st, location, usnFor(st)).toByteArray(Charsets.US_ASCII)
                 listener.send(DatagramPacket(reply, reply.size, packet.address, packet.port))
-                Log.i(TAG, "answered M-SEARCH ST=$st from ${packet.address.hostAddress}:${packet.port}")
+                // 对端 IP 属于地址类信息，排查用 ST 已够
+                Log.i(TAG, "answered M-SEARCH ST=$st")
             }
         } catch (e: Exception) {
-            if (running) Log.w(TAG, "ssdp listener stopped: ${e.message}")
+            if (running) Log.w(TAG, "ssdp listener stopped: ${Redactor.throwable(e)}")
         } finally {
             closeSocket()
         }
@@ -169,7 +171,7 @@ class SsdpResponder(
             val bytes = Ssdp.alive(type, location, usnFor(type)).toByteArray(Charsets.US_ASCII)
             multicast.send(DatagramPacket(bytes, bytes.size, InetSocketAddress(group, Ssdp.PORT)))
         }
-        Log.i(TAG, "sent ssdp:alive for ${targets.size} targets, location=$location")
+        Log.i(TAG, "sent ssdp:alive for ${targets.size} targets")
     }
 
     fun stop() {

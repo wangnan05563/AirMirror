@@ -11,6 +11,7 @@ import android.os.StatFs
 import android.util.Log
 import android.view.Display
 import io.github.wangnan05563.airmirror.media.VideoCodec
+import io.github.wangnan05563.airmirror.privacy.Redactor
 
 /**
  * 采集 [DeviceFacts]：系统版本、内存、H.264 硬解能力、输出分辨率、可用存储与网络。
@@ -82,7 +83,7 @@ object DeviceProbe {
             manager.displays.any { it.modes4K() }
         }
     } catch (e: Exception) {
-        Log.w(TAG, "interface probe failed: ${e.message}")
+        Log.w(TAG, "interface probe failed: ${Redactor.throwable(e)}")
         false
     }
 
@@ -122,7 +123,7 @@ object DeviceProbe {
                 }
             }
         } catch (e: Exception) {
-            Log.w(TAG, "decoder probe failed: ${e.message}")
+            Log.w(TAG, "decoder probe failed: ${Redactor.throwable(e)}")
         }
         return Triple(bestWidth, bestHeight, found)
     }
@@ -133,7 +134,7 @@ object DeviceProbe {
         am.getMemoryInfo(info)
         info.totalMem / (1024L * 1024L)
     } catch (e: Exception) {
-        Log.w(TAG, "memory probe failed: ${e.message}")
+        Log.w(TAG, "memory probe failed: ${Redactor.throwable(e)}")
         0L
     }
 
@@ -145,7 +146,7 @@ object DeviceProbe {
             manager.displays.any { it.reaches(3840, 2160) }
         }
     } catch (e: Exception) {
-        Log.w(TAG, "output probe failed: ${e.message}")
+        Log.w(TAG, "output probe failed: ${Redactor.throwable(e)}")
         false
     }
 
@@ -161,7 +162,7 @@ object DeviceProbe {
         val stat = StatFs(context.cacheDir.absolutePath)
         stat.availableBlocksLong * stat.blockSizeLong / (1024L * 1024L)
     } catch (e: Exception) {
-        Log.w(TAG, "storage probe failed: ${e.message}")
+        Log.w(TAG, "storage probe failed: ${Redactor.throwable(e)}")
         Long.MAX_VALUE
     }
 
@@ -182,7 +183,7 @@ object DeviceProbe {
             else -> NetworkBand.GHZ_2
         }
     } catch (e: Exception) {
-        Log.w(TAG, "band probe failed: ${e.message}")
+        Log.w(TAG, "band probe failed: ${Redactor.throwable(e)}")
         NetworkBand.UNKNOWN
     }
 }

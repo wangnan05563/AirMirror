@@ -6,6 +6,7 @@ import android.util.Log
 import android.view.SurfaceHolder
 import io.github.wangnan05563.airmirror.error.ErrorNotice
 import io.github.wangnan05563.airmirror.media.DlnaPlayer
+import io.github.wangnan05563.airmirror.privacy.Redactor
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.net.ServerSocket
@@ -102,7 +103,8 @@ class DlnaServer(
         }
         worker = thread(name = "airmirror-dlna") { acceptLoop(socket, friendlyName, ip) }
         onStatus("DLNA 就绪 · 可接收推送")
-        Log.i(TAG, "DMR up at $location")
+        // 描述文件地址是 URL，按 14.4 不写日志；排查只需要端口
+        Log.i(TAG, "DMR up on port ${socket.localPort}")
     }
 
     fun attach(holder: SurfaceHolder) {
@@ -127,7 +129,8 @@ class DlnaServer(
             ?: return
         awaitingSurface = true
         val text = ErrorNotice.textFor(cause)
-        Log.w(TAG, "playing without a render surface: title=${machine.media?.title}")
+        // 片名属于用户内容：日志里连标题都不写；大屏提示仍走 onStatus 展示原文
+        Log.w(TAG, "playing without a render surface")
         onStatus("DLNA 播放中 · $text")
         onNotice?.invoke("DLNA $text")
     }
@@ -148,12 +151,12 @@ class DlnaServer(
             val client = try {
                 socket.accept()
             } catch (e: Exception) {
-                if (running) Log.w(TAG, "accept failed: ${e.message}") else return
+                if (running) Log.w(TAG, "accept failed: ${Redactor.throwable(e)}") else return
                 continue
             }
             thread(name = "airmirror-dlna-conn", isDaemon = true) {
                 runCatching { serve(client, friendlyName, ip) }
-                    .onFailure { Log.w(TAG, "request failed: ${it.message}") }
+                    .onFailure { Log.w(TAG, "request failed: ${Redactor.throwable(it)}") }
                     .also { runCatching { client.close() } }
             }
         }
@@ -243,7 +246,7 @@ class DlnaServer(
             }
             Upnp.soapResponse(serviceType, action, result)
         } catch (e: SoapError) {
-            Log.i(TAG, "$action failed: ${e.message}")
+            Log.i(TAG, "$action failed: ${Redactor.throwable(e)}")
             Upnp.soapFault(e.code, e.message)
         }
     }
@@ -414,6 +417,8 @@ class DlnaServer(
         runCatching { server?.close() }
         server = null
         player.release()
+        // 会话内容只活在内存：服务停掉时把片名/片源地址一并清掉，不留给下次启动
+        machine.clear()
         worker?.join(1_000)
         worker = null
         Log.i(TAG, "DMR stopped")

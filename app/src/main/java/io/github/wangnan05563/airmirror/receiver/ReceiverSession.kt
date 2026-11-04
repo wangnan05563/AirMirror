@@ -42,6 +42,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
+import io.github.wangnan05563.airmirror.privacy.Redactor
 
 /**
  * 接收端会话：固定端口 TCP 服务（占用则退回随机端口）+ NSD 广播 + 版本握手 + 授权门禁 + H.264/H.265 解码渲染。
@@ -226,7 +227,7 @@ class ReceiverSession(
                     clients.add(socket)
                     thread(name = "airmirror-conn") {
                         val served = runCatching { handle(socket) }
-                            .onFailure { if (running) Log.w(TAG, "connection failed: ${it.message}") }
+                            .onFailure { if (running) Log.w(TAG, "connection failed: ${Redactor.throwable(it)}") }
                             .getOrNull()
                         clients.remove(socket)
                         // 保留窗口内不提示「连接结束」，大屏该显示「正在恢复」
@@ -260,7 +261,7 @@ class ReceiverSession(
         onRecovery(false)
         thread(name = "airmirror-end") {
             runCatching { conn.send(Protocol.Frame(Protocol.Type.BYE)) }
-                .onFailure { Log.w(TAG, "bye not delivered: ${it.message}") }
+                .onFailure { Log.w(TAG, "bye not delivered: ${Redactor.throwable(it)}") }
             conn.close()
         }
     }
@@ -306,7 +307,7 @@ class ReceiverSession(
         thread(name = "airmirror-peer-tx") {
             runCatching { conn.send(Protocol.Frame(Protocol.Type.CONTROL, payload = payload)) }
                 .onSuccess { Log.i(TAG, "$label sent") }
-                .onFailure { Log.w(TAG, "$label not sent: ${it.message}") }
+                .onFailure { Log.w(TAG, "$label not sent: ${Redactor.throwable(it)}") }
         }
     }
 
@@ -473,7 +474,7 @@ class ReceiverSession(
                                 } else if (!paused) {
                                     runCatching { out.write(frame.payload, frame.ptsUs) }
                                         .onFailure {
-                                            Log.w(TAG, "audio output failed: ${it.message}")
+                                            Log.w(TAG, "audio output failed: ${Redactor.throwable(it)}")
                                             closeAudio()
                                         }
                                     if (audioFrames % AV_SAMPLE_FRAMES == 0L) sampleAvSync(hello.deviceName)
@@ -527,7 +528,7 @@ class ReceiverSession(
                     }
                 }
             } catch (e: IOException) {
-                if (running) Log.w(TAG, "connection dropped: ${e.message}")
+                if (running) Log.w(TAG, "connection dropped: ${Redactor.throwable(e)}")
             } finally {
                 // 接管时旧线程可能晚于新会话收尾，只有仍属于自己才清空共享状态并撤回投屏态
                 val owns = activeConn === conn
@@ -775,7 +776,7 @@ class ReceiverSession(
         latencyPolicy.reset()
         rebuildLadder(tier)
         runCatching { conn.send(Protocol.Frame(Protocol.Type.CONTROL, payload = Limit.encode(ceilingOf(tier)))) }
-            .onFailure { Log.w(TAG, "ceiling not delivered: ${it.message}") }
+            .onFailure { Log.w(TAG, "ceiling not delivered: ${Redactor.throwable(it)}") }
     }
 
     /**
@@ -1106,7 +1107,7 @@ class ReceiverSession(
             }
             null
         } catch (e: IOException) {
-            Log.i(TAG, "no AUTH received: ${e.message}")
+            Log.i(TAG, "no AUTH received: ${Redactor.throwable(e)}")
             null
         } finally {
             runCatching { socket.soTimeout = 0 }

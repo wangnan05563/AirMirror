@@ -13,6 +13,7 @@ import java.nio.ByteBuffer
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
+import io.github.wangnan05563.airmirror.privacy.Redactor
 
 /**
  * 接收端音频输出：AAC 解码 → AudioTrack 播放，同时它就是 PRD FR-09 说的**主时钟**。
@@ -67,7 +68,7 @@ class AudioOut(private val spec: AudioFormat.Spec) {
 
     init {
         runCatching { track.play() }
-            .onFailure { Log.w(TAG, "audio track start failed: ${it.message}") }
+            .onFailure { Log.w(TAG, "audio track start failed: ${Redactor.throwable(it)}") }
         thread(name = "airmirror-audio-out", isDaemon = true) { pump() }
     }
 

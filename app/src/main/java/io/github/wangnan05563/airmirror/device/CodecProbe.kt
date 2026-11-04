@@ -5,6 +5,7 @@ import android.media.MediaCodecList
 import android.os.Build
 import android.util.Log
 import io.github.wangnan05563.airmirror.media.VideoCodec
+import io.github.wangnan05563.airmirror.privacy.Redactor
 
 /**
  * 按 MIME 问硬编/硬解能力（PRD 8.7 的编码选择顺序只看「硬解」，不看有没有解码器）。
@@ -53,7 +54,7 @@ object CodecProbe {
                 block(info, info.supportedTypes.toList())
             }
         } catch (e: Exception) {
-            Log.w(TAG, "codec list probe failed: ${e.message}")
+            Log.w(TAG, "codec list probe failed: ${Redactor.throwable(e)}")
         }
     }
 
