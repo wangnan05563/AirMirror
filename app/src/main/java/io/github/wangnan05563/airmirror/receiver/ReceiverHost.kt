@@ -7,9 +7,17 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.SurfaceHolder
+import io.github.wangnan05563.airmirror.crossnet.CandidateCollector
+import io.github.wangnan05563.airmirror.crossnet.CrossNetConnector
+import io.github.wangnan05563.airmirror.crossnet.CrossNetInbound
+import io.github.wangnan05563.airmirror.crossnet.CrossNetProtocol
+import io.github.wangnan05563.airmirror.crossnet.HttpSignalingTransport
+import io.github.wangnan05563.airmirror.crossnet.SignalingClient
+import io.github.wangnan05563.airmirror.crossnet.SignalingSettings
 import io.github.wangnan05563.airmirror.device.DeviceProbe
 import io.github.wangnan05563.airmirror.dlna.DlnaServer
 import io.github.wangnan05563.airmirror.net.ProbeResponder
+import io.github.wangnan05563.airmirror.pairing.CastCode
 import io.github.wangnan05563.airmirror.pairing.DeviceStore
 import io.github.wangnan05563.airmirror.pairing.Pairing
 import io.github.wangnan05563.airmirror.privacy.Diagnostics
@@ -57,6 +65,7 @@ class ReceiverHost private constructor(context: Context) {
     private var dlna: DlnaServer? = null
     private var probe: ProbeResponder? = null
     private var probeName = ""
+    private var crossNet: CrossNetInbound? = null
 
     /**
      * 本机等级决定协议是否常驻（PRD 1152）：A/B 级常驻，只有 C 级参与闲置释放。
@@ -145,6 +154,7 @@ class ReceiverHost private constructor(context: Context) {
         if (session != null) {
             // 进程还在、服务被重启（或设置里改了设备名）时，只把探测应答器补齐/换名即可
             ensureProbe(deviceName)
+            startCrossNet()
             return
         }
         val active = ReceiverSession(
@@ -217,6 +227,46 @@ class ReceiverHost private constructor(context: Context) {
         main.removeCallbacks(idleSweep)
         main.postDelayed(idleSweep, ProtocolResidency.TICK_MILLIS)
         holder?.let { mount(it) }
+        startCrossNet()
+    }
+
+    /**
+     * 跨网待命（PRD FS-04）：只有配置了信令端点才启动，默认不向任何外部服务发请求。
+     * 设置页改端点后调用 [reloadCrossNet]，避免旧端点继续收到本机的码哈希。
+     */
+    private fun startCrossNet() {
+        if (crossNet != null) return
+        val url = store.signalingUrl()
+        if (!SignalingSettings.enabled(url)) return
+        val client = SignalingClient(HttpSignalingTransport(url))
+        val stun = store.stunHost()
+        val inbound = CrossNetInbound(
+            connect = { code ->
+                CrossNetConnector(
+                    role = CrossNetProtocol.Role.RECEIVER,
+                    client = client,
+                    collect = { socket ->
+                        CandidateCollector.collect(socket, CandidateCollector.Config(stunHost = stun))
+                    },
+                ).connectReceiver(code)
+            },
+            // 锁定期不登记：这时大屏本身不接受任何码，登记只会让发送端匹配到一个必然被拒的会话
+            credential = {
+                if (pairing.code.state() == CastCode.State.LOCKED) "" else pairing.code.code()
+            },
+            onLink = { outcome -> outcome.link?.let { session?.offerTunnel(it) } },
+        )
+        inbound.start()
+        crossNet = inbound
+        Log.i(TAG, "cross-net standby started")
+    }
+
+    /** 设置页改完信令端点后调用；端点被清空即停掉待命，不再发任何请求。 */
+    @Synchronized
+    fun reloadCrossNet() {
+        crossNet?.stop()
+        crossNet = null
+        startCrossNet()
     }
 
     /**
@@ -236,6 +286,8 @@ class ReceiverHost private constructor(context: Context) {
         probe?.stop()
         probe = null
         probeName = ""
+        crossNet?.stop()
+        crossNet = null
     }
 
     /** 界面回到前台：先订阅后续变化，再按宿主快照补回画面、横幅与角标读数。 */

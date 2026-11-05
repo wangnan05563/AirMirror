@@ -330,7 +330,23 @@ class ReceiverSession(
             runCatching { socket.close() }
             return null
         }
-        StreamConnection(socket).use { conn ->
+        return StreamConnection(socket).use { conn -> handleConnection(conn, peer) }
+    }
+
+    /**
+     * 跨网：打洞成功后把隧道当连接交给同一套握手、鉴权与收流。
+     * 与局域网唯一的差别是记账键固定为 [CROSS_NET_PEER]：
+     * 公网映射地址会随 NAT 变，拿它做防滥用键既拦不住刷子，还可能把无关用户捆在一起。
+     */
+    fun offerTunnel(tunnel: io.github.wangnan05563.airmirror.crossnet.UdpTunnel) {
+        thread(name = "airmirror-crossnet-rx") {
+            runCatching {
+                StreamConnection.overTunnel(tunnel).use { conn -> handleConnection(conn, CROSS_NET_PEER) }
+            }.onFailure { Log.w(TAG, "cross-net session ended: ${Redactor.throwable(it)}") }
+        }
+    }
+
+    private fun handleConnection(conn: StreamConnection, peer: String): String? {
             // 能力位带音频：老发送端不带时协商结果自动只剩画面，不会硬起一条播不出声的流水线
             val hello = try {
                 conn.acceptAsServer(
@@ -357,7 +373,7 @@ class ReceiverSession(
             avDowngrades = 0
             var audioFrames = 0L
             var droppedLate = 0
-            val request = readAuth(conn, socket) ?: run {
+            val request = readAuth(conn) ?: run {
                 refuse(conn, "缺少授权")
                 // 连 AUTH 都不发的空连接正是刷子最爱，这类一次都不会记进投屏码的失败账，只能在这里拦
                 pairing.throttle.refuse(peer)
@@ -578,7 +594,6 @@ class ReceiverSession(
                 if (sessionDone === done) sessionDone = null
             }
             return hello.deviceName
-        }
     }
 
     /**
@@ -1156,8 +1171,8 @@ class ReceiverSession(
 
     private fun throttledText(secondsLeft: Int) = "连接过于频繁，请 $secondsLeft 秒后再试"
 
-    private fun readAuth(conn: StreamConnection, socket: Socket): Auth.Request? {
-        runCatching { socket.soTimeout = AUTH_TIMEOUT_MS }
+    private fun readAuth(conn: StreamConnection): Auth.Request? {
+        conn.setReadTimeout(AUTH_TIMEOUT_MS)
         return try {
             while (running) {
                 val frame = conn.receive() ?: return null
@@ -1168,7 +1183,7 @@ class ReceiverSession(
             Log.i(TAG, "no AUTH received: ${Redactor.throwable(e)}")
             null
         } finally {
-            runCatching { socket.soTimeout = 0 }
+            conn.setReadTimeout(0)
         }
     }
 
@@ -1203,6 +1218,11 @@ class ReceiverSession(
 
     private companion object {
         const val TAG = "AirMirrorReceiver"
+        /**
+         * 跨网会话的防滥用记账键：不打码、不带地址。
+         * 公网映射地址随 NAT 变化，拿它做键既拦不住刷子，也可能把无关用户捆进同一个静默期。
+         */
+        const val CROSS_NET_PEER = "crossnet"
         const val AUTH_TIMEOUT_MS = 10_000
         const val PROMPT_MAX_WAIT_MS = 60_000L
         const val TAKEOVER_TIMEOUT_MS = 60_000L

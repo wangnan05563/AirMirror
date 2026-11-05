@@ -140,6 +140,25 @@ class DeviceStore(context: Context) {
         prefs.edit().putBoolean(KEY_PERMISSION_ASKED + key, true).apply()
     }
 
+    /**
+     * 跨网信令端点（PRD FS-04）。空串表示未配置，跨网整体关闭——
+     * 不填一个默认公网地址，是因为信令服务由部署方决定，写死等于把用户数据送给一个他不知情的第三方。
+     */
+    fun signalingUrl(): String = prefs.getString(KEY_SIGNALING, "").orEmpty()
+
+    fun saveSignalingUrl(url: String) {
+        prefs.edit()
+            .putString(KEY_SIGNALING, io.github.wangnan05563.airmirror.crossnet.SignalingSettings.normalize(url))
+            .apply()
+    }
+
+    /** NAT 映射探测用的 STUN 服务器；给一个国内可达的默认值，用户不填也能拿到 SRFLX 候选。 */
+    fun stunHost(): String = prefs.getString(KEY_STUN, DEFAULT_STUN_HOST).orEmpty()
+
+    fun saveStunHost(host: String) {
+        prefs.edit().putString(KEY_STUN, host.trim()).apply()
+    }
+
     private companion object {
         const val FILE = "airmirror-pairing"
         const val KEY_ID = "device_id"
@@ -156,6 +175,9 @@ class DeviceStore(context: Context) {
         const val KEY_QUALITY_LOCK = "quality_lock"
         const val KEY_QUALITY_BADGE = "quality_badge"
         const val KEY_PERMISSION_ASKED = "permission_asked_"
+        const val KEY_SIGNALING = "signaling_url"
+        const val KEY_STUN = "stun_host"
         const val AUTO = "auto"
+        const val DEFAULT_STUN_HOST = "stun.qq.com"
     }
 }

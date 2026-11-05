@@ -20,6 +20,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import io.github.wangnan05563.airmirror.crossnet.SignalingSettings
 import io.github.wangnan05563.airmirror.device.DisplayFit
 import io.github.wangnan05563.airmirror.device.DisplayMode
 import io.github.wangnan05563.airmirror.dlna.localIpv4
@@ -78,6 +79,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     private lateinit var rotationRow: TextView
     private lateinit var labelRow: TextView
     private lateinit var autoStartRow: TextView
+    private lateinit var crossNetRow: TextView
     /** 画质角标：默认不显示，用户在设置页打开后常驻右下角（PRD FS-05「画面标识」） */
     private lateinit var qualityBadge: TextView
     /** 设置页里「自动 + 各可达档位」的行；null 键 = 自动。不可达的档位连行都不生成。 */
@@ -612,6 +614,20 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             }
         }
         settingsPanel.addView(autoStartRow, matchWidth())
+        // PRD FS-04：信令端点由部署方决定，所以只做手填入口，不内置任何默认外部地址
+        crossNetRow = TextView(this).apply {
+            textSize = Theme.BODY_SP
+            setTextColor(Theme.TEXT_PRIMARY)
+            setPadding(0, Theme.dp(this@ReceiverActivity, 4), 0, Theme.dp(this@ReceiverActivity, 8))
+            setOnClickListener { editSignaling() }
+        }
+        settingsPanel.addView(crossNetRow, matchWidth())
+        settingsPanel.addView(TextView(this).apply {
+            text = "填了才启用；只交换建连信息，画面不经服务器"
+            textSize = Theme.BODY_SP
+            setTextColor(Theme.TEXT_SECONDARY)
+            setPadding(0, 0, 0, Theme.dp(this@ReceiverActivity, 10))
+        }, matchWidth())
         settingsPanel.addView(divider(), LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             Theme.dp(this@ReceiverActivity, 1),
@@ -720,6 +736,10 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         rotationRow.text = "旋转跟随：${if (followRotation) "开" else "关"}"
         labelRow.text = "竖屏标签：${if (portraitLabel) "开" else "关"}"
         autoStartRow.text = "开机自启：${if (store.autoStartEnabled()) "开" else "关"}"
+        val signaling = store.signalingUrl()
+        val crossNetOn = SignalingSettings.enabled(signaling)
+        crossNetRow.text = if (crossNetOn) "跨网信令：已配置（$signaling）" else "跨网信令：未配置（仅局域网）"
+        crossNetRow.setTextColor(if (crossNetOn) Theme.TEXT_PRIMARY else Theme.TEXT_SECONDARY)
         for ((tier, row) in qualityRows) {
             row.text = if (tier == null) {
                 "${if (qualityLock == null) "●" else "○"} 自动（推荐）"
@@ -734,6 +754,29 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         clearDataRow.text = "清除本地日志与缓存（${diagnostics.count()} 条）"
         // 画质档位行是探完能力后动态 addView 的，刷新时再扫一次树；不抢当前焦点
         TvFocus.applyTree(settingsPanel, requestInitialFocus = false)
+    }
+
+    /** PRD FS-04：留空即关闭跨网，大屏不向任何外部服务发请求；填了才启动待命。 */
+    private fun editSignaling() {
+        val input = EditText(this).apply {
+            setText(store.signalingUrl())
+            hint = "https://你的信令服务"
+            setSingleLine()
+            setTextColor(Theme.TEXT_PRIMARY)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("跨网信令服务")
+            .setMessage("留空则不启用跨网。信令只交换建连信息，画面仍点对点直连、不经服务器。")
+            .setView(input)
+            .setPositiveButton("保存") { _, _ ->
+                store.saveSignalingUrl(input.text.toString())
+                host.reloadCrossNet()
+                refreshSettings()
+                val on = SignalingSettings.enabled(store.signalingUrl())
+                showCornerHint(if (on) "跨网已启用" else "跨网已关闭（仅局域网）")
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     /** PRD FS-11：诊断默认关闭；开启前把口径说明白，不做静默开启。 */
