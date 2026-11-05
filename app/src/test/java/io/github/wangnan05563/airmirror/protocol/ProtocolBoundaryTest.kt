@@ -13,11 +13,24 @@ class ProtocolBoundaryTest {
     fun `only the protocols we actually receive are reported as supported`() {
         assertTrue(ProtocolBoundary.supports("AMRC"))
         assertTrue(ProtocolBoundary.supports("dlna"))
+        assertTrue("浏览器上传已落地，必须进矩阵", ProtocolBoundary.supports("Browser"))
         assertFalse(ProtocolBoundary.supports("Miracast"))
         assertFalse(ProtocolBoundary.supports("AirPlay"))
         assertFalse(ProtocolBoundary.supports("Cast"))
         assertFalse(ProtocolBoundary.supports("Cast+"))
-        assertFalse(ProtocolBoundary.supports("Browser"))
+        assertFalse(ProtocolBoundary.supports("Unknown"))
+    }
+
+    @Test
+    fun `matrix and copy never disagree`() {
+        // supports() 与 describe().supported 必须同源：两套口径正是「假能力」的来源
+        for (protocol in ProtocolBoundary.Protocol.values()) {
+            assertEquals(
+                "${protocol.wireName} 的 supports 与 describe 不一致",
+                ProtocolBoundary.supports(protocol.wireName),
+                ProtocolBoundary.describe(protocol.wireName).supported,
+            )
+        }
     }
 
     @Test
@@ -40,10 +53,27 @@ class ProtocolBoundaryTest {
 
     @Test
     fun `unknown protocol is not silently treated as usable`() {
-        val capability = ProtocolBoundary.describe("Browser")
+        val capability = ProtocolBoundary.describe("CarPlay")
         assertFalse(capability.supported)
         assertNull(capability.protocol)
         assertTrue(capability.nextStep.contains("投屏码"))
+    }
+
+    @Test
+    fun `browser entry is advertised with an actionable next step`() {
+        val capability = ProtocolBoundary.describe("Browser")
+        assertTrue(capability.supported)
+        assertEquals(ProtocolBoundary.Protocol.BROWSER, capability.protocol)
+        assertTrue(capability.nextStep.contains("浏览器"))
+        assertTrue(capability.nextStep.contains("文件"))
+    }
+
+    @Test
+    fun `receiver page does not promise a desktop client that does not exist`() {
+        assertFalse(
+            "电脑端发送端仍在 M7，未实现前不能出现在待连接页",
+            ProtocolBoundary.receiverMirrorLine().contains("电脑"),
+        )
     }
 
     @Test
@@ -72,6 +102,7 @@ class ProtocolBoundaryTest {
     fun `badges never promise a protocol we cannot receive`() {
         assertEquals("镜像 · 私有通道", ProtocolBoundary.badgeFor("AMRC"))
         assertEquals("DLNA 推送", ProtocolBoundary.badgeFor("DLNA"))
+        assertEquals("浏览器上传", ProtocolBoundary.badgeFor("Browser"))
         assertEquals("不支持", ProtocolBoundary.badgeFor("Miracast"))
         assertEquals("不支持", ProtocolBoundary.badgeFor("AirPlay"))
     }
