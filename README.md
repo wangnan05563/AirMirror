@@ -34,3 +34,10 @@
 项目已确定开源（PRD 的 Q-2 裁定），**许可证选型待定**。在选型落地前，按 PRD §8.10 的保守口径执行：GPL / LGPL / AGPL 的同类实现（UxPlay、airplay2-receiver、miraclecast、deskreen 等）只参考协议流程与架构设计，不链接、不复制代码；Apache-2.0 / MIT 项目（scrcpy、QtScrcpy、go2tv）可引入，但需保留版权声明与许可副本。
 
 AirPlay、Google Cast 为私有协议，本项目独立实现，不含任何厂商商标；相关合规评估在上架前完成。
+
+## 开发取证
+
+- **验证拓扑**：单台模拟器（x86_64，装 universal 包）内同时跑发送端与接收端；宿主侧 `adb forward tcp:14523 tcp:41523` 让 Node 伪发送端打进设备，`adb reverse` 供设备取宿主媒体；Node 中间代理充当「中继等价物」逐字节抓包，用于验证端到端加密与「中继不可解密」判据。
+- **临时目录布局（新片一律遵守）**：`.mtask_tmp/<片号>_<主题>/{scripts,evidence,logs}`，每片一个子目录；根目录只放通用工具（`mcp.py`、`ui_tap.js`、`gate.js`）。历史平铺文件保持原位不搬家（任务结论里引用的路径不能断链），新产生的取证一律进新布局。
+- **取证安全纪律**：含凭据的 dump/截图测后即删，日志留存前先扫描；单据只走 MCP/REST 通道，绝不直接写 sqlite（只读 `mode=ro` 取证可以）；`mtask_update_task_result` 是整文替换，追加前必须先读回 `handle_result` 再拼接。
+
