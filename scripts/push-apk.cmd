@@ -28,7 +28,7 @@ if errorlevel 1 (
     if "!ADB!"=="adb" if exist "%ROOT%\local.properties" (
         for /f "tokens=1,* delims==" %%a in ('findstr /b "sdk.dir" "%ROOT%\local.properties"') do set "SDKP=%%b"
         if defined SDKP (
-            rem java properties escape: E\:\\Android\\sdk  ->  E:\Android\sdk
+            rem java properties escape: E\:\\path\\to\\sdk -> E:\path\to\sdk
             set "SDKP=!SDKP:\:=:!"
             set "SDKP=!SDKP:\\=\!"
             if exist "!SDKP!\platform-tools\adb.exe" set "ADB=!SDKP!\platform-tools\adb.exe"

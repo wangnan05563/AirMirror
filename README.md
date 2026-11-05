@@ -26,7 +26,7 @@
 依赖：JDK 17+、Android SDK（`platforms` 与 `platform-tools`）、仓库自带 Gradle wrapper。Windows 上一条命令完成依赖检测、单测与打包：
 
 ```powershell
-$env:JAVA_HOME = 'C:\path\to\jdk17'
+$env:JAVA_HOME = '<你的 JDK 17 目录>'
 .\scripts\build.ps1            # 默认 testDebugUnitTest + assembleDebug；-Release 打未签名 release 包
 ```
 

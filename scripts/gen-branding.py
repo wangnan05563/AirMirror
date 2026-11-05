@@ -16,8 +16,10 @@ WHITE = (255, 255, 255, 255)
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BRAND = os.path.join(ROOT, "branding")
 RES = os.path.join(ROOT, "app", "src", "main", "res")
-FONT_BOLD = r"C:\Windows\Fonts\msyhbd.ttc"
-FONT_REGULAR = r"C:\Windows\Fonts\msyh.ttc"
+# 用系统的 WINDIR 推导字体目录，避免把某个机器的盘符写死在仓里
+FONT_DIR = os.path.join(os.environ.get("WINDIR", ""), "Fonts")
+FONT_BOLD = os.path.join(FONT_DIR, "msyhbd.ttc")
+FONT_REGULAR = os.path.join(FONT_DIR, "msyh.ttc")
 
 
 def logo(size: int) -> Image.Image:

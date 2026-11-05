@@ -8,7 +8,7 @@
 
 ## 一、结论
 
-1. **本环境一张待办都无法「落地并验证」。** 工作区 `D:\code\otherProjects\30_AirMirror` 只有两份 PRD 文档（`AirMirror-PRD-v1.0.html`、`AirMirror-PRD-v1.1.md`）与本会话产出的两份报告，**没有任何源码、不是 git 仓库**，也没有 Android SDK / TV 真机 / 手机端 / 跨网中继环境。
+1. **本环境一张待办都无法「落地并验证」。** 当时的工作区（仓库根）只有两份 PRD 文档（`AirMirror-PRD-v1.0.html`、`AirMirror-PRD-v1.1.md`）与本会话产出的两份报告，**没有任何源码、不是 git 仓库**，也没有 Android SDK / TV 真机 / 手机端 / 跨网中继环境。
 2. 服务端 `mtask_list_ready_tasks({projectName:"AirMirror"})` 返回 **空** —— 平台侧也没有判定为可执行的任务。
 3. 175 张 `[PRD]` 待办**全部来自同一次 PRD 导入**（唯一文档 `AirMirror-PRD-v1.1.md`，50696 字符，created_at 均为 2026-11-01T07:19:45Z），与 175 个计划节点 1:1 对应；其中 **41 张是里程碑汇总节点**，本就不该当待办逐条做。
 4. 同一套 PRD 被展开成 **9 组互相重叠的编号体系**、共 41 个顶层里程碑；断线恢复、屏幕镜像、设备发现配对、画质协商、投屏码这些能力被 2~3 棵树各写一遍（见 4.1）。
@@ -19,7 +19,7 @@
 
 | 检查项 | 命令 / 工具 | 结果 |
 |---|---|---|
-| 工作区内容 | `ls D:\code\otherProjects\30_AirMirror` | 仅两份 PRD 与 `.screenshots/`，无源码 |
+| 工作区内容 | `ls <仓库根>` | 仅两份 PRD 与 `.screenshots/`，无源码 |
 | 是否 git 仓库 | 环境标记 `Is a git repository` | **false**（T03728 结果第 5 条亦已记录同一事实） |
 | 平台可执行队列 | `mtask_list_ready_tasks {projectName:"AirMirror"}` | `{"tasks":[]}` |
 | 待办清单 | `mtask_list_tasks {projectName:"AirMirror"}` | 176 = 175 张 `[PRD]` + 1 张已 done 的 T03728 |
@@ -245,8 +245,8 @@ PRD `## 15 里程碑与版本规划` 原文：「规划只定义阶段目标与�
 - T03728 保持 `done / unread / verified=false` 原状；175 张 `[PRD]` 单保持 `todo / archived=false` 原状。抽查复核（本轮结束时逐单读回）：`T03931` `status=todo`、`ai_state=""`、`updated_at=2026-11-01T07:23:10Z`；`T03781` `status=todo`、`updated_at=2026-11-01T07:19:45Z`（与 created_at 相同）；`T03728` `updated_at=2026-10-31T06:46:18Z`。三张的时间戳均早于本次会话，未被改动。
 - **初版交付之后按你的批准写了「零歧义机械修复」，范围只有 `deps`**：15 条 `8.x.y` 归位 + 9 个 `8.2`~`8.10` 挂到 `8 技术实现与优化`（后者日志 8 条，探测用的 `8.2` 那条在脚本外单独写入，共 9 条边）。明细见 4.2 订正。写完实时回读断言（不是估计）：`mtask_list_plans` 返回 175 行，`status/progress` 分布 `todo/0`×175；`mtask_list_tasks` 按单号比对 176 行，**状态/归档/标题被改动的 0 张**（本轮新出现的 10 张是你/其他会话另建的 `[通用需求]` 单，与本报告的 175 张无关）。写入清单落盘：`.mtask_tmp/reparent_log.json`、`.mtask_tmp/sec8_edge_log.json`；改前全量快照（含 deps）= `.mtask_tmp/plans_final.json`，回滚逐行反写即可。
 - 计划树去重/改挂的收敛手术**一律未写库**，方案与待答问题见 `AirMirror-WBS收敛dry-run表.md`。
-- 本报告：`D:\code\otherProjects\30_AirMirror\AirMirror-待办分诊报告.md`。
-- 取证脚本与原始数据：`D:\code\otherProjects\30_AirMirror\.mtask_tmp\`（`mcp.py` 全量 SSE 客户端、`triage.py` 初分类、`convergence.py` dry-run 生成器、`report.py` 本报告生成器、`tasks.json`/`tasks_live.json`/`plans_final.json`（改前快照，回滚用）/`plans_live.json`（改后回读）/`reparent_log.json`/`sec8_edge_log.json`），可随时删除。
+- 本报告：`AirMirror-待办分诊报告.md`（仓库根）。
+- 取证脚本与原始数据：`.mtask_tmp/`（`mcp.py` 全量 SSE 客户端、`triage.py` 初分类、`convergence.py` dry-run 生成器、`report.py` 本报告生成器、`tasks.json`/`tasks_live.json`/`plans_final.json`（改前快照，回滚用）/`plans_live.json`（改后回读）/`reparent_log.json`/`sec8_edge_log.json`），可随时删除。
 - 工具坑：技能自带降级脚本 `scripts/mcp-direct-call.py` 对大响应只保留**最后一个** SSE `data:` 事件，会静默截断（本次 `mtask_list_plans` 的 75KB 响应被截到 4KB、JSON 解析直接失败）。故改用逐事件拼接的客户端取全量数据，本报告统计均基于完整响应。
 
 ## 七、下一步建议（任务行零改动；本轮只写过 `deps`，手术规模见 dry-run 表）
