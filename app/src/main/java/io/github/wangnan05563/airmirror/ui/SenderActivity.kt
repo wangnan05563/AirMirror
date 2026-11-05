@@ -47,6 +47,14 @@ import io.github.wangnan05563.airmirror.sender.RuntimePermission
 import io.github.wangnan05563.airmirror.sender.SenderControl
 import io.github.wangnan05563.airmirror.sender.SenderReport
 import io.github.wangnan05563.airmirror.sender.SystemAudio
+import io.github.wangnan05563.airmirror.update.ApkDownload
+import io.github.wangnan05563.airmirror.update.ApkInstaller
+import io.github.wangnan05563.airmirror.update.ApkProvider
+import io.github.wangnan05563.airmirror.update.ReleaseInfo
+import io.github.wangnan05563.airmirror.update.UpdateChecker
+import io.github.wangnan05563.airmirror.update.UpdateResult
+import io.github.wangnan05563.airmirror.update.UrlHttpText
+import java.io.File
 import kotlin.concurrent.thread
 
 /**
@@ -76,6 +84,9 @@ class SenderActivity : Activity() {
     private var pendingCrossNetToken: String? = null
     private var pendingAudio = false
     private lateinit var crossNetRow: TextView
+    private lateinit var updateRow: TextView
+    /** 检查/下载进行中：避免连点叠出多条并发下载 */
+    private var updateBusy = false
     private var lastCasting = false
     /** 当前展开的设备卡片；同一时刻只展开一张（PRD §11.3）。 */
     private var expandedFingerprint: String? = null
@@ -194,6 +205,15 @@ class SenderActivity : Activity() {
             setOnClickListener { editCrossNet() }
         }
         root.addView(crossNetRow, matchWidth())
+        // PRD 通用需求「菜单新增在线更新」：内置仓库地址，不开放手填；只查 GitHub Release（Q-6）
+        updateRow = TextView(this).apply {
+            text = "检查更新"
+            textSize = Theme.PHONE_BODY_SP
+            setTextColor(Theme.TEXT_SECONDARY)
+            setPadding(Theme.dp(this@SenderActivity, 4), 0, 0, Theme.dp(this@SenderActivity, 12))
+            setOnClickListener { checkUpdate() }
+        }
+        root.addView(updateRow, matchWidth())
 
         hint = TextView(this).apply {
             textSize = Theme.PHONE_BODY_SP
@@ -918,6 +938,91 @@ class SenderActivity : Activity() {
             }
             .setNegativeButton("取消", null)
             .show()
+    }
+
+    /** 检查更新：远端是 GitHub Release，本端按 ABI 优先挑独立包，其次 universal。 */
+    private fun checkUpdate() {
+        if (updateBusy) return
+        updateBusy = true
+        updateRow.text = "检查更新：正在检查…"
+        val version = runCatching {
+            packageManager.getPackageInfo(packageName, 0).versionName
+        }.getOrNull().orEmpty()
+        // minSdk 19：SUPPORTED_ABIS 是 API 21，4.4 上退回单值 CPU_ABI（已 deprecated 但仍可用）
+        @Suppress("DEPRECATION")
+        val abis = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            Build.SUPPORTED_ABIS
+        } else {
+            arrayOf(Build.CPU_ABI)
+        }
+        val abi = when {
+            abis.any { it.equals("arm64-v8a", ignoreCase = true) } -> "arm64-v8a"
+            abis.any { it.equals("armeabi-v7a", ignoreCase = true) } -> "armeabi-v7a"
+            else -> ""
+        }
+        thread(name = "airmirror-update-check") {
+            val result = UpdateChecker(UrlHttpText(), version, preferAbi = abi).check()
+            main.post {
+                if (isFinishing) return@post
+                updateBusy = false
+                updateRow.text = "检查更新"
+                when (result) {
+                    is UpdateResult.UpToDate -> toast("已是最新版本（${version.ifEmpty { "未知" }}）")
+                    is UpdateResult.Failed -> toast(result.reason)
+                    is UpdateResult.Available -> promptUpdate(result.release)
+                }
+            }
+        }
+    }
+
+    private fun promptUpdate(release: ReleaseInfo) {
+        val notes = release.notes.take(400).ifBlank { "该版本没有填写更新说明。" }
+        AlertDialog.Builder(this)
+            .setTitle("发现新版本 ${release.tag}")
+            .setMessage(notes)
+            .setPositiveButton("下载并安装") { _, _ -> downloadUpdate(release) }
+            .setNegativeButton("稍后", null)
+            .show()
+    }
+
+    private fun downloadUpdate(release: ReleaseInfo) {
+        if (updateBusy) return
+        updateBusy = true
+        updateRow.text = "正在下载更新…"
+        thread(name = "airmirror-update-download") {
+            val target = File(ApkProvider.dir(this), ApkDownload.safeName(release.apkName))
+            val file = runCatching {
+                ApkDownload.download(release.apkUrl, target) { done, total ->
+                    if (total > 0) {
+                        val percent = (done * 100 / total).toInt()
+                        main.post { if (!isFinishing) updateRow.text = "正在下载更新… $percent%" }
+                    }
+                }
+            }.getOrNull()
+            main.post {
+                updateBusy = false
+                updateRow.text = "检查更新"
+                if (isFinishing) return@post
+                if (file == null) {
+                    toast("下载失败，请检查网络后重试")
+                    return@post
+                }
+                // Android 8+ 必须先由用户为本应用打开「安装未知应用」，App 不能自批
+                if (ApkInstaller.needsInstallPermission(this)) {
+                    AlertDialog.Builder(this)
+                        .setTitle("还需要一步授权")
+                        .setMessage("系统要求你为本应用单独允许「安装未知应用」，之后才能完成更新。")
+                        .setPositiveButton("去设置") { _, _ ->
+                            runCatching { startActivity(ApkInstaller.permissionSettings(this)) }
+                        }
+                        .setNegativeButton("取消", null)
+                        .show()
+                } else {
+                    runCatching { startActivity(ApkInstaller.install(this, file)) }
+                        .onFailure { toast("没有可用的安装器") }
+                }
+            }
+        }
     }
 
     private fun sameSubnet(address: String): Boolean {
