@@ -29,12 +29,24 @@ class AuthGateTest {
     }
 
     @Test
-    fun anUnknownDeviceWithoutCredentialWaitsForBigScreenConfirmation() {
+    fun anUnknownDeviceWithoutCredentialMustBeConfirmedExplicitlyAndNeverAutoAllowed() {
+        // T04496 选项1：空凭据的未知设备不再被 5 秒自动放行，必须大屏显式确认；
+        // 超时由 ReceiverSession.awaitDecision 退回拒绝，而不是把匿名设备永久写入可信列表。
         val subject = gate(codes = intArrayOf(123_456))
-        assertEquals(
-            AuthGate.Verdict.PendingPrompt("phone-a", "小明的手机", clock + 5_000L),
-            subject.authorize("phone-a", "小明的手机", ""),
-        )
+        val verdict = subject.authorize("phone-a", "小明的手机", "") as AuthGate.Verdict.PendingPrompt
+        assertEquals(Long.MAX_VALUE, verdict.autoAllowAt)
+    }
+
+    @Test
+    fun autoAllowNeverFiresForAnAnonymousDeviceEvenWhenEnabled() {
+        // 默认 autoAllowMillis=5000 开启时，自动允许也只对递过有效凭据的会话生效；
+        // 空凭据设备无论开关如何都不自动放行（T04496 选项1）。
+        val subject = gate(autoAllowMillis = 5_000L, codes = intArrayOf(123_456))
+        val verdict = subject.authorize("anon", "陌生设备", "") as AuthGate.Verdict.PendingPrompt
+        assertEquals(Long.MAX_VALUE, verdict.autoAllowAt)
+        // 对照：递了正确投屏码仍是即时一次性授权，且不在可信列表
+        assertTrue(subject.authorize("pad", "p", "123456") is AuthGate.Verdict.Authorized)
+        assertTrue(trust.trusted().isEmpty())
     }
 
     @Test

@@ -15,7 +15,7 @@ class AuthGate(
     sealed interface Verdict {
         data class Authorized(val deviceName: String, val permanent: Boolean) : Verdict
 
-        /** 需要大屏确认；[autoAllowAt] 为界面上限时刻，到点按默认策略放行。 */
+        /** 需要大屏确认；[autoAllowAt] 为自动放行上限时刻。空凭据会话（未递有效凭据）一律不带自动允许，必须由大屏显式确认（T04496）。 */
         data class PendingPrompt(val deviceId: String, val deviceName: String, val autoAllowAt: Long) : Verdict
 
         /**
@@ -90,7 +90,10 @@ class AuthGate(
         }
         val held = trust.active()
         if (held != null && held != id) return Verdict.Rejected(Refused.SESSION_BUSY, 0)
-        return Verdict.PendingPrompt(id, deviceName, decision.autoAllowAt)
+        // 走到这里的会话都没有递过有效凭据（有效凭据已在上方 CastCode 分支即时放行）：
+        // 按 T04496 裁决选项1，空凭据一律不自动放行，必须由大屏显式确认。5 秒/无人表态的超时
+        // 由 ReceiverSession.awaitDecision 退回拒绝（decline），不再把匿名同网设备永久写入可信列表。
+        return Verdict.PendingPrompt(id, deviceName, Long.MAX_VALUE)
     }
 
     private companion object {

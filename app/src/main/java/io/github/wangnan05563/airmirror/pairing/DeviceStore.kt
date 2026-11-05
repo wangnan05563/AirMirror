@@ -41,7 +41,7 @@ class DeviceStore(context: Context) {
         prefs.edit().putString(KEY_NAME, name).apply()
     }
 
-    /** 首次连接 5 秒无操作默认允许，默认开启，可在设置里关掉。 */
+    /** 首次连接自动允许：仅对递过有效凭据的会话有意义；无凭据会话一律由大屏显式确认（T04496 裁决），故该开关当前不影响匿名发现的确认方式。 */
     fun autoAllowEnabled(): Boolean = prefs.getBoolean(KEY_AUTO_ALLOW, true)
 
     fun saveAutoAllowEnabled(enabled: Boolean) {
