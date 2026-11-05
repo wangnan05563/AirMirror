@@ -1,11 +1,15 @@
 package io.github.wangnan05563.airmirror.dlna
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.SurfaceHolder
 import io.github.wangnan05563.airmirror.error.ErrorNotice
 import io.github.wangnan05563.airmirror.media.DlnaPlayer
+import io.github.wangnan05563.airmirror.media.ImageFetcher
 import io.github.wangnan05563.airmirror.privacy.Redactor
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
@@ -67,9 +71,34 @@ class DlnaServer(
      */
     var onActivity: (() -> Unit)? = null
 
+    /** PRD FS-02 图片推送：画面不走 Surface，交给界面上的 ImageView 渲染。 */
+    var onImageShow: ((Bitmap, String) -> Unit)? = null
+    var onImageClear: (() -> Unit)? = null
+
     /** 已经提示过「画面未就绪」，等 Surface 回来收口；只在 SOAP 线程与主线程读改写，故 Volatile */
     @Volatile
     private var awaitingSurface = false
+
+    /** 图片轮播/切换的定时器；与 Surface 渲染无关，只在主线程队列里排程。 */
+    private val main = Handler(Looper.getMainLooper())
+    private var imageRotation: Runnable? = null
+
+    /** 当前图与它的片名；控制点 Next/Previous 或 15 秒轮播后立刻换掉。 */
+    @Volatile
+    private var imageBitmap: Bitmap? = null
+    @Volatile
+    private var imageTitle: String = ""
+
+    /**
+     * 取图请求的代号：切图/换源/Stop 都会让它自增，迟到的下载结果据此丢弃，
+     * 否则慢的那张图会在新图之后才上屏（控制点眼里就是「切了又跳回去」）。
+     */
+    @Volatile
+    private var imageToken = 0
+
+    /** 是否有取图请求在途；Play 据此决定「排队等这张」还是「重发一次」。 */
+    @Volatile
+    private var imageLoading = false
 
     init {
         player.onPreparedCallback = {
@@ -80,10 +109,17 @@ class DlnaServer(
             warnIfNoSurface()
         }
         player.onCompletedCallback = {
-            machine.onCompleted(loop = false)
-            awaitingSurface = false
-            onPlayingChanged?.invoke(false)
-            onStatus("DLNA 播放结束")
+            val loop = machine.loopEnabled
+            machine.onCompleted(loop = loop)
+            if (loop) {
+                // MediaPlayer 自带 looping 时正常不会走到这里；个别机型仍会报一次 PlaybackCompleted，
+                // 这时补一次 start（PlaybackCompleted 状态下 start 会从头播），免得循环在第二遍断掉
+                player.play()
+            } else {
+                awaitingSurface = false
+                onPlayingChanged?.invoke(false)
+                onStatus("DLNA 播放结束")
+            }
         }
         player.onErrorCallback = { what, extra ->
             // 状态不回落，控制点就会一直读到 PLAYING 并接着轮询进度；大屏则完全不知道出了什么事
@@ -263,39 +299,68 @@ class DlnaServer(
         "SetAVTransportURI" -> {
             val uri = args["CurrentURI"].orEmpty()
             if (uri.isEmpty()) throw SoapError(Upnp.FAULT_INVALID_ARGS, "empty CurrentURI")
-            val parsed = Upnp.parseDidl(args["CurrentURIMetaData"].orEmpty())
-            val meta = parsed ?: Upnp.MediaMeta(uri, titleFromUri(uri), "", -1L, "")
-            if (meta.upnpClass.startsWith("object.item.imageItem")) {
-                throw SoapError(Upnp.FAULT_ACTION_FAILED, "image push is not implemented in M0")
+            val items = Upnp.parseDidlItems(args["CurrentURIMetaData"].orEmpty())
+            val meta = items.firstOrNull() ?: Upnp.MediaMeta(uri, titleFromUri(uri), "", -1L, "")
+            if (MediaKinds.of(meta) == MediaKind.IMAGE) {
+                // 图片可能一次推多张：只保留图片项，混进来的其它类型会破坏 15 秒轮播的计数
+                val images = items.filter { MediaKinds.of(it) == MediaKind.IMAGE }
+                prepareImages(if (images.isEmpty()) listOf(meta) else images)
+            } else {
+                machine.setUri(meta)
+                if (!player.load(uri)) throw SoapError(Upnp.FAULT_ACTION_FAILED, player.lastError ?: "load failed")
+                onStatus("DLNA 载入 ${meta.title}")
             }
-            machine.setUri(meta)
-            if (!player.load(uri)) throw SoapError(Upnp.FAULT_ACTION_FAILED, player.lastError ?: "load failed")
-            onStatus("DLNA 载入 ${meta.title}")
             emptyList()
         }
 
         "Play" -> {
             machine.canPlay()?.let { throw SoapError(it, "no media present") }
-            player.play()
-            machine.onPlayInvoked()
-            onPlayingChanged?.invoke(true)
-            Log.i(TAG, "play: surfaceReady=${player.surfaceReady} prepared=${player.prepared}")
-            warnIfNoSurface()
+            if (isImage()) {
+                machine.onPlayInvoked()
+                val bitmap = imageBitmap
+                if (bitmap == null) {
+                    // 图还没到手：状态留在 TRANSITIONING（onPlayInvoked 只记意图），
+                    // 只有确实没有在途请求时才重发一次取图
+                    if (!imageLoading) {
+                        machine.reloadCurrent()
+                        fetchImage(machine.tracks, machine.index)
+                    }
+                } else {
+                    onImageShow?.invoke(bitmap, imageTitle)
+                    onPlayingChanged?.invoke(true)
+                    startImageRotation()
+                }
+            } else {
+                player.play()
+                machine.onPlayInvoked()
+                onPlayingChanged?.invoke(true)
+                Log.i(TAG, "play: surfaceReady=${player.surfaceReady} prepared=${player.prepared}")
+                warnIfNoSurface()
+            }
             emptyList()
         }
 
         "Pause" -> {
             machine.canPauseOrSeek()?.let { throw SoapError(it, "not playing") }
-            player.pause()
-            machine.onPauseInvoked()
-            awaitingSurface = false
-            onPlayingChanged?.invoke(false)
+            if (isImage()) {
+                // 暂停只是停住轮播，画面留在屏上：收回待连接页会让人以为推送已经结束
+                stopImageRotation()
+                machine.onPauseInvoked()
+            } else {
+                player.pause()
+                machine.onPauseInvoked()
+                awaitingSurface = false
+                onPlayingChanged?.invoke(false)
+            }
             emptyList()
         }
 
         "Stop" -> {
+            stopImageRotation()
+            val image = isImage()
             player.stop()
             machine.onStopInvoked()
+            if (image) clearImage()
             awaitingSurface = false
             onPlayingChanged?.invoke(false)
             emptyList()
@@ -321,10 +386,12 @@ class DlnaServer(
         )
 
         "GetPositionInfo" -> {
-            val duration = player.durationMs().let { if (it > 0) it else machine.media?.durationMs ?: -1L }
-            val position = player.positionMs()
+            // 图片没有播放进度：报 0 而不是把上一段视频的毫秒数带过去
+            val duration = if (isImage()) -1L
+            else player.durationMs().let { if (it > 0) it else machine.media?.durationMs ?: -1L }
+            val position = if (isImage()) 0L else player.positionMs()
             listOf(
-                "Track" to "1",
+                "Track" to (machine.index + 1).toString(),
                 "TrackDuration" to clock(duration),
                 "TrackMetaData" to machine.media?.let { Upnp.didlLite(it) }.orEmpty(),
                 "TrackURI" to machine.media?.uri.orEmpty(),
@@ -336,16 +403,18 @@ class DlnaServer(
         }
 
         "GetMediaInfo" -> listOf(
-            "NrTracks" to "1",
+            "NrTracks" to machine.trackCount.toString(),
             "MediaDuration" to clock(machine.media?.durationMs ?: -1L),
             "CurrentURI" to (machine.media?.uri ?: "NULL"),
-            "NextURI" to "NULL",
+            "NextURI" to (machine.tracks.getOrNull(machine.index + 1)?.uri ?: "NULL"),
             "TrackMetaData" to machine.media?.let { Upnp.didlLite(it) }.orEmpty(),
         )
 
         "GetTransportSettings" -> listOf("PlayMode" to machine.playMode, "RecQualityMode" to "NOT_IMPLEMENTED")
         "SetPlayMode" -> {
             machine.setPlayMode(args["NewPlayMode"].orEmpty())?.let { throw SoapError(it, "bad play mode") }
+            // 循环开关要立刻作用到正在放的媒体，不能等下一次 SetAVTransportURI
+            player.setLooping(machine.loopEnabled)
             emptyList()
         }
 
@@ -357,7 +426,17 @@ class DlnaServer(
         )
 
         "GetCurrentTransportActions" -> listOf("Actions" to machine.currentActions())
-        "Next", "Previous" -> throw SoapError(Upnp.FAULT_ACTION_FAILED, "single item only")
+        "Next", "Previous" -> {
+            // 单文件（视频/音频/单张图）没有上一条下一条；多图队列才有
+            if (!isImage() || machine.trackCount <= 1) {
+                throw SoapError(Upnp.FAULT_ACTION_FAILED, "single item only")
+            }
+            val target = if (action == "Next") machine.index + 1 else machine.index - 1
+            if (!machine.select(target)) throw SoapError(Upnp.FAULT_ACTION_FAILED, "no more items")
+            stopImageRotation()
+            fetchImage(machine.tracks, target)
+            emptyList()
+        }
         else -> throw SoapError(Upnp.FAULT_INVALID_ACTION, "unknown action $action")
     }
 
@@ -397,6 +476,97 @@ class DlnaServer(
     private fun titleFromUri(uri: String): String =
         uri.substringAfterLast('/').substringBefore('?').ifEmpty { uri }
 
+    // ---- 图片推送（PRD FS-02：15 秒轮播 / 手动切换） ----
+
+    private fun isImage(meta: Upnp.MediaMeta? = machine.media): Boolean =
+        meta != null && MediaKinds.of(meta) == MediaKind.IMAGE
+
+    /** 接收一组图片：图片不走 MediaPlayer，上一个视频的播放器要立刻放掉，别占着解码器。 */
+    private fun prepareImages(items: List<Upnp.MediaMeta>) {
+        stopImageRotation()
+        clearImage()
+        player.release()
+        machine.setPlaylist(items)
+        onStatus("DLNA 载入 ${items.first().title}")
+        fetchImage(items, 0)
+    }
+
+    private fun fetchImage(items: List<Upnp.MediaMeta>, index: Int) {
+        val meta = items.getOrNull(index) ?: return
+        val token = ++imageToken
+        imageLoading = true
+        thread(name = "airmirror-dlna-image") {
+            val bitmap = ImageFetcher.fetch(meta.uri)
+            main.post {
+                // 已经被换源 / 切图 / Stop 取代的请求到此为止
+                if (token != imageToken) return@post
+                imageLoading = false
+                if (bitmap == null) {
+                    failImage()
+                } else {
+                    imageBitmap = bitmap
+                    imageTitle = meta.title
+                    machine.onLoaded()
+                    // 首次推图还没 Play 时留在待连接页；手动切换或已在播时立刻换画面
+                    if (machine.wantsPlayback || machine.state == TransportMachine.State.PAUSED) {
+                        onImageShow?.invoke(bitmap, meta.title)
+                        if (machine.state == TransportMachine.State.PLAYING) {
+                            onPlayingChanged?.invoke(true)
+                            startImageRotation()
+                        }
+                    }
+                    onStatus("DLNA 图片 ${meta.title}")
+                }
+            }
+        }
+    }
+
+    private fun failImage() {
+        machine.onPlaybackFailed()
+        awaitingSurface = false
+        onPlayingChanged?.invoke(false)
+        clearImage()
+        val text = ErrorNotice.textFor(ErrorNotice.Cause.SOURCE_NOT_FOUND)
+        // 片名与地址都属于用户内容：日志只记事件本身
+        Log.w(TAG, "image fetch failed")
+        onStatus("DLNA 图片显示失败 · $text")
+        onNotice?.invoke("DLNA $text")
+    }
+
+    private fun clearImage() {
+        imageToken++
+        imageLoading = false
+        imageBitmap = null
+        imageTitle = ""
+        onImageClear?.invoke()
+    }
+
+    private fun startImageRotation() {
+        stopImageRotation()
+        if (!ImageRotation.shouldRotate(MediaKind.IMAGE, machine.trackCount, machine.state == TransportMachine.State.PLAYING)) return
+        val ticker = object : Runnable {
+            override fun run() {
+                val next = ImageRotation.nextIndex(machine.index, machine.trackCount) ?: return
+                if (!machine.select(next)) return
+                fetchImage(machine.tracks, next)
+                main.postDelayed(this, ImageRotation.INTERVAL_MS)
+            }
+        }
+        imageRotation = ticker
+        main.postDelayed(ticker, ImageRotation.INTERVAL_MS)
+    }
+
+    private fun stopImageRotation() {
+        imageRotation?.let { main.removeCallbacks(it) }
+        imageRotation = null
+    }
+
+    /** 界面重新挂载时把当前图补回去（后台收到的图片推送不会因为 Activity 重建就丢掉）。 */
+    fun replayImage() {
+        val bitmap = imageBitmap ?: return
+        onImageShow?.invoke(bitmap, imageTitle)
+    }
+
     private fun clock(ms: Long): String = if (ms < 0) "00:00:00" else Upnp.formatClock(ms)
 
     private fun write(client: Socket, status: Int, contentType: String, payload: String, extra: List<String> = emptyList()) {
@@ -423,6 +593,8 @@ class DlnaServer(
         responder = null
         runCatching { server?.close() }
         server = null
+        stopImageRotation()
+        clearImage()
         player.release()
         // 会话内容只活在内存：服务停掉时把片名/片源地址一并清掉，不留给下次启动
         machine.clear()
@@ -442,6 +614,8 @@ class DlnaServer(
      */
     fun releaseIdle(): Boolean {
         if (!idleSafe) return false
+        stopImageRotation()
+        clearImage()
         player.release()
         machine.clear()
         awaitingSurface = false

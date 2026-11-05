@@ -2,6 +2,7 @@ package io.github.wangnan05563.airmirror.ui
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.graphics.Bitmap
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -49,6 +50,8 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
 
     private lateinit var root: FrameLayout
     private lateinit var surfaceView: SurfaceView
+    /** PRD FS-02 图片推送的画面：图片不走 Surface，单独一层盖在视频面上。 */
+    private lateinit var dlnaImageView: ImageView
     private lateinit var waiting: LinearLayout
     private lateinit var deviceNameText: TextView
     private lateinit var codeText: TextView
@@ -146,6 +149,16 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         surfaceView.holder.addCallback(this)
         root.addView(
             surfaceView,
+            FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT),
+        )
+        dlnaImageView = ImageView(this).apply {
+            visibility = View.GONE
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setBackgroundColor(Theme.BACKGROUND)
+        }
+        // 加在 SurfaceView 之后、待连接页之前：图片显示时待连接页已让位，图片被它盖住正好
+        root.addView(
+            dlnaImageView,
             FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT),
         )
         // 待连接页可滚动：小屏上正文超出屏幕时不该把底部文案裁掉
@@ -1077,6 +1090,17 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
                 onCasting(false, "")
             }
         }
+        override fun onDlnaImage(image: Bitmap, title: String) = runOnUiThread {
+            dlnaImageView.setImageBitmap(image)
+            dlnaImageView.visibility = View.VISIBLE
+            // 图片画面也是「投屏中」：待连接页必须让位，否则 QR 码会一直压在图上
+            waiting.visibility = View.GONE
+        }
+        override fun onDlnaImageCleared() = runOnUiThread {
+            dlnaImageView.setImageDrawable(null)
+            dlnaImageView.visibility = View.GONE
+            if (!isCasting) waiting.visibility = View.VISIBLE
+        }
     }
 
     private fun refreshWaitingPage() {
@@ -1113,6 +1137,8 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         longPressCatcher.visibility = if (casting) View.VISIBLE else View.GONE
         refreshQualityBadge()
         if (casting) {
+            // 镜像投屏要整屏显示画面；DLNA 的图片层留在上面会把它挡住
+            dlnaImageView.visibility = View.GONE
             // CONFIG 每次换方向都会再报一次投屏中，设备名只在真正开始投屏时叠一次
             if (!wasCasting) showCasting(senderName)
             // 第一帧的 CONFIG 早于「投屏中」，方向提示在这里补一次
@@ -1164,7 +1190,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
         // 只摘掉 Surface，会话继续收流；回到前台会重新挂载
-        host.detachSurface()
+        host.detachSurface(holder)
     }
 
     override fun onDestroy() {

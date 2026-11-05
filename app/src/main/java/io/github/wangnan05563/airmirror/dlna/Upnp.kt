@@ -380,9 +380,24 @@ object Upnp {
      * 解析 DIDL-Lite 元数据。控制点常把整段 DIDL 再包一层 CDATA，这里两种都吃。
      * 缺 res 或 uri 为空返回 null（调用方按「无媒体」处理）。
      */
-    fun parseDidl(raw: String): MediaMeta? {
+    fun parseDidl(raw: String): MediaMeta? = parseDidlItems(raw).firstOrNull()
+
+    /**
+     * 解析 DIDL-Lite 里的**全部** item（PRD FS-02 图片轮播需要一次推送多张图）。
+     * 只取带 res 地址的条目：没有地址的容器对象对渲染端没有意义。
+     */
+    fun parseDidlItems(raw: String): List<MediaMeta> {
         val didl = stripCdata(raw)
-        val item = elementText(didl, "item") ?: elementText(didl, "object") ?: return null
+        val top = childElements(didl)
+        val direct = top.filter { it.name == "item" || it.name == "object" }
+        val nodes = direct.ifEmpty {
+            // 正常形态是 <DIDL-Lite> 包着 item；childElements 会把 DIDL-Lite 当成一个顶层元素
+            top.filter { it.name == "DIDL-Lite" }.flatMap { childElements(it.text) }
+        }
+        return nodes.filter { it.name == "item" || it.name == "object" }.mapNotNull { parseItem(it.text) }
+    }
+
+    private fun parseItem(item: String): MediaMeta? {
         val children = childElements(item)
         var title = ""
         var upnpClass = ""

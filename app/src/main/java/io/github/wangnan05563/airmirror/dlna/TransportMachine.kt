@@ -15,13 +15,30 @@ class TransportMachine {
     var state: State = State.NO_MEDIA
         private set
 
+    /**
+     * 本次推送的媒体列表。PRD FS-02 允许一次推多张图（15 秒轮播 / 手动切换）；
+     * 视频与音频仍是单文件，列表长度为 1。
+     */
     @Volatile
-    var media: Upnp.MediaMeta? = null
+    var tracks: List<Upnp.MediaMeta> = emptyList()
         private set
+
+    @Volatile
+    var index: Int = 0
+        private set
+
+    /** 当前这一条。读取方是控制点线程，故不能缓存成普通字段。 */
+    val media: Upnp.MediaMeta? get() = tracks.getOrNull(index)
+
+    val trackCount: Int get() = tracks.size
 
     @Volatile
     var playMode: String = "NORMAL"
         private set
+
+    /** PRD FS-02「循环」：默认关闭，单文件时 REPEAT_ONE / REPEAT_ALL 都等价于回到起点继续。 */
+    val loopEnabled: Boolean get() = trackCount == 1 && (playMode == "REPEAT_ONE" || playMode == "REPEAT_ALL")
+
 
     /** Play 先于媒体就绪时记下意图，等 onLoaded 兑现，避免中途谎报 PLAYING。 */
     @Volatile
@@ -51,11 +68,28 @@ class TransportMachine {
     val wantsPlayback: Boolean get() = state == State.PLAYING || playRequested
 
     /** 收到新媒体描述：进入 LOADING，由服务端异步准备；未就绪前 Play 视为非法。 */
-    fun setUri(meta: Upnp.MediaMeta?) {
-        media = meta
+    fun setUri(meta: Upnp.MediaMeta?) = setPlaylist(listOfNotNull(meta))
+
+    /** 一次推送的多条媒体（图片队列）；空列表等价于「没有媒体」。 */
+    fun setPlaylist(items: List<Upnp.MediaMeta>) {
+        tracks = items
+        index = 0
         playRequested = false
-        state = if (meta == null) State.NO_MEDIA else State.LOADING
+        state = if (items.isEmpty()) State.NO_MEDIA else State.LOADING
     }
+
+    /** 切到队列里的另一条（手动 Next/Previous 或 15 秒轮播）；越界不改变现状。 */
+    fun select(next: Int): Boolean {
+        if (next !in tracks.indices) return false
+        index = next
+        return true
+    }
+
+    /** 图片重试：当前项重新回到 LOADING，队列与索引保持不变。 */
+    fun reloadCurrent() {
+        if (media != null) state = State.LOADING
+    }
+
 
     /**
      * 媒体准备完成（尚未起播）。期间收到过 Play 就直接进 PLAYING（播放器侧已经
@@ -108,7 +142,8 @@ class TransportMachine {
      * 既不落盘也不跨会话保留（PRD FS-11「投屏内容留存：不保存」）。
      */
     fun clear() {
-        media = null
+        tracks = emptyList()
+        index = 0
         playRequested = false
         state = State.NO_MEDIA
     }

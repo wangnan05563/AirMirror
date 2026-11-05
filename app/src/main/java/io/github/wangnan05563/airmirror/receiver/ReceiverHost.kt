@@ -1,6 +1,7 @@
 package io.github.wangnan05563.airmirror.receiver
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -40,6 +41,9 @@ class ReceiverHost private constructor(context: Context) {
         fun onVideoSize(width: Int, height: Int)
         fun onDlnaStatus(text: String)
         fun onDlnaPlaying(playing: Boolean)
+        /** PRD FS-02 图片推送：接收端把解好的图交给界面显示，不走 Surface。 */
+        fun onDlnaImage(image: Bitmap, title: String)
+        fun onDlnaImageCleared()
         /** 画面角标的读数（PRD FS-05）：默认不显示，界面开了才渲染，所以给个空实现。[kiloBits] 为实测入流码率 kbps */
         fun onQualityReadout(width: Int, height: Int, kiloBits: Int) = Unit
     }
@@ -125,6 +129,12 @@ class ReceiverHost private constructor(context: Context) {
     var dlnaPlaying = false
         private set
 
+    /** 后台收到的图片推送：界面重建后要能原样补回，不能因为 Activity 被回收就黑屏。 */
+    @Volatile
+    private var dlnaImage: Bitmap? = null
+    @Volatile
+    private var dlnaImageTitle = ""
+
     @Volatile
     var lastStatus = ""
         private set
@@ -186,6 +196,16 @@ class ReceiverHost private constructor(context: Context) {
             post { it.onDlnaPlaying(playing) }
         }
         renderer.onActivity = { residency.activity(ProtocolModule.DLNA) }
+        renderer.onImageShow = { image, title ->
+            dlnaImage = image
+            dlnaImageTitle = title
+            post { it.onDlnaImage(image, title) }
+        }
+        renderer.onImageClear = {
+            dlnaImage = null
+            dlnaImageTitle = ""
+            post { it.onDlnaImageCleared() }
+        }
         // 只投「此刻值得让用户看见」的一条：界面在后台时收到的是 lastStatus，
         // 回到前台 Surface 重建那一刻由 announceSurfaceBack 再补一条浮层
         renderer.onNotice = { text -> post { it.onNotice(text) } }
@@ -226,6 +246,7 @@ class ReceiverHost private constructor(context: Context) {
         if (videoWidth > 0 && videoHeight > 0) next.onVideoSize(videoWidth, videoHeight)
         if (qualityWidth > 0) next.onQualityReadout(qualityWidth, qualityHeight, qualityKbps)
         if (dlnaPlaying) next.onDlnaPlaying(true)
+        dlnaImage?.let { next.onDlnaImage(it, dlnaImageTitle) }
         if (recovering) next.onRecovery(true)
     }
 
@@ -261,7 +282,12 @@ class ReceiverHost private constructor(context: Context) {
         dlna?.attach(next)
     }
 
-    fun detachSurface() {
+    /**
+     * 只摘掉调用方那个面。Activity 重建时，旧实例的 `surfaceDestroyed` 常晚于新实例的
+     * `surfaceCreated` 到达；不校验归属就会把新面一起摘掉，之后画面永久黑屏。
+     */
+    fun detachSurface(next: SurfaceHolder) {
+        if (holder !== next) return
         holder = null
         session?.detachSurface()
         dlna?.detach()

@@ -132,4 +132,34 @@ class UpnpSoapTest {
         val raw = Upnp.soapArgs(decoded)["CurrentURIMetaData"].orEmpty()
         assertEquals("无音轨1080p", Upnp.parseDidl(raw)?.title)
     }
+
+    @Test
+    fun parsesEveryItemForImagePlaylist() {
+        // PRD FS-02 图片轮播：一次推送可能带多张图，只取第一张会让 15 秒轮播永远没有下一张
+        val didl = "<DIDL-Lite xmlns=\"urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/\" " +
+            "xmlns:dc=\"http://purl.org/dc/elements/1.1/\" xmlns:upnp=\"urn:schemas-upnp-org:metadata-1-0/upnp/\">" +
+            "<item id=\"1\"><dc:title>a</dc:title><upnp:class>object.item.imageItem.photo</upnp:class>" +
+            "<res protocolInfo=\"http-get:*:image/jpeg:*\">http://h/a.jpg</res></item>" +
+            "<item id=\"2\"><dc:title>b</dc:title><upnp:class>object.item.imageItem.photo</upnp:class>" +
+            "<res protocolInfo=\"http-get:*:image/png:*\">http://h/b.png</res></item>" +
+            "</DIDL-Lite>"
+        val items = Upnp.parseDidlItems("<![CDATA[$didl]]>")
+        assertEquals(2, items.size)
+        assertEquals("http://h/a.jpg", items[0].uri)
+        assertEquals("a", items[0].title)
+        assertEquals("image/jpeg", items[0].mime)
+        assertEquals("http://h/b.png", items[1].uri)
+        // 单条入口保持原语义：取第一条
+        assertEquals("http://h/a.jpg", Upnp.parseDidl(didl)?.uri)
+    }
+
+    @Test
+    fun playlistSkipsItemsWithoutAddress() {
+        val didl = "<DIDL-Lite><item><dc:title>container</dc:title>" +
+            "<upnp:class>object.container.album.photoAlbum</upnp:class></item>" +
+            "<item><dc:title>real</dc:title><res>http://h/real.jpg</res></item></DIDL-Lite>"
+        val items = Upnp.parseDidlItems(didl)
+        assertEquals(1, items.size)
+        assertEquals("real", items[0].title)
+    }
 }

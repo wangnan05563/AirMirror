@@ -188,4 +188,78 @@ class TransportMachineTest {
         assertEquals("NO_MEDIA_PRESENT", m.transportState())
         assertEquals(Upnp.FAULT_NO_MEDIA, m.canPlay())
     }
+
+    @Test
+    fun playlistExposesTracksAndSelection() {
+        val second = Upnp.MediaMeta("http://h/b.jpg", "b", "object.item.imageItem", -1L, "image/jpeg")
+        val third = Upnp.MediaMeta("http://h/c.jpg", "c", "object.item.imageItem", -1L, "image/jpeg")
+        val m = TransportMachine()
+        m.setPlaylist(listOf(meta, second, third))
+        assertEquals(3, m.trackCount)
+        assertEquals(0, m.index)
+        assertEquals(meta, m.media)
+        assertTrue(m.select(2))
+        assertEquals(third, m.media)
+        // 越界不改变现状：控制点连按 Next 时不能把索引甩出队列
+        assertFalse(m.select(3))
+        assertEquals(2, m.index)
+        assertFalse(m.select(-1))
+    }
+
+    @Test
+    fun emptyPlaylistMeansNoMedia() {
+        val m = TransportMachine()
+        m.setPlaylist(emptyList())
+        assertEquals("NO_MEDIA_PRESENT", m.transportState())
+        assertEquals(Upnp.FAULT_NO_MEDIA, m.canPlay())
+        assertEquals(0, m.trackCount)
+    }
+
+    @Test
+    fun loopOnlyAppliesToSingleTrack() {
+        val m = TransportMachine()
+        m.setUri(meta)
+        // PRD FS-02：循环默认关闭
+        assertFalse(m.loopEnabled)
+        m.setPlayMode("REPEAT_ONE")
+        assertTrue(m.loopEnabled)
+        m.setPlayMode("REPEAT_ALL")
+        assertTrue(m.loopEnabled)
+        m.setPlayMode("SHUFFLE")
+        assertFalse(m.loopEnabled)
+        // 播放列表循环属 P1：多张图时 REPEAT_ALL 不能变成列表回卷
+        m.setPlayMode("REPEAT_ALL")
+        m.setPlaylist(listOf(meta, meta.copy(uri = "http://h/b.mp4")))
+        assertFalse(m.loopEnabled)
+    }
+
+    @Test
+    fun completionWithLoopKeepsPlaying() {
+        val m = TransportMachine()
+        m.setUri(meta)
+        m.onLoaded()
+        m.onPlayInvoked()
+        m.setPlayMode("REPEAT_ONE")
+        m.onCompleted(loop = true)
+        assertEquals("PLAYING", m.transportState())
+        // 关掉循环后，下一次结束才真正回 STOPPED
+        m.setPlayMode("NORMAL")
+        m.onCompleted(loop = false)
+        assertEquals("STOPPED", m.transportState())
+    }
+
+    @Test
+    fun reloadCurrentKeepsQueueAndReturnsToLoading() {
+        val m = TransportMachine()
+        m.setPlaylist(listOf(meta, meta.copy(uri = "http://h/b.jpg", upnpClass = "object.item.imageItem")))
+        m.select(1)
+        m.onLoaded()
+        m.reloadCurrent()
+        assertEquals("TRANSITIONING", m.transportState())
+        assertEquals(1, m.index)
+        assertEquals("http://h/b.jpg", m.media?.uri)
+        m.onPlayInvoked()
+        m.onLoaded()
+        assertEquals("PLAYING", m.transportState())
+    }
 }

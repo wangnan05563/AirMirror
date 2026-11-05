@@ -22,6 +22,15 @@ class DlnaPlayer {
     /** Play 早于准备完成时记下的待播意图，仅主线程读写。 */
     private var pendingPlay = false
 
+    /**
+     * PRD FS-02「循环」：单文件播到尾回起点继续。
+     * 用 MediaPlayer 自带的 looping 而不是在完成回调里再发一次 start——
+     * 后者在 PlaybackCompleted 状态确实可用，但每次循环都要经过一次回调，
+     * 中间那一下状态真假难辨；交给播放器自己接最省事。
+     */
+    @Volatile
+    private var looping = false
+
     @Volatile
     var prepared = false
         private set
@@ -122,6 +131,8 @@ class DlnaPlayer {
                 cancelLoadTimeout()
                 prepared = true
                 prepareMs = (System.nanoTime() - pushAtNano) / 1_000_000
+                // setLooping 只能在非 Idle 状态调用，prepared 是第一个安全时点
+                runCatching { it.setLooping(looping) }
                 if (pendingPlay) start(it)
                 onPreparedCallback?.invoke()
             }
@@ -199,6 +210,19 @@ class DlnaPlayer {
         main.post {
             player?.let { runCatching { if (it.isPlaying) it.pause() } }
             playing = false
+        }
+    }
+
+    /**
+     * 控制点改 PlayMode 时同步循环开关。未就绪时只记下期望值，
+     * prepared 回调会补上（见 openUri 里的 setLooping）。
+     */
+    fun setLooping(enabled: Boolean) {
+        looping = enabled
+        main.post {
+            val mediaPlayer = player ?: return@post
+            if (!prepared) return@post
+            runCatching { mediaPlayer.setLooping(enabled) }
         }
     }
 
