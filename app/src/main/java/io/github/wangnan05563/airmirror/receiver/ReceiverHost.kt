@@ -7,6 +7,7 @@ import android.os.Looper
 import android.util.Log
 import android.view.SurfaceHolder
 import io.github.wangnan05563.airmirror.dlna.DlnaServer
+import io.github.wangnan05563.airmirror.net.ProbeResponder
 import io.github.wangnan05563.airmirror.pairing.DeviceStore
 import io.github.wangnan05563.airmirror.pairing.Pairing
 import io.github.wangnan05563.airmirror.privacy.Diagnostics
@@ -44,6 +45,8 @@ class ReceiverHost private constructor(context: Context) {
         private set
 
     private var dlna: DlnaServer? = null
+    private var probe: ProbeResponder? = null
+    private var probeName = ""
 
     /** 界面交下来的 Surface：宿主比 Surface 晚起来时（进程重启、界面重建）靠它补挂，否则画面会一直黑。 */
     private var holder: SurfaceHolder? = null
@@ -96,7 +99,11 @@ class ReceiverHost private constructor(context: Context) {
     /** 幂等：界面与服务谁先起来都只建一套监听，避免第二个会话抢不到固定端口。 */
     @Synchronized
     fun start(deviceName: String) {
-        if (session != null) return
+        if (session != null) {
+            // 进程还在、服务被重启（或设置里改了设备名）时，只把探测应答器补齐/换名即可
+            ensureProbe(deviceName)
+            return
+        }
         val active = ReceiverSession(
             context = appContext,
             pairing = pairing,
@@ -147,7 +154,27 @@ class ReceiverHost private constructor(context: Context) {
         renderer.onNotice = { text -> post { it.onNotice(text) } }
         renderer.start(deviceName)
         dlna = renderer
+        ensureProbe(deviceName)
         holder?.let { mount(it) }
+    }
+
+    /**
+     * FS-07 接收侧：组播被禁时，接收端仍要在 41524 回答探测、定时朝 41525 公告自己。
+     * 两条 UDP 通道都不碰 41523 媒体端口，避免被 8.9 的限流闸门记成半途撤连接。
+     */
+    private fun ensureProbe(deviceName: String) {
+        if (probe != null && probeName == deviceName) return
+        probe?.stop()
+        probeName = deviceName
+        probe = ProbeResponder(appContext, store.deviceId()).also { it.start(deviceName, port) }
+    }
+
+    /** 常驻服务收尾：只停探测应答器，会话与界面快照保持原样（界面可能还活着）。 */
+    @Synchronized
+    fun shutdown() {
+        probe?.stop()
+        probe = null
+        probeName = ""
     }
 
     /** 界面回到前台：先订阅后续变化，再按宿主快照补回画面、横幅与角标读数。 */

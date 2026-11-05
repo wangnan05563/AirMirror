@@ -28,6 +28,13 @@ class DeviceStore(context: Context) {
         prefs.edit().putString(KEY_TRUSTED, snapshot).apply()
     }
 
+    /** 最近连过的接收端（设备名 + 局域网地址 + 端口），供 FS-07 缓存展示与直连降级探测使用。 */
+    fun recentTargets(): String = prefs.getString(KEY_RECENT, "").orEmpty()
+
+    fun saveRecentTargets(snapshot: String) {
+        prefs.edit().putString(KEY_RECENT, snapshot).apply()
+    }
+
     fun deviceName(fallback: String): String = prefs.getString(KEY_NAME, null) ?: fallback
 
     fun saveDeviceName(name: String) {
@@ -100,6 +107,7 @@ class DeviceStore(context: Context) {
         const val FILE = "airmirror-pairing"
         const val KEY_ID = "device_id"
         const val KEY_TRUSTED = "trusted"
+        const val KEY_RECENT = "recent_targets"
         const val KEY_NAME = "device_name"
         const val KEY_AUTO_ALLOW = "auto_allow"
         const val KEY_DISPLAY_MODE = "display_mode"

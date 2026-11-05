@@ -24,7 +24,11 @@ import android.widget.TextView
 import android.widget.Toast
 import io.github.wangnan05563.airmirror.dlna.localIpv4
 import io.github.wangnan05563.airmirror.net.DeviceRegistry
+import io.github.wangnan05563.airmirror.net.ProbeResponder
+import io.github.wangnan05563.airmirror.net.ProbeScanner
+import io.github.wangnan05563.airmirror.net.RecentTargets
 import io.github.wangnan05563.airmirror.net.ServiceBrowser
+import io.github.wangnan05563.airmirror.net.UdpProbeTransport
 import io.github.wangnan05563.airmirror.pairing.DeviceStore
 import io.github.wangnan05563.airmirror.pairing.PairingLink
 import io.github.wangnan05563.airmirror.protocol.ProtocolBoundary
@@ -62,6 +66,9 @@ class SenderActivity : Activity() {
     private var expandedFingerprint: String? = null
     private lateinit var controlBar: LinearLayout
     private lateinit var listScroller: ScrollView
+    private var scanner: ProbeScanner? = null
+    /** 三轮探测全空后由 DiscoveryLadder 给出的可执行原因；为空表示仍在搜或已经命中。 */
+    private var discoveryNotice = ""
 
     private val devices = DeviceRegistry(now = { System.currentTimeMillis() }, sameSubnet = ::sameSubnet)
     private val main = Handler(Looper.getMainLooper())
@@ -210,6 +217,7 @@ class SenderActivity : Activity() {
         // 通知权限在发起投屏时申请、录音权限在要出声时申请（见 requestCapture / enableMirrorAudio）。
         SenderControl.audio = store.mirrorAudioEnabled()
         startBrowsing()
+        startScanning()
         main.post(refresh)
 
         // 联调入口：adb 直接拉起时带 host/port/凭据，跳过发现
@@ -297,6 +305,7 @@ class SenderActivity : Activity() {
         browser = ServiceBrowser(
             this,
             onFound = { service ->
+                scanner?.noteMulticastHit()
                 devices.report(service.name, service.name, PROTOCOL, "${service.host}:${service.port}")
                 runOnUiThread { renderList() }
             },
@@ -304,6 +313,46 @@ class SenderActivity : Activity() {
                 devices.markLost(name)
                 runOnUiThread { renderList() }
             },
+        ).also { it.start() }
+    }
+
+    /**
+     * FS-07「组播被禁用 → 受控广播/直连探测」发送侧：NSD 之外再并行两路 UDP 探测。
+     * 命中即静默降级（不提示），三轮全空才把 AP 隔离/双频分离的可执行原因写进列表提示。
+     */
+    private fun startScanning() {
+        val sink = object : ProbeScanner.Sink {
+            override fun onDevice(fingerprint: String, name: String, host: String, port: Int, protocols: List<String>) {
+                // DeviceRegistry 不是线程安全的，一律回主线程再改列表
+                runOnUiThread {
+                    val address = "$host:$port"
+                    for (protocol in protocols.ifEmpty { listOf(PROTOCOL) }) {
+                        devices.report(fingerprint, name, protocol, address)
+                    }
+                }
+            }
+
+            override fun onLost(fingerprint: String) {
+                runOnUiThread { devices.markLost(fingerprint) }
+            }
+
+            override fun onNotice(text: String) {
+                discoveryNotice = text
+            }
+
+            override fun onChanged() {
+                runOnUiThread {
+                    renderList()
+                    if (discoveryNotice.isNotEmpty() && status.text == SEARCHING) status.text = discoveryNotice
+                }
+            }
+        }
+        scanner = ProbeScanner(
+            transport = UdpProbeTransport(),
+            sink = sink,
+            recent = RecentTargets.decode(store.recentTargets()),
+            interfaces = { ProbeResponder.localInterfaces() },
+            senderName = "AirMirror",
         ).also { it.start() }
     }
 
@@ -380,7 +429,7 @@ class SenderActivity : Activity() {
             }, matchWidth())
         }
         val reason = when (devices.emptyReason()) {
-            DeviceRegistry.EmptyReason.NONE_FOUND -> SEARCHING
+            DeviceRegistry.EmptyReason.NONE_FOUND -> discoveryNotice.ifEmpty { SEARCHING }
             DeviceRegistry.EmptyReason.ALL_OFFLINE -> "这些设备当前离线，可用投屏码连接"
             DeviceRegistry.EmptyReason.HAS_ONLINE -> "点设备名开始投屏"
         }
@@ -443,6 +492,10 @@ class SenderActivity : Activity() {
         status.text = CONNECTING
         lastReport = ""
         codeInput.isEnabled = false
+        // 记进 10 分钟缓存：下次组播/广播全被挡住时，这个地址就是直连探测的唯一入口
+        devices.markConnected(target.fingerprint)
+        scanner?.recordConnected(target.fingerprint, target.name, target.host, target.port)
+        scanner?.let { store.saveRecentTargets(it.snapshot()) }
         requestCapture(target, credential)
     }
 
@@ -589,6 +642,8 @@ class SenderActivity : Activity() {
     override fun onDestroy() {
         main.removeCallbacks(refresh)
         browser?.stop()
+        scanner?.let { store.saveRecentTargets(it.snapshot()); it.stop() }
+        scanner = null
         // 发送端离开界面即停止采集，避免后台持续录屏
         startService(Intent(this, CaptureService::class.java).setAction(CaptureService.ACTION_STOP))
         super.onDestroy()

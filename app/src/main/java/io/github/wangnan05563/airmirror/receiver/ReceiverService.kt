@@ -31,6 +31,12 @@ class ReceiverService : Service() {
         return START_STICKY
     }
 
+    override fun onDestroy() {
+        // UDP 探测端口要随服务一起放掉，否则进程还活着时重启服务会绑不上
+        ReceiverHost.get(this).shutdown()
+        super.onDestroy()
+    }
+
     private fun buildNotification(): Notification {
         val open = PendingIntent.getActivity(
             this,
