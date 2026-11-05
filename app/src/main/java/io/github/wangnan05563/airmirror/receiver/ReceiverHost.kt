@@ -6,11 +6,13 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.SurfaceHolder
+import io.github.wangnan05563.airmirror.device.DeviceProbe
 import io.github.wangnan05563.airmirror.dlna.DlnaServer
 import io.github.wangnan05563.airmirror.net.ProbeResponder
 import io.github.wangnan05563.airmirror.pairing.DeviceStore
 import io.github.wangnan05563.airmirror.pairing.Pairing
 import io.github.wangnan05563.airmirror.privacy.Diagnostics
+import kotlin.concurrent.thread
 
 /**
  * 接收端常驻宿主（PRD FS-13 / 8.2「后台常驻与发现」）：
@@ -23,6 +25,10 @@ class ReceiverHost private constructor(context: Context) {
     init {
         // 开机自启路径不经过 MainActivity，诊断接管要在进程宿主起来时就装好（install 幂等）
         Diagnostics(appContext).install()
+        // 分级结果决定协议是否常驻；放到后台线程算，别让解码器枚举堵住待连接页
+        thread(name = "airmirror-grade", isDaemon = true) {
+            protocolsResident = DeviceProbe.policy(appContext).protocolsResident
+        }
     }
 
     interface Ui {
@@ -47,6 +53,33 @@ class ReceiverHost private constructor(context: Context) {
     private var dlna: DlnaServer? = null
     private var probe: ProbeResponder? = null
     private var probeName = ""
+
+    /**
+     * 本机等级决定协议是否常驻（PRD 1152）：A/B 级常驻，只有 C 级参与闲置释放。
+     * 预先在后台线程算好：分级要枚举解码器能力，别在巡检那一刻占着主线程。
+     */
+    @Volatile
+    private var protocolsResident = true
+
+    /** 协议运行时的闲置计时（PRD 1152「按需加载，闲置 5 分钟释放」）。 */
+    private val residency = ProtocolResidency(now = { System.currentTimeMillis() })
+
+    /** 释放巡检：远小于 5 分钟窗口的粒度，模块不忙且闲置够久才放。 */
+    private val idleSweep = object : Runnable {
+        override fun run() {
+            if (!protocolsResident) {
+                for (module in residency.releaseCandidates()) {
+                    val released = when (module) {
+                        ProtocolModule.DLNA -> dlna?.releaseIdle() == true
+                        // 私有通道没有可释放的常驻运行时，监听必须一直在
+                        ProtocolModule.PRIVATE_CHANNEL -> false
+                    }
+                    if (released) residency.markReleased(module)
+                }
+            }
+            main.postDelayed(this, ProtocolResidency.TICK_MILLIS)
+        }
+    }
 
     /** 界面交下来的 Surface：宿主比 Surface 晚起来时（进程重启、界面重建）靠它补挂，否则画面会一直黑。 */
     private var holder: SurfaceHolder? = null
@@ -147,14 +180,22 @@ class ReceiverHost private constructor(context: Context) {
         }
         renderer.onPlayingChanged = { playing ->
             dlnaPlaying = playing
+            // 播放状态变化既算活动，也决定这一刻能不能释放（PRD 1152）
+            residency.activity(ProtocolModule.DLNA)
+            residency.hold(ProtocolModule.DLNA, playing)
             post { it.onDlnaPlaying(playing) }
         }
+        renderer.onActivity = { residency.activity(ProtocolModule.DLNA) }
         // 只投「此刻值得让用户看见」的一条：界面在后台时收到的是 lastStatus，
         // 回到前台 Surface 重建那一刻由 announceSurfaceBack 再补一条浮层
         renderer.onNotice = { text -> post { it.onNotice(text) } }
         renderer.start(deviceName)
         dlna = renderer
         ensureProbe(deviceName)
+        // 模块起来即记一笔活动：C 级的 5 分钟闲置窗口从这里开始算
+        residency.activity(ProtocolModule.DLNA)
+        main.removeCallbacks(idleSweep)
+        main.postDelayed(idleSweep, ProtocolResidency.TICK_MILLIS)
         holder?.let { mount(it) }
     }
 

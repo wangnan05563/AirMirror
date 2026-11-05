@@ -61,6 +61,12 @@ class DlnaServer(
      */
     var onNotice: ((String) -> Unit)? = null
 
+    /**
+     * 有控制点请求进来（描述文件 / SOAP / GENA 订阅）。C 级的闲置释放靠它翻新计时（PRD 1152）：
+     * 只要还有人来找这台设备，就不能算「闲置」。
+     */
+    var onActivity: (() -> Unit)? = null
+
     /** 已经提示过「画面未就绪」，等 Surface 回来收口；只在 SOAP 线程与主线程读改写，故 Volatile */
     @Volatile
     private var awaitingSurface = false
@@ -163,6 +169,7 @@ class DlnaServer(
     }
 
     private fun serve(client: Socket, friendlyName: String, ip: String) {
+        onActivity?.invoke()
         // 逐字节读头：BufferedReader 会预读，把 UTF-8 正文吃进缓冲区后就没法按原编码解了
         val input = client.getInputStream()
         val requestLine = input.readAsciiLine() ?: return
@@ -422,6 +429,25 @@ class DlnaServer(
         worker?.join(1_000)
         worker = null
         Log.i(TAG, "DMR stopped")
+    }
+
+    /** 这一刻释放播放器是否安全：没在播、没排队起播、也没有「画面未就绪」在等面。 */
+    val idleSafe: Boolean get() = !player.playing && !machine.wantsPlayback && !awaitingSurface
+
+    /**
+     * C 级闲置释放（PRD 1152）：只放播放器/解码器与已载入媒体，**保留 SSDP 与 HTTP 监听**。
+     * 监听一旦停掉，控制点就再也找不到这台设备——那是拿功能残废换内存，不是「按需加载」。
+     * 下一次 SetAVTransportURI 会按需重建播放器（[DlnaPlayer] 本来就是懒建），所以这里不需要重新拉起整个模块。
+     * @return 真正释放了返回 true；正在播/等起播/等渲染面时返回 false，交给下一轮巡检。
+     */
+    fun releaseIdle(): Boolean {
+        if (!idleSafe) return false
+        player.release()
+        machine.clear()
+        awaitingSurface = false
+        onPlayingChanged?.invoke(false)
+        Log.i(TAG, "idle release: player released, discovery kept")
+        return true
     }
 
     private class SoapError(val code: Int, override val message: String) : Exception(message)
