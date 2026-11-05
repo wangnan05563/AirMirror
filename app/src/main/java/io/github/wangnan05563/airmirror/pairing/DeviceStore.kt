@@ -129,6 +129,17 @@ class DeviceStore(context: Context) {
         prefs.edit().putBoolean(KEY_QUALITY_BADGE, enabled).apply()
     }
 
+    /**
+     * 是否已经向系统为这项权限发起过申请。必须落盘：`shouldShowRequestPermissionRationale` 在
+     * 「从未问过」与「已被不再询问」两种情况下都返回 false，只有这份记录能把它们分开；
+     * 放在内存里会在进程重启后失效，于是永久拒绝的用户又会被弹一次假装还能申请的框。
+     */
+    fun permissionAsked(key: String): Boolean = prefs.getBoolean(KEY_PERMISSION_ASKED + key, false)
+
+    fun savePermissionAsked(key: String) {
+        prefs.edit().putBoolean(KEY_PERMISSION_ASKED + key, true).apply()
+    }
+
     private companion object {
         const val FILE = "airmirror-pairing"
         const val KEY_ID = "device_id"
@@ -144,6 +155,7 @@ class DeviceStore(context: Context) {
         const val KEY_MIRROR_AUDIO = "mirror_audio"
         const val KEY_QUALITY_LOCK = "quality_lock"
         const val KEY_QUALITY_BADGE = "quality_badge"
+        const val KEY_PERMISSION_ASKED = "permission_asked_"
         const val AUTO = "auto"
     }
 }

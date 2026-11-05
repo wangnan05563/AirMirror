@@ -100,4 +100,55 @@ class RuntimePermissionTest {
             assertTrue(p.key + " 没在清单里声明", manifest.contains("android:name=\"${p.key}\""))
         }
     }
+
+    @Test
+    fun `a permission is only blocked after we asked and the system stopped giving a reason`() {
+        // 四个组合必须分开：granted 的不用管；还带理由的还能问；从没问过的也还能问。
+        // 只有「问过 + 没授予 + 系统不再给理由」才是真关死，可以引导去设置。
+        assertFalse(RuntimePermission.isBlocked(granted = true, rationale = false, asked = true))
+        assertFalse(RuntimePermission.isBlocked(granted = false, rationale = true, asked = true))
+        assertFalse(RuntimePermission.isBlocked(granted = false, rationale = false, asked = false))
+        assertTrue(RuntimePermission.isBlocked(granted = false, rationale = false, asked = true))
+    }
+
+    @Test
+    fun `never asked is never treated as permanently denied`() {
+        // 这就是 T04486 的核心：rationale 为假有两种含义，分不清就会把首次申请也写成「去设置」
+        for (p in RuntimePermission.entries) {
+            assertFalse(
+                p.name + " 没问过就被判成关死",
+                RuntimePermission.isBlocked(granted = false, rationale = false, asked = false),
+            )
+        }
+    }
+
+    @Test
+    fun `the blocked message names the setting, the purpose and the consequence`() {
+        val blocked = RuntimePermission.entries
+        val text = RuntimePermission.blockedMessage(blocked)
+        assertTrue("没说清已经在系统里关掉：" + text, text.contains("已在系统里关掉"))
+        assertTrue("没告诉用户去哪里打开：" + text, text.contains("设置"))
+        for (p in blocked) {
+            assertTrue(p.name + " 的用途没写进只能去设置的说明", text.contains(p.usage))
+            assertTrue(p.name + " 的后果没写进只能去设置的说明", text.contains(p.declined))
+        }
+    }
+
+    @Test
+    fun `returning from settings reports the granted facts only`() {
+        // 从设置页回来只认系统当前授予态：全给了才说「已全部打开」，缺的必须点名
+        assertEquals("权限已全部打开", RuntimePermission.settingsReturnNote(emptyList()))
+        val one = RuntimePermission.settingsReturnNote(listOf(RuntimePermission.MIRROR_AUDIO))
+        assertTrue(one, one.contains(RuntimePermission.MIRROR_AUDIO.label))
+        assertTrue(one, one.contains(RuntimePermission.MIRROR_AUDIO.declined))
+        assertFalse("缺权限时不能说全都打开了", one.contains("全部打开"))
+    }
+
+    @Test
+    fun `every label is the opening words of its usage line`() {
+        // 短名用于设置页回来后的状态行；和用途行对不上会让同一项权限在两个地方叫两个名字
+        for (p in RuntimePermission.entries) {
+            assertTrue(p.name + " 的短名不是用途行的开头：" + p.label + " / " + p.usage, p.usage.startsWith(p.label))
+        }
+    }
 }
