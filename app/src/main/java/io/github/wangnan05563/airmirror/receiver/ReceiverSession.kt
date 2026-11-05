@@ -80,6 +80,10 @@ class ReceiverSession(
 
     /** 每个连接跑在自己的线程上，拒绝第二个设备时要能立刻答复，不能等前一个会话结束。 */
     private val clients: MutableSet<Socket> = java.util.Collections.synchronizedSet(HashSet())
+
+    /** 跨网隧道不经过 server.accept，单独登记以便 stop 时一并收口。 */
+    private val tunnels: MutableSet<io.github.wangnan05563.airmirror.crossnet.UdpTunnel> =
+        java.util.Collections.synchronizedSet(HashSet())
     private val decision = LinkedBlockingQueue<Boolean>(1)
 
     /** 当前发送端对「让出投屏」的回答；新设备连接线程在此等待（PRD FS-09 步骤 4） */
@@ -339,10 +343,16 @@ class ReceiverSession(
      * 公网映射地址会随 NAT 变，拿它做防滥用键既拦不住刷子，还可能把无关用户捆在一起。
      */
     fun offerTunnel(tunnel: io.github.wangnan05563.airmirror.crossnet.UdpTunnel) {
+        tunnels += tunnel
         thread(name = "airmirror-crossnet-rx") {
-            runCatching {
+            try {
                 StreamConnection.overTunnel(tunnel).use { conn -> handleConnection(conn, CROSS_NET_PEER) }
-            }.onFailure { Log.w(TAG, "cross-net session ended: ${Redactor.throwable(it)}") }
+            } catch (e: Exception) {
+                Log.w(TAG, "cross-net session ended: ${Redactor.throwable(e)}")
+            } finally {
+                tunnels -= tunnel
+                runCatching { tunnel.close() }
+            }
         }
     }
 
@@ -1205,6 +1215,9 @@ class ReceiverSession(
         runCatching { server.close() }
         clients.toList().forEach { socket -> runCatching { socket.close() } }
         clients.clear()
+        // 跨网不经过 server.accept，必须单独收口，否则 stop 后隧道线程还挂在那里
+        tunnels.toList().forEach { tunnel -> runCatching { tunnel.close() } }
+        tunnels.clear()
         advertiser?.stop()
         advertiser = null
         worker?.join(1_000)

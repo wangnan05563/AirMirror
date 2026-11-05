@@ -17,6 +17,7 @@ import android.os.IBinder
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.WindowManager
+import io.github.wangnan05563.airmirror.crossnet.CrossNetLinkRegistry
 import io.github.wangnan05563.airmirror.device.CodecProbe
 import io.github.wangnan05563.airmirror.device.DeviceProbe
 import io.github.wangnan05563.airmirror.device.EncodeProfile
@@ -207,8 +208,23 @@ class CaptureService : Service() {
         val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
         @Suppress("DEPRECATION")
         val resultData = intent.getParcelableExtra<Intent>(EXTRA_RESULT_DATA)
-        if (host == null || port <= 0 || resultData == null) {
+        val crossNetToken = intent.getStringExtra(EXTRA_CROSS_NET_TOKEN)
+        // 跨网没有 host/port，只有一条已经在进程内打通的隧道；token 取不到就是链路已失效
+        val tunnel = crossNetToken?.let { CrossNetLinkRegistry.take(it)?.link }
+        if (crossNetToken != null && tunnel == null) {
+            Log.w(TAG, "cross-net link expired before service start")
+            SenderReport.last = "跨网连接已失效，请重新扫码"
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        if (tunnel == null && (host == null || port <= 0)) {
             Log.w(TAG, "missing capture parameters")
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        if (resultData == null) {
+            Log.w(TAG, "missing capture permission")
+            tunnel?.close()
             stopSelf()
             return START_NOT_STICKY
         }
@@ -218,7 +234,16 @@ class CaptureService : Service() {
         val credential = intent.getStringExtra(EXTRA_CREDENTIAL).orEmpty()
         val serviceName = intent.getStringExtra(EXTRA_SERVICE_NAME).orEmpty()
         worker = thread(name = "airmirror-capture") {
-            runSession(host, port, resultCode, resultData, deviceId, credential, serviceName)
+            runSession(
+                host = host.orEmpty(),
+                port = port,
+                resultCode = resultCode,
+                resultData = resultData,
+                deviceId = deviceId,
+                credential = credential,
+                serviceName = serviceName,
+                tunnel = tunnel,
+            )
         }
         return START_NOT_STICKY
     }
@@ -255,6 +280,7 @@ class CaptureService : Service() {
         deviceId: String,
         credential: String,
         serviceName: String,
+        tunnel: io.github.wangnan05563.airmirror.crossnet.UdpTunnel?,
     ) {
         try {
             SenderReport.last = ""
@@ -267,7 +293,7 @@ class CaptureService : Service() {
             recoveryQuality.stop()
             this.serviceName = serviceName
             // 先握手、先授权，通过后才开始采集屏幕：被拒时不该已经在录屏（PRD 14.4 最小采集）
-            var conn = openConnection(host, port, deviceId, credential)
+            var conn = openConnection(host, port, deviceId, credential, tunnel)
             connection = conn
             sessionLocalIp = localIpv4().orEmpty()
             var currentHost = host
@@ -316,6 +342,12 @@ class CaptureService : Service() {
             while (running) {
                 // 断链后先续会再继续送帧；续不上已经把结论文案写好，直接收尾
                 if (peerGone) {
+                    if (tunnel != null) {
+                        // 跨网链路断开后旧 NAT 映射已失效，重新打洞需要新会话；让用户重新扫码，
+                        // 不用局域网那套「解析服务名」的续会逻辑，避免假装在恢复
+                        SenderReport.last = "跨网连接已断开，请重新扫码"
+                        break
+                    }
                     val resumed = recover(conn, currentHost, currentPort, deviceId) ?: break
                     conn = resumed.conn
                     connection = conn
@@ -583,11 +615,16 @@ class CaptureService : Service() {
         port: Int,
         deviceId: String,
         credential: String,
+        tunnel: io.github.wangnan05563.airmirror.crossnet.UdpTunnel? = null,
     ): StreamConnection {
-        val socket = Socket()
-        socket.tcpNoDelay = true
-        socket.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
-        val conn = StreamConnection(socket)
+        val conn = if (tunnel != null) {
+            StreamConnection.overTunnel(tunnel)
+        } else {
+            val socket = Socket()
+            socket.tcpNoDelay = true
+            socket.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
+            StreamConnection(socket)
+        }
         // 投屏码同时进握手签名与密钥派生（T04493）：中间人换公钥会在 HELLO 阶段被大屏拒掉
         val ack = runCatching { conn.connectAsClient(Build.MODEL, MIRROR_CAPABILITIES, credential = credential) }
             .getOrElse { e ->
@@ -1083,6 +1120,9 @@ class CaptureService : Service() {
         const val EXTRA_DEVICE_ID = "deviceId"
         const val EXTRA_CREDENTIAL = "credential"
         const val EXTRA_SERVICE_NAME = "serviceName"
+
+        /** 同进程内已打通的跨网隧道 token；与 host/port 互斥。 */
+        const val EXTRA_CROSS_NET_TOKEN = "crossNetToken"
         const val ACTION_STOP = "io.github.wangnan05563.airmirror.STOP_CAPTURE"
         private const val TAG = "AirMirrorCapture"
         private const val CHANNEL_ID = "airmirror-capture"

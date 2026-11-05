@@ -25,6 +25,13 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import io.github.wangnan05563.airmirror.crossnet.CandidateCollector
+import io.github.wangnan05563.airmirror.crossnet.CrossNetConnector
+import io.github.wangnan05563.airmirror.crossnet.CrossNetLinkRegistry
+import io.github.wangnan05563.airmirror.crossnet.CrossNetProtocol
+import io.github.wangnan05563.airmirror.crossnet.HttpSignalingTransport
+import io.github.wangnan05563.airmirror.crossnet.SignalingClient
+import io.github.wangnan05563.airmirror.crossnet.SignalingSettings
 import io.github.wangnan05563.airmirror.dlna.localIpv4
 import io.github.wangnan05563.airmirror.net.DeviceRegistry
 import io.github.wangnan05563.airmirror.net.ProbeResponder
@@ -40,6 +47,7 @@ import io.github.wangnan05563.airmirror.sender.RuntimePermission
 import io.github.wangnan05563.airmirror.sender.SenderControl
 import io.github.wangnan05563.airmirror.sender.SenderReport
 import io.github.wangnan05563.airmirror.sender.SystemAudio
+import kotlin.concurrent.thread
 
 /**
  * 发送端选择页（PRD FR-02 + §11.3）：设备卡片只给设备名与协议角标，不展示 IP 等实现细节；
@@ -64,7 +72,10 @@ class SenderActivity : Activity() {
     private var pending: Target? = null
     private var pendingCredential: String = ""
     private var pendingTarget: Pair<Target, String>? = null
+    /** 跨网链路在进程内的交接 token；局域网路径恒为 null。 */
+    private var pendingCrossNetToken: String? = null
     private var pendingAudio = false
+    private lateinit var crossNetRow: TextView
     private var lastCasting = false
     /** 当前展开的设备卡片；同一时刻只展开一张（PRD §11.3）。 */
     private var expandedFingerprint: String? = null
@@ -172,8 +183,17 @@ class SenderActivity : Activity() {
             text = "电视待连接页上的 6 位数字"
             textSize = Theme.PHONE_BODY_SP
             setTextColor(Theme.TEXT_SECONDARY)
-            setPadding(Theme.dp(this@SenderActivity, 4), 0, 0, Theme.dp(this@SenderActivity, 12))
+            setPadding(Theme.dp(this@SenderActivity, 4), 0, 0, Theme.dp(this@SenderActivity, 4))
         }, matchWidth())
+        // PRD FS-04：跨网入口与局域网并列，但只在「局域网没搜到设备」时才会尝试，
+        // 填了端点才启用；不填就不向任何外部服务发请求。
+        crossNetRow = TextView(this).apply {
+            textSize = Theme.PHONE_BODY_SP
+            setTextColor(Theme.TEXT_SECONDARY)
+            setPadding(Theme.dp(this@SenderActivity, 4), 0, 0, Theme.dp(this@SenderActivity, 12))
+            setOnClickListener { editCrossNet() }
+        }
+        root.addView(crossNetRow, matchWidth())
 
         hint = TextView(this).apply {
             textSize = Theme.PHONE_BODY_SP
@@ -239,6 +259,7 @@ class SenderActivity : Activity() {
         // PRD §04「权限申请在真正用到时才弹出，并说明用途」：这里不弹任何权限框，
         // 通知权限在发起投屏时申请、录音权限在要出声时申请（见 requestCapture / enableMirrorAudio）。
         SenderControl.audio = store.mirrorAudioEnabled()
+        refreshCrossNetRow()
         startBrowsing()
         startScanning()
         main.post(refresh)
@@ -477,7 +498,15 @@ class SenderActivity : Activity() {
         val online = devices.rows().filter { it.online }
         val usable = online.filter { ProtocolBoundary.bestSupported(it.protocols) != null }
         when {
-            online.isEmpty() -> toast("没搜到设备，在下面填电视地址")
+            online.isEmpty() -> {
+                // PRD FS-04：同网搜不到设备不等于不能投——跨网信令正是为这种场景兜底。
+                // 未配置信令时保持原来的可执行提示，不偷偷替用户开启任何外部服务。
+                if (SignalingSettings.enabled(store.signalingUrl())) {
+                    connectCrossNet(code)
+                } else {
+                    toast("没搜到设备，在下面填电视地址")
+                }
+            }
             usable.isEmpty() -> toast(
                 ProtocolBoundary.describe(online.first().strongest).text(),
             )
@@ -487,6 +516,52 @@ class SenderActivity : Activity() {
                 if (target == null) toast("设备地址还没解析出来，稍后再试") else connectTo(target, code)
             }
             else -> toast("发现多台设备，先点选要投的那台")
+        }
+    }
+
+    /**
+     * 跨网：先用信令配对并打洞，成功后把隧道交给前台采集服务。
+     * 这一步必须在后台线程做（信令轮询与 UDP 打洞都是阻塞 IO）。
+     */
+    private fun connectCrossNet(code: String) {
+        status.text = "正在跨网连接…"
+        codeInput.isEnabled = false
+        thread(name = "airmirror-crossnet-out", isDaemon = true) {
+            val outcome = runCatching {
+                val client = SignalingClient(HttpSignalingTransport(store.signalingUrl()))
+                CrossNetConnector(
+                    role = CrossNetProtocol.Role.SENDER,
+                    client = client,
+                    collect = { socket ->
+                        CandidateCollector.collect(
+                            socket,
+                            CandidateCollector.Config(stunHost = store.stunHost()),
+                        )
+                    },
+                ).connectSender(code)
+            }.getOrElse { error ->
+                Log.w(TAG, "cross-net connect failed: ${error.message}")
+                CrossNetConnector.Outcome(
+                    state = io.github.wangnan05563.airmirror.crossnet.CrossNetState.FAILED,
+                    prompt = "跨网连接失败，请检查网络后重试",
+                    failure = io.github.wangnan05563.airmirror.crossnet.FailureReason.NO_INTERNET,
+                )
+            }
+            main.post {
+                if (isFinishing) {
+                    outcome.link?.let { runCatching { it.close() } }
+                    return@post
+                }
+                if (outcome.connected && outcome.link != null) {
+                    val token = CrossNetLinkRegistry.put(outcome)
+                    pendingCrossNetToken = token
+                    requestCapture(Target("跨网设备", "", 0, "crossnet"), code, token)
+                } else {
+                    codeInput.isEnabled = true
+                    status.text = outcome.prompt.ifEmpty { "跨网连接失败" }
+                    toast(outcome.prompt.ifEmpty { "跨网连接失败" })
+                }
+            }
         }
     }
 
@@ -522,7 +597,8 @@ class SenderActivity : Activity() {
         requestCapture(target, credential)
     }
 
-    private fun requestCapture(target: Target, credential: String) {
+    private fun requestCapture(target: Target, credential: String, crossNetToken: String? = null) {
+        pendingCrossNetToken = crossNetToken
         // 发起投屏才是「真正用到」前台服务通知与声音采集的时刻；缺什么先说明用途再一起申请一次
         val missing = RuntimePermission.needs(
             wantsAudio = SenderControl.audio && SystemAudio.capable(),
@@ -786,22 +862,62 @@ class SenderActivity : Activity() {
         val target = pending ?: return
         if (resultCode != RESULT_OK || data == null) {
             codeInput.isEnabled = true
+            // 没拿到录屏授权就没有会话，跨网隧道必须在此时释放，否则线程和 socket 一直挂着
+            pendingCrossNetToken?.let { CrossNetLinkRegistry.discard(it) }
+            pendingCrossNetToken = null
             status.text = if (lastReport.isEmpty()) hint.text else lastReport
             toast("未获得屏幕录制授权")
             return
         }
+        val token = pendingCrossNetToken
         val intent = Intent(this, CaptureService::class.java).apply {
-            putExtra(CaptureService.EXTRA_HOST, target.host)
-            putExtra(CaptureService.EXTRA_PORT, target.port)
             putExtra(CaptureService.EXTRA_RESULT_CODE, resultCode)
             putExtra(CaptureService.EXTRA_RESULT_DATA, data)
             putExtra(CaptureService.EXTRA_DEVICE_ID, store.deviceId())
             putExtra(CaptureService.EXTRA_CREDENTIAL, pendingCredential)
-            // 断线后按服务名重新解析：IP 变了才能找到同一台设备（PRD FS-10）
-            putExtra(CaptureService.EXTRA_SERVICE_NAME, target.name)
+            if (token != null) {
+                // 跨网没有可解析的 host/port：只带进程内 token，服务端按 token 取已打通的隧道
+                putExtra(CaptureService.EXTRA_CROSS_NET_TOKEN, token)
+                putExtra(CaptureService.EXTRA_SERVICE_NAME, "跨网设备")
+            } else {
+                putExtra(CaptureService.EXTRA_HOST, target.host)
+                putExtra(CaptureService.EXTRA_PORT, target.port)
+                // 断线后按服务名重新解析：IP 变了才能找到同一台设备（PRD FS-10）
+                putExtra(CaptureService.EXTRA_SERVICE_NAME, target.name)
+            }
         }
+        pendingCrossNetToken = null
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent) else startService(intent)
-        status.text = "正在投屏到 ${target.name}"
+        status.text = if (token != null) "正在投屏到跨网设备" else "正在投屏到 ${target.name}"
+    }
+
+    /** 跨网端点与应用内说明；与接收端共用同一份落盘设置，手机上填一次即可。 */
+    private fun refreshCrossNetRow() {
+        val url = store.signalingUrl()
+        val on = SignalingSettings.enabled(url)
+        crossNetRow.text = if (on) "跨网信令：已配置（$url）" else "跨网信令：未配置（点此设置，仅跨网时使用）"
+        crossNetRow.setTextColor(if (on) Theme.ACCENT else Theme.TEXT_SECONDARY)
+    }
+
+    private fun editCrossNet() {
+        val input = EditText(this).apply {
+            setText(store.signalingUrl())
+            hint = "https://你的信令服务"
+            setSingleLine()
+            setTextColor(Theme.TEXT_PRIMARY)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("跨网信令服务")
+            .setMessage("留空则不启用跨网。信令只交换建连信息，画面仍点对点直连、不经服务器。")
+            .setView(input)
+            .setPositiveButton("保存") { _, _ ->
+                store.saveSignalingUrl(input.text.toString())
+                refreshCrossNetRow()
+                val on = SignalingSettings.enabled(store.signalingUrl())
+                toast(if (on) "跨网已启用；同网搜不到设备时会自动尝试" else "跨网已关闭")
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     private fun sameSubnet(address: String): Boolean {
@@ -816,6 +932,9 @@ class SenderActivity : Activity() {
 
     override fun onDestroy() {
         main.removeCallbacks(refresh)
+        // 已建好但还没交给前台服务的跨网隧道必须在这里释放，daemon 线程不会替我们做这件事
+        pendingCrossNetToken?.let { CrossNetLinkRegistry.discard(it) }
+        pendingCrossNetToken = null
         browser?.stop()
         scanner?.let { store.saveRecentTargets(it.snapshot()); it.stop() }
         scanner = null

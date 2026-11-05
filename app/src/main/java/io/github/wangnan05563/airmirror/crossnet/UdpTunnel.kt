@@ -37,6 +37,9 @@ class UdpTunnel(
     private var nextSeq = 0L
     private var lastAck = -1L
     private var expectedSeq = 0L
+    /** 对端 FIN 的序号：它排在所有数据之后，必须等前面的数据都交付了才能收尾。 */
+    private var finSeq = Long.MAX_VALUE
+    private var finSignaled = false
     @Volatile private var readTimeoutMs = 0
     @Volatile private var eof = false
     @Volatile private var closed = false
@@ -114,6 +117,22 @@ class UdpTunnel(
 
     override fun close() {
         if (closed) return
+        // 先把已入队但还没被确认的数据等一等：UDP 乱序时立刻发 FIN，对端可能只看到 FIN 而永远收不到最后一帧。
+        val deadline = System.currentTimeMillis() + CLOSE_GRACE_MS
+        while (System.currentTimeMillis() < deadline) {
+            lock.lock()
+            try {
+                if (pending.isEmpty()) break
+            } finally {
+                lock.unlock()
+            }
+            try {
+                Thread.sleep(CLOSE_POLL_MS)
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
+                break
+            }
+        }
         // FIN 只发一次且不等确认：对端靠重传也能收到，本地不必为收尾再拖一个超时窗口
         sendFrame(FLAG_FIN, nextSequence(), -1, ByteArray(0))
         closed = true
@@ -130,7 +149,7 @@ class UdpTunnel(
     }
 
     private fun pollChunk(): ByteArray? {
-        if (eof || closed) return null
+        // 不能因为 eof/closed 就直接返回：远端 FIN 可能先于最后一个数据包到达，队列里还有数据要交付
         val chunk = if (readTimeoutMs <= 0) {
             chunks.take()
         } else {
@@ -205,8 +224,22 @@ class UdpTunnel(
             }
         }
         if ((frame.flags and FLAG_FIN) != 0) {
-            eof = true
-            chunks.offer(EOF_MARK)
+            finSeq = frame.seq
+            maybeFinish()
+        }
+    }
+
+    /** FIN 到达不等于可以收尾：它排在数据之后，必须等 expectedSeq 追上 FIN 的序号。 */
+    private fun maybeFinish() {
+        lock.lock()
+        try {
+            if (!finSignaled && expectedSeq >= finSeq) {
+                finSignaled = true
+                eof = true
+                chunks.offer(EOF_MARK)
+            }
+        } finally {
+            lock.unlock()
         }
     }
 
@@ -237,6 +270,7 @@ class UdpTunnel(
                         }
                         expectedSeq++
                     }
+                    maybeFinish()
                     return true
                 }
                 else -> {
@@ -327,6 +361,8 @@ class UdpTunnel(
         const val MAX_RETRANSMITS = 40
         const val MAX_OUT_OF_ORDER = 32
         const val QUEUE_CHUNKS = 2048
+        const val CLOSE_GRACE_MS = 600L
+        const val CLOSE_POLL_MS = 20L
 
         const val FLAG_DATA = 1
         const val FLAG_ACK = 2
