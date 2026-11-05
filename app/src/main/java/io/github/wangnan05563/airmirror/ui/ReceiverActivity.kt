@@ -58,6 +58,8 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     private lateinit var deviceNameText: TextView
     private lateinit var codeText: TextView
     private lateinit var browserText: TextView
+    private lateinit var browserQr: ImageView
+    private var lastBrowserUrl = ""
     private lateinit var countdownText: TextView
     private lateinit var ring: CountdownRingView
     private lateinit var qrView: ImageView
@@ -330,6 +332,17 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             visibility = View.GONE
         }
         waiting.addView(browserText, matchWidth())
+        // PRD §5.9：地址之外再给一张二维码，访客扫一下就能打开，不用手抄 30 多个字符
+        browserQr = ImageView(this).apply {
+            setBackgroundColor(0xFFFFFFFF.toInt())
+            visibility = View.GONE
+        }
+        waiting.addView(
+            browserQr,
+            centeredBlock(Theme.dp(this@ReceiverActivity, 120)).apply {
+                topMargin = Theme.dp(this@ReceiverActivity, 8)
+            },
+        )
 
         countdownText = TextView(this).apply {
             textSize = Theme.BODY_SP
@@ -1173,9 +1186,17 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         val browser = host.browserCastUrl()
         if (browser.isNullOrBlank()) {
             browserText.visibility = View.GONE
+            browserQr.visibility = View.GONE
+            lastBrowserUrl = ""
         } else {
             browserText.visibility = View.VISIBLE
             browserText.text = getString(R.string.browser_cast_url, browser)
+            // 二维码重算要走 zxing，不能每秒刷新都做一次；地址不变就复用上一张
+            if (browser != lastBrowserUrl) {
+                lastBrowserUrl = browser
+                browserQr.setImageBitmap(Qr.bitmap(browser, BROWSER_QR_PIXELS))
+            }
+            browserQr.visibility = View.VISIBLE
         }
         val payload = if (port > 0 && !locked) pairing.qrPayload(address, port, deviceNameText.text.toString()) else ""
         if (payload.isNotEmpty() && payload != lastPayload) {
@@ -1275,6 +1296,8 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         const val NOTICE_MS = 3_000L
         const val END_CONFIRM_MS = 10_000L
         const val QR_PIXELS = 420
+        /** 访客入口二维码按 120dp 显示，240px 足够 TV 与手机摄像头识别 */
+        const val BROWSER_QR_PIXELS = 240
         const val LOCK_PLACEHOLDER = "------"
     }
 }
