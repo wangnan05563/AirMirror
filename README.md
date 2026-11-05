@@ -57,6 +57,15 @@ $env:JAVA_HOME = '<你的 JDK 17 目录>'
 
 App 内「检查更新」会查询内置仓库的 GitHub Release；安装新版本时由系统弹「未知来源」授权，App 不自批。
 
+一键发布（需要 `gh` 且已 `gh auth login`）：
+
+```powershell
+.\scripts\release.ps1 -DryRun     # 只校验流程与产物，不写任何远端
+.\scripts\release.ps1             # 构建 → 打 tag → 推 tag → 发 GitHub Release
+```
+
+脚本在前置检查全部通过后才写远端：缺 `gh`/凭据、产物不全或 tag 已存在时当场失败，不会留下「本地有 tag、远端没 Release」的半成品。现有产物若带 `-unsigned` 会显式警告。
+
 产物在 `app/build/outputs/apk/debug/`（`app-universal-debug.apk` 为全 ABI 包）。装到已连接的设备并拉起接收端：
 
 ```cmd
