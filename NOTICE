@@ -1,0 +1,31 @@
+AirMirror
+Copyright 2026 AirMirror contributors
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+--------------------------------------------------------------------------------
+Third-party references (protocol study only, not linked or redistributed)
+
+The following projects were consulted for protocol flow and architecture design.
+No source code from these projects is compiled into or distributed with AirMirror:
+
+- Genymobile/scrcpy (Apache-2.0)
+- barry-ran/QtScrcpy (Apache-2.0)
+- alexballas/go2tv (MIT)
+- antimof/UxPlay (GPL-3.0)
+- openairplay/airplay2-receiver (license TBD)
+- albfan/miraclecast (LGPL)
+- pavlobu/deskreen (AGPL)
+
+AirPlay and Google Cast are proprietary protocols. AirMirror implements them
+independently (when implemented) without vendor trademarks or certification claims.

@@ -31,7 +31,7 @@
 
 ## 许可与复用边界
 
-项目已确定开源（PRD 的 Q-2 裁定），**许可证选型待定**。在选型落地前，按 PRD §8.10 的保守口径执行：GPL / LGPL / AGPL 的同类实现（UxPlay、airplay2-receiver、miraclecast、deskreen 等）只参考协议流程与架构设计，不链接、不复制代码；Apache-2.0 / MIT 项目（scrcpy、QtScrcpy、go2tv）可引入，但需保留版权声明与许可副本。
+项目已确定开源（PRD 的 Q-2 裁定），**许可证为 Apache-2.0**（2026-11-05 用户裁定；全文见 `LICENSE`，第三方参考清单与版权声明见 `NOTICE`）。无论选型如何，仍按 PRD §8.10 的保守口径执行：GPL / LGPL / AGPL 的同类实现（UxPlay、airplay2-receiver、miraclecast、deskreen 等）只参考协议流程与架构设计，不链接、不复制代码；Apache-2.0 / MIT 项目（scrcpy、QtScrcpy、go2tv）可引入，但需保留版权声明与许可副本。
 
 AirPlay、Google Cast 为私有协议，本项目独立实现，不含任何厂商商标；相关合规评估在上架前完成。
 
