@@ -254,7 +254,15 @@ class ReceiverHost private constructor(context: Context) {
             credential = {
                 if (pairing.code.state() == CastCode.State.LOCKED) "" else pairing.code.code()
             },
-            onLink = { outcome -> outcome.link?.let { session?.offerTunnel(it) } },
+            onLink = { outcome ->
+                val active = session
+                if (active == null) {
+                    // 宿主还没准备好就交付链路：必须自己关掉，否则 socket 与线程会一直挂着
+                    outcome.link?.let { runCatching { it.close() } }
+                } else {
+                    outcome.link?.let { active.offerTunnel(it) }
+                }
+            },
         )
         inbound.start()
         crossNet = inbound

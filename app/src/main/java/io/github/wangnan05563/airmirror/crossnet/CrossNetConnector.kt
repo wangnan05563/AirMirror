@@ -102,6 +102,8 @@ class CrossNetConnector(
             val link = UdpTunnel(bound, punch.peer).start()
             Outcome(session.state, session.prompt, null, sessionId, link, punch.peer)
         } catch (e: SignalingException) {
+            // 超时也要主动放弃会话：否则服务端会一直保留这个 session，等它自己过期
+            runCatching { signaling.abort(sessionId, role, e.reason) }
             session.onFailure(e.reason)
             socket?.let { closeQuietly(it) }
             Outcome(session.state, session.prompt, session.failure, sessionId)
