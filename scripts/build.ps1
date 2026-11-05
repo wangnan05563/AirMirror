@@ -6,7 +6,8 @@
 param(
     [switch]$Release,
     [switch]$Online,
-    [switch]$SkipTests
+    [switch]$SkipTests,
+    [switch]$Patch
 )
 
 $ErrorActionPreference = 'Stop'
@@ -20,6 +21,25 @@ function Stop-WithError([string]$message) {
 
 function Write-Check([string]$name, [string]$detail) {
     Write-Host ("[ OK ] {0}: {1}" -f $name, $detail) -ForegroundColor Green
+}
+
+# Android has no package.json: keep the daily-sequence patch suffix in versionName.
+# The sequence state lives under build/ (git-ignored), so plain builds stay reproducible.
+function New-PatchVersion {
+    $buildDir = Join-Path $root 'build'
+    if (-not (Test-Path $buildDir)) { New-Item -ItemType Directory -Path $buildDir | Out-Null }
+    $seqFile = Join-Path $buildDir 'patch-sequence.json'
+    $today = Get-Date -Format 'yyyyMMdd'
+    $seq = 0
+    if (Test-Path $seqFile) {
+        $state = Get-Content $seqFile -Raw | ConvertFrom-Json
+        if ("$($state.date)" -eq $today) { $seq = [int]$state.seq }
+    }
+    $seq++
+    @{ date = $today; seq = $seq } | ConvertTo-Json -Compress | Set-Content -Path $seqFile -Encoding UTF8
+    $patchNumber = '{0}-{1:D3}' -f $today, $seq
+    Set-Content -Path (Join-Path $buildDir 'patch.txt') -Value $patchNumber -Encoding UTF8
+    return $patchNumber
 }
 
 Write-Host "AirMirror build ($variant)"
@@ -97,6 +117,11 @@ Write-Check 'gradlew' $gradlew
 # 5. Build + tests. Offline by default because CI-less local builds already
 #    have the dependency cache; pass -Online after changing dependencies.
 $gradleArgs = @()
+if ($Patch) {
+    $patchNumber = New-PatchVersion
+    Write-Host "[INFO] patch version: $patchNumber" -ForegroundColor Cyan
+    $gradleArgs += "-PversionPatch=$patchNumber"
+}
 if (-not $Online) { $gradleArgs += '--offline' }
 if (-not $SkipTests) { $gradleArgs += $(if ($Release) { 'testReleaseUnitTest' } else { 'testDebugUnitTest' }) }
 $gradleArgs += $(if ($Release) { 'assembleRelease' } else { 'assembleDebug' })

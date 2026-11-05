@@ -3,6 +3,10 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// 发布构建的当天日期+序号（YYYYMMDD-NNN）由 scripts/build.ps1 -Patch 生成并传入；
+// 普通调试构建不传，versionName 保持固定的 0.1.0-m0，保证同一 commit 的产物可复现。
+val versionPatch = providers.gradleProperty("versionPatch").orNull
+
 android {
     namespace = "io.github.wangnan05563.airmirror"
     compileSdk = 35
@@ -13,7 +17,7 @@ android {
         minSdk = 19
         targetSdk = 35
         versionCode = 1
-        versionName = "0.1.0-m0"
+        versionName = if (versionPatch.isNullOrBlank()) "0.1.0-m0" else "0.1.0-m0.$versionPatch"
     }
 
     // PRD 1.1 安装包与 ABI 适配：发布侧产出 armeabi-v7a(32 位, 老盒子默认) + arm64-v8a(64 位)
