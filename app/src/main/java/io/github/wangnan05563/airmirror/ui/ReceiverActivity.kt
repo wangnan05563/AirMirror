@@ -2,6 +2,7 @@ package io.github.wangnan05563.airmirror.ui
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -12,6 +13,7 @@ import android.view.View
 import android.view.SurfaceView
 import android.view.WindowManager
 import android.widget.Button
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -31,6 +33,7 @@ import io.github.wangnan05563.airmirror.pairing.Pairing
 import io.github.wangnan05563.airmirror.privacy.Diagnostics
 import io.github.wangnan05563.airmirror.protocol.ProtocolBoundary
 import io.github.wangnan05563.airmirror.receiver.ReceiverHost
+import io.github.wangnan05563.airmirror.util.Onboarding
 import io.github.wangnan05563.airmirror.receiver.ReceiverService
 import io.github.wangnan05563.airmirror.receiver.ReceiverSession
 
@@ -83,6 +86,18 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     private lateinit var diagnostics: Diagnostics
     private lateinit var diagnosticsRow: TextView
     private lateinit var clearDataRow: TextView
+    /** 首启三步引导（PRD §1.2）：覆盖在待连接页之上的全屏卡片；非首启时整块 GONE。 */
+    private lateinit var onboarding: FrameLayout
+    private lateinit var onboardStepHint: TextView
+    private lateinit var onboardTitle: TextView
+    private lateinit var onboardBody: TextView
+    private lateinit var onboardInput: EditText
+    private lateinit var onboardAutoToggle: TextView
+    private lateinit var onboardSkipAll: TextView
+    private lateinit var onboardBack: Button
+    private lateinit var onboardSkip: Button
+    private lateinit var onboardNext: Button
+    private var onboardStep = 1
     /** 本机上限（分级 ∩ 硬解 ∩ 四道门）与门判定结果，后台探测完回填；未探到为 null */
     private var localCeiling: QualityTier? = null
     private var gateReport: GateReport? = null
@@ -206,14 +221,21 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             FrameLayout.LayoutParams.WRAP_CONTENT,
             Gravity.CENTER,
         ).apply { setMargins(Theme.dp(this@ReceiverActivity, 32), 0, Theme.dp(this@ReceiverActivity, 32), 0) })
+        // 首启三步引导覆盖在最上层（FrameLayout 后 add 的盖在先 add 的之上）
+        root.addView(buildOnboarding(), fullScreen())
         root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> refitVideo() }
         setContentView(root)
         // 待连接页 / 设置面板 / 授权与结束按钮统一接遥控器焦点
         TvFocus.applyTree(root)
 
         deviceNameText.text = receiverName()
-        startSessions(receiverName())
-        main.post(ticker)
+        if (store.firstLaunch()) {
+            // 引导结束（或跳过）后才真正起会话，保证用户最后设的设备名生效（PRD §1.2 首启零阻塞）
+            showOnboarding()
+        } else {
+            startSessions(receiverName())
+            main.post(ticker)
+        }
         Log.i(TAG, "activity attached to host casting=${host.casting} recovering=${host.recovering}")
     }
 
@@ -877,6 +899,162 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         host.attachUi(hostUi)
         ReceiverService.start(this)
     }
+
+    // ───────────────────────── 首启三步引导（PRD §1.2） ─────────────────────────
+
+    /** 覆盖待连接页的全屏卡片：步骤提示 + 标题 + 正文 +（按步出现的输入框/开关）+ 导航按钮 + 跳过全部。 */
+    private fun buildOnboarding(): FrameLayout {
+        onboarding = FrameLayout(this).apply { setBackgroundColor(Theme.BACKGROUND); visibility = View.GONE }
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setBackgroundColor(Theme.SURFACE)
+            setPadding(Theme.dp(this@ReceiverActivity, 32), Theme.dp(this@ReceiverActivity, 28), Theme.dp(this@ReceiverActivity, 32), Theme.dp(this@ReceiverActivity, 28))
+        }
+        onboardStepHint = TextView(this).apply { textSize = Theme.BODY_SP; setTextColor(Theme.TEXT_SECONDARY); gravity = Gravity.CENTER }
+        card.addView(onboardStepHint, matchWidth())
+        onboardTitle = TextView(this).apply {
+            textSize = Theme.TITLE_SP; setTextColor(Theme.TEXT_PRIMARY); gravity = Gravity.CENTER
+            setPadding(0, Theme.dp(this@ReceiverActivity, 16), 0, 0)
+        }
+        card.addView(onboardTitle, matchWidth())
+        onboardBody = TextView(this).apply {
+            textSize = Theme.BODY_SP; setTextColor(Theme.TEXT_SECONDARY); gravity = Gravity.CENTER
+            setPadding(0, Theme.dp(this@ReceiverActivity, 16), 0, 0)
+        }
+        card.addView(onboardBody, matchWidth())
+        onboardInput = EditText(this).apply {
+            textSize = Theme.BODY_SP
+            setTextColor(Theme.TEXT_PRIMARY)
+            setHintTextColor(Theme.TEXT_SECONDARY)
+            setBackgroundColor(Theme.BACKGROUND)
+            hint = "设备名"
+            gravity = Gravity.CENTER
+            visibility = View.GONE
+            val p = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            p.topMargin = Theme.dp(this@ReceiverActivity, 16)
+            p.leftMargin = Theme.dp(this@ReceiverActivity, 24)
+            p.rightMargin = Theme.dp(this@ReceiverActivity, 24)
+            layoutParams = p
+        }
+        card.addView(onboardInput)
+        onboardAutoToggle = TextView(this).apply {
+            textSize = Theme.BODY_SP; setTextColor(Theme.TEXT_PRIMARY); gravity = Gravity.CENTER
+            setPadding(0, Theme.dp(this@ReceiverActivity, 16), 0, 0)
+            setOnClickListener { store.saveAutoStartEnabled(!store.autoStartEnabled()); refreshOnboardAutoToggle() }
+        }
+        card.addView(onboardAutoToggle, matchWidth())
+
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; setPadding(0, Theme.dp(this@ReceiverActivity, 24), 0, 0) }
+        onboardBack = Button(this).apply { text = "上一步"; setTextColor(Theme.TEXT_SECONDARY); setOnClickListener { prevOnboardingStep() } }
+        onboardSkip = Button(this).apply { text = "跳过"; setTextColor(Theme.ACCENT); setOnClickListener { skipOnboardingStep() } }
+        onboardNext = Button(this).apply { text = "下一步"; setTextColor(Theme.ACCENT); setOnClickListener { advanceOrFinish() } }
+        row.addView(onboardBack); row.addView(onboardSkip); row.addView(onboardNext)
+        card.addView(row, matchWidth())
+
+        onboarding.addView(card, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER,
+        ).apply {
+            leftMargin = Theme.dp(this@ReceiverActivity, 48)
+            rightMargin = Theme.dp(this@ReceiverActivity, 48)
+        })
+        onboardSkipAll = TextView(this).apply {
+            text = "跳过全部"
+            textSize = Theme.BODY_SP
+            setTextColor(Theme.TEXT_SECONDARY)
+            setPadding(Theme.dp(this@ReceiverActivity, 16), Theme.dp(this@ReceiverActivity, 12), Theme.dp(this@ReceiverActivity, 16), Theme.dp(this@ReceiverActivity, 12))
+            setOnClickListener { finishOnboarding(store.deviceName(Onboarding.defaultDeviceName(Build.MODEL))) }
+        }
+        onboarding.addView(onboardSkipAll, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.END,
+        ).apply { rightMargin = Theme.dp(this@ReceiverActivity, 20); topMargin = Theme.dp(this@ReceiverActivity, 20) })
+        return onboarding
+    }
+
+    private fun showOnboarding() {
+        onboardStep = 1
+        renderOnboardingStep()
+        onboarding.visibility = View.VISIBLE
+        onboardNext.requestFocus()
+    }
+
+    private fun renderOnboardingStep() {
+        onboardStepHint.text = "第 $onboardStep / 3 步"
+        when (onboardStep) {
+            1 -> {
+                onboardTitle.text = "允许局域网访问"
+                onboardBody.text = "AirMirror 通过局域网接收投屏。请让手机与这台电视连接同一个 Wi-Fi。无需任何额外授权，跳过也可正常使用。"
+                onboardInput.visibility = View.GONE
+                onboardAutoToggle.visibility = View.GONE
+                onboardBack.visibility = View.GONE
+                onboardNext.text = "下一步"
+            }
+            2 -> {
+                onboardTitle.text = "允许后台运行 / 自启"
+                onboardBody.text = "开启后电视重启会自动打开接收端，并在后台持续等待投屏。若系统拦截自启，需到厂商设置里加入白名单（PRD FS-13）。"
+                onboardInput.visibility = View.GONE
+                onboardAutoToggle.visibility = View.VISIBLE
+                refreshOnboardAutoToggle()
+                onboardBack.visibility = View.VISIBLE
+                onboardNext.text = "下一步"
+            }
+            else -> {
+                onboardTitle.text = "设置设备名"
+                onboardBody.text = "其他设备会在列表里看到这个名字。可保留默认，也可改成好记的名字。"
+                if (onboardInput.text.toString().isEmpty()) {
+                    onboardInput.setText(store.deviceName(Onboarding.defaultDeviceName(Build.MODEL)))
+                }
+                onboardInput.visibility = View.VISIBLE
+                onboardInput.setSelection(onboardInput.text.length)
+                onboardAutoToggle.visibility = View.GONE
+                onboardBack.visibility = View.VISIBLE
+                onboardNext.text = "完成"
+            }
+        }
+    }
+
+    private fun refreshOnboardAutoToggle() {
+        onboardAutoToggle.text = "开机自启：${if (store.autoStartEnabled()) "开" else "关"}（点击切换）"
+    }
+
+    /** 主行动按钮：前两步推进到下一步，第三步收尾引导。 */
+    private fun advanceOrFinish() {
+        if (onboardStep < 3) {
+            onboardStep++
+            renderOnboardingStep()
+        } else {
+            finishOnboarding(onboardInput.text.toString())
+        }
+    }
+
+    /** 每步可跳过：前两步跳过即推进；第三步跳过即沿用默认设备名收尾（丢弃输入框改动）。 */
+    private fun skipOnboardingStep() {
+        if (onboardStep < 3) {
+            onboardStep++
+            renderOnboardingStep()
+        } else {
+            finishOnboarding(store.deviceName(Onboarding.defaultDeviceName(Build.MODEL)))
+        }
+    }
+
+    private fun prevOnboardingStep() {
+        if (onboardStep > 1) {
+            onboardStep--
+            renderOnboardingStep()
+        }
+    }
+
+    /** 引导结束（正常完成或跳过全部）：存名、清首启标记、起会话、露出待连接页。 */
+    private fun finishOnboarding(rawName: String) {
+        val name = Onboarding.sanitizeName(rawName, store.deviceName(Onboarding.defaultDeviceName(Build.MODEL)))
+        store.saveDeviceName(name)
+        store.setFirstLaunch(false)
+        deviceNameText.text = name
+        onboarding.visibility = View.GONE
+        startSessions(name)
+        main.post(ticker)
+    }
+
 
     /** 宿主把会话与 DLNA 的进度回放到界面；界面不持有监听生命周期。 */
     private val hostUi = object : ReceiverHost.Ui {

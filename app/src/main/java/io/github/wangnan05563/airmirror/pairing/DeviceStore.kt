@@ -2,8 +2,10 @@ package io.github.wangnan05563.airmirror.pairing
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.Build
 import io.github.wangnan05563.airmirror.device.DisplayMode
 import io.github.wangnan05563.airmirror.device.QualityTier
+import io.github.wangnan05563.airmirror.util.Onboarding
 import java.util.UUID
 
 /**
@@ -39,6 +41,30 @@ class DeviceStore(context: Context) {
 
     fun saveDeviceName(name: String) {
         prefs.edit().putString(KEY_NAME, name).apply()
+    }
+
+    /**
+     * 首次启动标记（PRD §1.2 三步引导）：未跑过引导时为 true，引导结束（含全部跳过）后置 false。
+     * 仅控制是否弹引导页，不影响任何功能开关。
+     */
+    fun firstLaunch(): Boolean = prefs.getBoolean(KEY_FIRST_LAUNCH, true)
+
+    fun setFirstLaunch(done: Boolean) {
+        prefs.edit().putBoolean(KEY_FIRST_LAUNCH, done).apply()
+    }
+
+    /**
+     * 确保落盘里有一份默认设备名：没有时才按 PRD §1.2 生成「机型 + 随机两位」（机型为空/杂乱时回落「电视 + 随机两位」）
+     * 并落盘。随机后缀只在第一次生成时取一次，落盘后稳定，避免每次进程启动都换名。
+     * 在 [io.github.wangnan05563.airmirror.receiver.ReceiverHost.get] 里调用，
+     * 因此无论接收端从 Activity 还是开机自启 Service 进入，默认名都会先就位。
+     */
+    fun ensureDefaultDeviceName(): String {
+        val existing = prefs.getString(KEY_NAME, null)
+        if (!existing.isNullOrEmpty()) return existing
+        val fresh = Onboarding.defaultDeviceName(Build.MODEL)
+        prefs.edit().putString(KEY_NAME, fresh).apply()
+        return fresh
     }
 
     /** 首次连接自动允许：仅对递过有效凭据的会话有意义；无凭据会话一律由大屏显式确认（T04496 裁决），故该开关当前不影响匿名发现的确认方式。 */
@@ -109,6 +135,7 @@ class DeviceStore(context: Context) {
         const val KEY_TRUSTED = "trusted"
         const val KEY_RECENT = "recent_targets"
         const val KEY_NAME = "device_name"
+        const val KEY_FIRST_LAUNCH = "first_launch"
         const val KEY_AUTO_ALLOW = "auto_allow"
         const val KEY_DISPLAY_MODE = "display_mode"
         const val KEY_FOLLOW_ROTATION = "follow_rotation"

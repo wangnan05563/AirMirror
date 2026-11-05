@@ -240,10 +240,10 @@ class ReceiverHost private constructor(context: Context) {
         fun get(context: Context): ReceiverHost =
             instance ?: synchronized(this) {
                 instance ?: ReceiverHost(context.applicationContext).also { instance = it }
-            }
+            }.also { it.store.ensureDefaultDeviceName() }
 
         fun defaultDeviceName(): String =
-            "AirMirror-${Build.MODEL}".replace(Regex("[^A-Za-z0-9-]"), "-").take(30)
+            io.github.wangnan05563.airmirror.util.Onboarding.defaultDeviceName(Build.MODEL)
 
         private const val TAG = "AirMirrorHost"
     }
