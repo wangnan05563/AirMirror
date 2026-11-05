@@ -21,13 +21,15 @@ object Handshake {
         val deviceName: String,
         /** 本端临时公钥（SPKI DER）；不带表示这一版还不做端到端加密，见 [KeyExchange] */
         val keyShare: ByteArray? = null,
+        /** 用投屏码对 [keyShare] 的签名（[CodeAnchor] 身份锚）；不带表示这一端没有码，老接收端也读不懂它 */
+        val proof: ByteArray? = null,
     ) {
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
             if (other !is Hello) return false
             return minVersion == other.minVersion && maxVersion == other.maxVersion &&
                 capabilities == other.capabilities && deviceName == other.deviceName &&
-                sameKeyShare(keyShare, other.keyShare)
+                sameKeyShare(keyShare, other.keyShare) && sameKeyShare(proof, other.proof)
         }
 
         override fun hashCode(): Int {
@@ -36,6 +38,7 @@ object Handshake {
             result = 31 * result + capabilities
             result = 31 * result + deviceName.hashCode()
             result = 31 * result + (keyShare?.contentHashCode() ?: 0)
+            result = 31 * result + (proof?.contentHashCode() ?: 0)
             return result
         }
 
@@ -47,10 +50,14 @@ object Handshake {
             val name = deviceName.toByteArray(Charsets.UTF_8)
             out.writeShort(name.size)
             out.write(name)
-            // 公钥追加在末尾：老接收端读到名字就返回，多余字节直接忽略，所以老版本照旧能握手
+            // 公钥与校验值都追加在末尾：老接收端读到名字就返回，多余字节直接忽略，所以老版本照旧能握手
             keyShare?.let {
                 out.writeShort(it.size)
                 out.write(it)
+                proof?.let { tag ->
+                    out.writeShort(tag.size)
+                    out.write(tag)
+                }
             }
             out.flush()
             bytes.toByteArray()
@@ -66,7 +73,8 @@ object Handshake {
                 require(nameLength <= input.available()) { "truncated device name" }
                 val nameBytes = ByteArray(nameLength)
                 input.readFully(nameBytes)
-                return Hello(min, max, caps, String(nameBytes, Charsets.UTF_8), keyShare(input))
+                val share = keyShare(input)
+                return Hello(min, max, caps, String(nameBytes, Charsets.UTF_8), share, if (share == null) null else anchorProof(input))
             }
         }
     }
@@ -81,18 +89,31 @@ object Handshake {
         return key
     }
 
+    /** 公钥之后的两字节+载荷：没有公钥就不可能有校验值，老端的载荷到这里就是尽头。 */
+    private fun anchorProof(input: java.io.DataInputStream): ByteArray? {
+        if (input.available() < 2) return null
+        val length = input.readUnsignedShort()
+        if (length !in 1..CodeAnchor.MAX_PROOF || length > input.available()) return null
+        val proof = ByteArray(length)
+        input.readFully(proof)
+        return proof
+    }
+
     data class HelloAck(
         val chosenVersion: Int,
         val capabilities: Int,
         val deviceName: String,
         /** 接收端自己的临时公钥；不带表示这一版还不做端到端加密 */
         val keyShare: ByteArray? = null,
+        /** 用同一个投屏码对双方公钥的签名（[CodeAnchor]）；不带表示大屏没有可对的码或对面是老端 */
+        val proof: ByteArray? = null,
     ) {
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
             if (other !is HelloAck) return false
             return chosenVersion == other.chosenVersion && capabilities == other.capabilities &&
-                deviceName == other.deviceName && sameKeyShare(keyShare, other.keyShare)
+                deviceName == other.deviceName && sameKeyShare(keyShare, other.keyShare) &&
+                sameKeyShare(proof, other.proof)
         }
 
         override fun hashCode(): Int {
@@ -100,6 +121,7 @@ object Handshake {
             result = 31 * result + capabilities
             result = 31 * result + deviceName.hashCode()
             result = 31 * result + (keyShare?.contentHashCode() ?: 0)
+            result = 31 * result + (proof?.contentHashCode() ?: 0)
             return result
         }
 
@@ -113,6 +135,10 @@ object Handshake {
             keyShare?.let {
                 out.writeShort(it.size)
                 out.write(it)
+                proof?.let { tag ->
+                    out.writeShort(tag.size)
+                    out.write(tag)
+                }
             }
             out.flush()
             bytes.toByteArray()
@@ -127,7 +153,14 @@ object Handshake {
                 require(nameLength <= input.available()) { "truncated device name" }
                 val nameBytes = ByteArray(nameLength)
                 input.readFully(nameBytes)
-                return HelloAck(version, caps, String(nameBytes, Charsets.UTF_8), keyShare(input))
+                val share = keyShare(input)
+                return HelloAck(
+                    version,
+                    caps,
+                    String(nameBytes, Charsets.UTF_8),
+                    share,
+                    if (share == null) null else anchorProof(input),
+                )
             }
         }
     }

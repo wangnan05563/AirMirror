@@ -142,5 +142,78 @@ class KeyExchangeTest {
         assertNull(Handshake.HelloAck.decode(ack.encode()).keyShare)
     }
 
+    @Test
+    fun bothEndsDeriveTheSameKeysWhenTheyAgreeOnOneAnchor() {
+        // 投屏码进 salt（T04493）：两端用同一条码必须还能对上，否则正常投屏会被自己的安全增强挡死
+        val client = KeyExchange.generate()
+        val server = KeyExchange.generate()
+        val anchor = CodeAnchor.anchorTag("123456")
+        val fromClient = KeyExchange.sessionKeys(
+            KeyExchange.sharedSecret(client.privateKey, KeyExchange.decodePublic(server.publicSpki)),
+            client.publicSpki,
+            server.publicSpki,
+            Version.CURRENT,
+            anchor,
+        )
+        val fromServer = KeyExchange.sessionKeys(
+            KeyExchange.sharedSecret(server.privateKey, KeyExchange.decodePublic(client.publicSpki)),
+            client.publicSpki,
+            server.publicSpki,
+            Version.CURRENT,
+            anchor,
+        )
+        assertEquals(fromClient, fromServer)
+    }
+
+    @Test
+    fun aDifferentCodeDerivesDifferentKeys() {
+        val client = KeyExchange.generate()
+        val server = KeyExchange.generate()
+        val secret = KeyExchange.sharedSecret(client.privateKey, KeyExchange.decodePublic(server.publicSpki))
+        val right = KeyExchange.sessionKeys(secret, client.publicSpki, server.publicSpki, Version.CURRENT, CodeAnchor.anchorTag("123456"))
+        val wrong = KeyExchange.sessionKeys(secret, client.publicSpki, server.publicSpki, Version.CURRENT, CodeAnchor.anchorTag("654321"))
+        assertNotEquals(right.clientToServer.toList(), wrong.clientToServer.toList())
+        // 带锚与不带锚也不能撞到一起：老会话与新会话不是同一套派生
+        val legacy = KeyExchange.sessionKeys(secret, client.publicSpki, server.publicSpki, Version.CURRENT)
+        assertNotEquals(right.clientToServer.toList(), legacy.clientToServer.toList())
+    }
+
+    @Test
+    fun helloCarriesTheAnchorProofAcrossTheWire() {
+        val key = KeyExchange.generate()
+        val hello = Handshake.Hello(
+            1,
+            1,
+            Handshake.Capability.ALL,
+            "手机",
+            key.publicSpki,
+            CodeAnchor.clientProof("123456", key.publicSpki),
+        )
+        val decoded = Handshake.Hello.decode(hello.encode())
+        assertEquals(hello, decoded)
+        assertTrue(CodeAnchor.matches(CodeAnchor.clientProof("123456", key.publicSpki), decoded.proof))
+    }
+
+    @Test
+    fun helloWithoutProofStillDecodesAsLegacy() {
+        // 老发送端/空凭据场景：只有公钥没有签名，解码必须是 proof=null，不能把公钥尾巴当签名
+        val hello = Handshake.Hello(1, 1, Handshake.Capability.ALL, "手机", KeyExchange.generate().publicSpki)
+        assertNull(Handshake.Hello.decode(hello.encode()).proof)
+    }
+
+    @Test
+    fun ackCarriesTheAnchorProofAcrossTheWire() {
+        val key = KeyExchange.generate()
+        val ack = Handshake.HelloAck(
+            Version.CURRENT,
+            Handshake.Capability.ALL,
+            "电视",
+            key.publicSpki,
+            CodeAnchor.serverProof("123456", byteArrayOf(1, 2, 3), key.publicSpki),
+        )
+        assertEquals(ack, Handshake.HelloAck.decode(ack.encode()))
+        assertNull(Handshake.HelloAck.decode(Handshake.HelloAck(Version.CURRENT, Handshake.Capability.ALL, "电视", key.publicSpki).encode()).proof)
+    }
+
     private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it.toInt() and 0xFF) }
 }

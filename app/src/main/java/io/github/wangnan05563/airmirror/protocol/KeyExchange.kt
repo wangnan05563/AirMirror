@@ -58,17 +58,28 @@ object KeyExchange {
 
     /**
      * 由共享秘密 + 双方握手公钥派生两把方向密钥。
-     * 把双方公钥写进 HKDF 的 info，等于把整段握手记进密钥里：换了任何一侧公钥的中间人
+     * 把双方公钥写进 HKDF 的 salt，等于把整段握手记进密钥里：换了任何一侧公钥的中间人
      * 会得到完全不同的密钥，两端随之解不开对方的帧，而不是安静地被人换掉。
+     *
+     * [anchor] 为 [CodeAnchor.anchorTag]：投屏码也参与 salt（T04493）。带码的连接与不带码的连接
+     * 即使公钥巧合相同也派生不出同一套密钥；null 表示这条会话没有锚（匿名/续会/老对端），保持旧口径。
      */
-    fun sessionKeys(secret: ByteArray, clientPublicSpki: ByteArray, serverPublicSpki: ByteArray, protocolVersion: Int): SessionKeys {
-        val transcript = sha256(clientPublicSpki + serverPublicSpki)
+    fun sessionKeys(
+        secret: ByteArray,
+        clientPublicSpki: ByteArray,
+        serverPublicSpki: ByteArray,
+        protocolVersion: Int,
+        anchor: ByteArray? = null,
+    ): SessionKeys {
+        val transcript = sha256(clientPublicSpki + serverPublicSpki + (anchor ?: EMPTY))
         val prefix = "AMRC-E2E/v$protocolVersion ".toByteArray(Charsets.UTF_8)
         return SessionKeys(
             clientToServer = hkdf(secret, salt = transcript, info = prefix + "c2s".toByteArray(Charsets.UTF_8), length = KEY_BYTES),
             serverToClient = hkdf(secret, salt = transcript, info = prefix + "s2c".toByteArray(Charsets.UTF_8), length = KEY_BYTES),
         )
     }
+
+    private val EMPTY = ByteArray(0)
 
     /** HKDF-SHA256（RFC 5869）：只做提取 + 扩展两步，不另加前缀，好让标准测试向量直接对上。 */
     fun hkdf(inputKeyMaterial: ByteArray, salt: ByteArray, info: ByteArray, length: Int): ByteArray {

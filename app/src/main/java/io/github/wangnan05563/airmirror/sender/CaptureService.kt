@@ -583,10 +583,15 @@ class CaptureService : Service() {
         socket.tcpNoDelay = true
         socket.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
         val conn = StreamConnection(socket)
-        val ack = runCatching { conn.connectAsClient(Build.MODEL, MIRROR_CAPABILITIES) }
-            .getOrElse {
+        // 投屏码同时进握手签名与密钥派生（T04493）：中间人换公钥会在 HELLO 阶段被大屏拒掉
+        val ack = runCatching { conn.connectAsClient(Build.MODEL, MIRROR_CAPABILITIES, credential = credential) }
+            .getOrElse { e ->
                 conn.close()
-                throw it
+                // 锚校验失败的真实原因（码错/链路被替换）必须原样传给界面，不能落成一句「连不上」
+                if (e is Handshake.HandshakeException && e.message.orEmpty().contains("不正确")) {
+                    SenderReport.last = ErrorNotice.textFor(ErrorNotice.Cause.CODE_WRONG)
+                }
+                throw e
             }
         peerAcceptsAudio = ack.capabilities and Handshake.Capability.AUDIO_AAC != 0
         Log.i(

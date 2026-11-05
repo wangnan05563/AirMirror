@@ -187,4 +187,54 @@ class CastCodeTest {
         assertEquals(CastCode.Outcome.Accepted, subject.submit("333333"))
         assertEquals(CastCode.Outcome.Expired, subject.submit("333333"))
     }
+
+    /** 固定时钟 + 递增令牌，专门用来断言「握手身份锚能对哪几条凭据」 */
+    private fun newCodeWithTokens(vararg values: Int): CastCode {
+        var index = 0
+        var tokenIndex = 0
+        return CastCode(
+            now = { clock },
+            random = {
+                val value = if (index < values.size) values[index] else values[values.size - 1]
+                index++
+                value
+            },
+            tokenSource = { "tok${tokenIndex++}" },
+        )
+    }
+
+    @Test
+    fun handshakeCandidatesCoverCurrentAndTheGraceWindow() {
+        // 握手发生在 AUTH 之前：码恰好在建立连接那一瞬轮换，也必须有一条能对上，否则正常投屏会被判成错码
+        val subject = newCodeWithTokens(111_111, 222_222)
+        assertEquals("111111", subject.code())
+        assertEquals(listOf("111111", "tok0"), subject.candidates())
+
+        clock += 60_000
+        assertEquals("222222", subject.code())
+        // 当前组在前，宽限期内的上一组在后：AUTH 与握手的受理窗口必须完全一致
+        assertEquals(listOf("222222", "tok1", "111111", "tok0"), subject.candidates())
+
+        clock += 9_999
+        assertEquals("宽限期内仍要认旧码", listOf("222222", "tok1", "111111", "tok0"), subject.candidates())
+        clock += 1
+        assertEquals("宽限期一过只剩当前组", listOf("222222", "tok1"), subject.candidates())
+    }
+
+    @Test
+    fun handshakeCandidatesWorkBeforeTheWaitingPageHasEverReadTheCode() {
+        // 进程刚起来的第一次连接：界面还没刷码，也必须有一条能对的锚，不能留「启动瞬间无锚」的缺口
+        val subject = newCodeWithTokens(111_111)
+        assertEquals(listOf("111111", "tok0"), subject.candidates())
+        assertEquals("111111", subject.code())
+    }
+
+    @Test
+    fun handshakeCandidatesAreEmptyWhileLocked() {
+        // 锁定期间没有可对的锚：留给 AUTH 说「投屏码暂时锁定」，不能误报成码错
+        val subject = newCode(111_111)
+        subject.code()
+        repeat(5) { subject.submit("000000") }
+        assertEquals(emptyList<String>(), subject.candidates())
+    }
 }

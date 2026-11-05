@@ -1,5 +1,6 @@
 package io.github.wangnan05563.airmirror.net
 
+import io.github.wangnan05563.airmirror.protocol.CodeAnchor
 import io.github.wangnan05563.airmirror.protocol.Handshake
 import io.github.wangnan05563.airmirror.protocol.KeyExchange
 import io.github.wangnan05563.airmirror.protocol.MediaCipher
@@ -30,10 +31,29 @@ class StreamConnection(private val socket: Socket) : Closeable {
     /**
      * 客户端：发 HELLO（带本端临时公钥），收 HELLO_ACK。
      * [key] 为 null 表示这一端不启用加密，用于对照取证。
+     * [credential] 是本次要交的投屏码/扫码令牌：非空时用它对公钥签名，并把它混进密钥派生（T04493 身份锚）；
+     * 空串（可信设备、断线续会）不产生锚，老接收端也不认这个尾字段，照旧能连。
      */
-    fun connectAsClient(deviceName: String, capabilities: Int, key: KeyExchange.Ephemeral? = KeyExchange.generate()): Handshake.HelloAck {
+    fun connectAsClient(
+        deviceName: String,
+        capabilities: Int,
+        key: KeyExchange.Ephemeral? = KeyExchange.generate(),
+        credential: String = "",
+    ): Handshake.HelloAck {
         socket.tcpNoDelay = true
-        val hello = Handshake.Hello(Version.MIN_SUPPORTED, Version.CURRENT, capabilities, deviceName, key?.publicSpki)
+        val proof = if (key != null && CodeAnchor.usable(credential)) {
+            CodeAnchor.clientProof(credential, key.publicSpki)
+        } else {
+            null
+        }
+        val hello = Handshake.Hello(
+            Version.MIN_SUPPORTED,
+            Version.CURRENT,
+            capabilities,
+            deviceName,
+            key?.publicSpki,
+            proof,
+        )
         Protocol.write(output, Protocol.Frame(Protocol.Type.HELLO, payload = hello.encode()))
         val reply = Protocol.read(input) ?: throw java.io.IOException("connection closed during handshake")
         if (reply.type == Protocol.Type.ERROR) {
@@ -44,6 +64,14 @@ class StreamConnection(private val socket: Socket) : Closeable {
         }
         val ack = Handshake.HelloAck.decode(reply.payload)
         val peerKey = ack.keyShare
+        // 只有大屏回了校验值才说明它也认锚：老接收端不回，这一版就按无锚派生，不让它因此连不上
+        val anchor = if (key != null && peerKey != null && CodeAnchor.usable(credential) && ack.proof != null) {
+            val expected = CodeAnchor.serverProof(credential, key.publicSpki, peerKey)
+            if (!CodeAnchor.matches(expected, ack.proof)) throw Handshake.HandshakeException(CodeAnchor.REFUSED)
+            credential
+        } else {
+            null
+        }
         if (key != null && peerKey != null) {
             enableEncryption(
                 myPrivate = key.privateKey,
@@ -52,16 +80,23 @@ class StreamConnection(private val socket: Socket) : Closeable {
                 serverPublicSpki = peerKey,
                 protocolVersion = ack.chosenVersion,
                 iAmClient = true,
+                anchor = anchor,
             )
         }
         return ack
     }
 
-    /** 服务端：收 HELLO，回 HELLO_ACK（带本端临时公钥）。 */
+    /**
+     * 服务端：收 HELLO，回 HELLO_ACK（带本端临时公钥）。
+     * [credentials] 是当前仍可受理的一组凭据（当前码/令牌 + 宽限期内的上一组）：
+     * 发送端带了签名时必须对得上其中一条，否则在 HELLO_ACK 之前就回 ERROR 关掉——绝不先建立一条「可解密的假连接」。
+     * 列表为空（锁定中/还没出码）时不做锚校验，让 AUTH 那条路给出真实原因（锁定、过期），不误报成码错。
+     */
     fun acceptAsServer(
         deviceName: String,
         capabilities: Int,
         key: KeyExchange.Ephemeral? = KeyExchange.generate(),
+        credentials: List<String> = emptyList(),
     ): Handshake.Hello {
         socket.tcpNoDelay = true
         val helloFrame = Protocol.read(input) ?: throw java.io.IOException("connection closed before HELLO")
@@ -69,6 +104,7 @@ class StreamConnection(private val socket: Socket) : Closeable {
             throw Handshake.HandshakeException("expected HELLO, got ${helloFrame.type}")
         }
         val hello = Handshake.Hello.decode(helloFrame.payload)
+        val matched = matchedCredential(hello, credentials)
         val ack = try {
             Handshake.accept(hello, deviceName)
         } catch (e: Handshake.HandshakeException) {
@@ -83,6 +119,11 @@ class StreamConnection(private val socket: Socket) : Closeable {
             capabilities and hello.capabilities,
             deviceName,
             if (hello.keyShare != null) key?.publicSpki else null,
+            if (matched != null && hello.keyShare != null && key != null) {
+                CodeAnchor.serverProof(matched, hello.keyShare, key.publicSpki)
+            } else {
+                null
+            },
         )
         Protocol.write(output, Protocol.Frame(Protocol.Type.HELLO_ACK, payload = ackFrame.encode()))
         val peerKey = hello.keyShare
@@ -95,9 +136,29 @@ class StreamConnection(private val socket: Socket) : Closeable {
                 serverPublicSpki = myKey.publicSpki,
                 protocolVersion = ackFrame.chosenVersion,
                 iAmClient = false,
+                anchor = matched,
             )
         }
         return hello
+    }
+
+    /**
+     * 身份锚校验。返回匹配上的那条凭据（两端必须用它派生同一套密钥）；null 表示这条连接没有锚。
+     * 签名覆盖发送端自己的公钥：中间人换公钥后签名立刻对不上，这里直接回 ERROR 并断开。
+     */
+    private fun matchedCredential(hello: Handshake.Hello, credentials: List<String>): String? {
+        val proof = hello.proof ?: return null
+        val peerKey = hello.keyShare ?: return null
+        if (credentials.isEmpty()) return null
+        val matched = credentials.firstOrNull { CodeAnchor.matches(CodeAnchor.clientProof(it, peerKey), proof) }
+        if (matched == null) {
+            Protocol.write(
+                output,
+                Protocol.Frame(Protocol.Type.ERROR, payload = CodeAnchor.REFUSED.toByteArray(Charsets.UTF_8)),
+            )
+            throw Handshake.HandshakeException(CodeAnchor.REFUSED)
+        }
+        return matched
     }
 
     /** 接管流程会从别的连接线程往当前会话写信令，串行化避免帧头与载荷交错。 */
@@ -141,9 +202,16 @@ class StreamConnection(private val socket: Socket) : Closeable {
         serverPublicSpki: ByteArray,
         protocolVersion: Int,
         iAmClient: Boolean,
+        anchor: String? = null,
     ) {
         val secret = KeyExchange.sharedSecret(myPrivate, KeyExchange.decodePublic(peerPublicSpki))
-        val keys = KeyExchange.sessionKeys(secret, clientPublicSpki, serverPublicSpki, protocolVersion)
+        val keys = KeyExchange.sessionKeys(
+            secret,
+            clientPublicSpki,
+            serverPublicSpki,
+            protocolVersion,
+            anchor?.let(CodeAnchor::anchorTag),
+        )
         secret.fill(0)
         val fromClient = MediaCipher(keys.clientToServer)
         val fromServer = MediaCipher(keys.serverToClient)

@@ -77,6 +77,21 @@ class CastCode(
         return ceilSeconds(issued + ttlMillis - now())
     }
 
+    /**
+     * 握手身份锚可用的一组凭据（T04493）：当前码/令牌 + 宽限期内仍可受理的上一组。
+     * 与 [submit]/[submitToken] 的窗口保持一致——握手发生在 AUTH 之前，码恰好在建立连接那一瞬轮换时
+     * 不能判成「错码」。锁定或无码时返回空：这时没有可对的锚，交给 AUTH 说明真实原因。
+     *
+     * 界面还没刷过屏时按当前时刻生成条目（与 [submit] 同一个理由）：否则进程刚起来的第一条连接
+     * 会因为没有 current 而悄悄走成「无锚」，把身份锚留了个只在启动瞬间存在的缺口。
+     */
+    fun candidates(): List<String> {
+        val t = now()
+        advance(t)
+        if (t < lockedUntil) return emptyList()
+        return listOfNotNull(ensureEntry(t), previous).flatMap { listOf(it.code, it.token) }
+    }
+
     fun submit(input: String): Outcome {
         val t = now()
         advance(t)

@@ -336,6 +336,8 @@ class ReceiverSession(
                 conn.acceptAsServer(
                     Build.MODEL,
                     Handshake.Capability.VIDEO_H264 or Handshake.Capability.AUDIO_AAC,
+                    // 当前码/令牌 + 宽限期内的上一组：发送端的握手签名要能对上任一受理中的凭据（T04493）
+                    credentials = pairing.code.candidates(),
                 )
             } catch (e: Exception) {
                 // 握手没走完就断（半帧、乱码、版本谈不拢、写完就撤）也算一次被拒：
