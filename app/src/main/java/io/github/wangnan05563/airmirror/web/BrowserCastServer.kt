@@ -115,6 +115,9 @@ class BrowserCastServer(
             }
             if (copied != length) throw IOException("truncated upload")
             onUpload(UploadedFile(file, name, mime, copied))
+            // 只保留刚上传的这一份：播放器已拿到上一份的句柄，unlink 不影响正在播的画面，
+            // 但能避免「每次上传都留一份」把接收端缓存撑爆（PRD 1266 的容量上限本意）。
+            dir.listFiles()?.filter { it != file }?.forEach { runCatching { it.delete() } }
             respond(client, 200, "application/json; charset=utf-8", "{\"ok\":true}")
         } catch (e: Exception) {
             runCatching { file.delete() }

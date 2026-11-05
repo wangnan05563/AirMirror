@@ -103,6 +103,17 @@ class BrowserCastServerTest {
         assertTrue(dir.listFiles().orEmpty().isEmpty())
     }
 
+    @Test
+    fun `再上传一次只保留最新一份`() {
+        startServer()
+        assertEquals(200, upload(server!!.url("127.0.0.1"), "a.mp4", "video/mp4", ByteArray(32)))
+        assertEquals(1, dir.listFiles().orEmpty().size)
+        assertEquals(200, upload(server!!.url("127.0.0.1"), "b.mp4", "video/mp4", ByteArray(48)))
+        val remaining = dir.listFiles().orEmpty()
+        assertEquals("旧文件必须清掉，否则每次上传都会多留一份", 1, remaining.size)
+        assertTrue(remaining.first().name.endsWith("b.mp4"))
+    }
+
     private fun startServer(maxBytes: Long = BrowserCastServer.DEFAULT_MAX_BYTES, onUpload: (BrowserCastServer.UploadedFile) -> Unit = {}) {
         server = BrowserCastServer(dir, maxBytes, onUpload).start()
     }
