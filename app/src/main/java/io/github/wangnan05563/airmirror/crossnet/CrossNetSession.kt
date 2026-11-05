@@ -13,6 +13,8 @@ object CrossNetPrompts {
     const val PUNCH_FAILED = "网络限制较严，可改用同一网络或手机热点后重试"
     const val SYMMETRIC_NAT = "双方网络限制都较严，可改用同一网络或手机热点后重试"
     const val SIGNALING_DOWN = "服务暂时不可用，可改用同一网络投屏"
+    const val SIGNALING_DISABLED = "此版本未配置跨网信令服务，请在同一网络内投屏"
+    const val NO_CANDIDATES = "没拿到本机可用地址，请检查网络后重试，或改用同一网络投屏"
     const val NO_INTERNET = "当前网络无法跨网投屏，请连接同一网络"
     const val FIREWALL = "当前网络可能限制了投屏服务，建议切换到手机热点"
 }
@@ -22,7 +24,9 @@ enum class FailureReason(val code: Int, val prompt: String) {
     MATCH_TIMEOUT(2, CrossNetPrompts.MATCH_TIMEOUT),
     PUNCH_BLOCKED(3, CrossNetPrompts.PUNCH_FAILED),
     SYMMETRIC_NAT(4, CrossNetPrompts.SYMMETRIC_NAT),
-    NO_INTERNET(5, CrossNetPrompts.NO_INTERNET);
+    NO_INTERNET(5, CrossNetPrompts.NO_INTERNET),
+    SIGNALING_DISABLED(6, CrossNetPrompts.SIGNALING_DISABLED),
+    NO_CANDIDATES(7, CrossNetPrompts.NO_CANDIDATES);
 
     companion object {
         fun fromCode(code: Int): FailureReason? = entries.firstOrNull { it.code == code }
@@ -152,6 +156,13 @@ class CrossNetSession(
     fun onNetworkLost(): CrossNetState {
         if (state == CrossNetState.CLOSED || state == CrossNetState.FAILED) return state
         fail(FailureReason.NO_INTERNET)
+        return state
+    }
+
+    /** 编排层已经知道确定的失败原因（例如信令未配置、没采到候选）时直接收口，不再走重试。 */
+    fun onFailure(reason: FailureReason): CrossNetState {
+        if (state == CrossNetState.CLOSED || state == CrossNetState.FAILED) return state
+        fail(reason)
         return state
     }
 

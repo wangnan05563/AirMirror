@@ -3,6 +3,7 @@ package io.github.wangnan05563.airmirror.crossnet
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.SocketTimeoutException
 
 /**
@@ -24,7 +25,7 @@ class UdpPuncher(
 ) {
     data class Result(
         val connected: Boolean,
-        val peer: String?,
+        val peer: InetSocketAddress?,
         val probes: Int,
         val elapsedMs: Long,
     )
@@ -75,7 +76,7 @@ class UdpPuncher(
                         socket.send(DatagramPacket(ack, ack.size, packet.address, packet.port))
                     }
                 }
-                return Result(true, "${packet.address.hostAddress}:${packet.port}", sent, now() - start)
+                return Result(true, InetSocketAddress(packet.address, packet.port), sent, now() - start)
             } catch (e: SocketTimeoutException) {
                 // 一个 interval 内没等到包，继续下一轮探测
             } catch (e: java.net.PortUnreachableException) {

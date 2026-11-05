@@ -12,15 +12,20 @@ import java.io.Closeable
 import java.net.Socket
 
 /**
- * 一条私有通道连接：TCP + 版本握手 + 帧收发。
+ * 一条私有通道连接：字节流 + 版本握手 + 帧收发。
  * 客户端先发 HELLO，服务端回 HELLO_ACK；握手失败抛 [IOException]。
  *
  * 两端都在握手时递上临时公钥的话，之后的载荷一律端到端加密（PRD 8.9）；
  * 任何一端没递就整条会话保持明文，好让没升级的对端照旧能连。
+ *
+ * 传输层是可替换的：局域网走 TCP，跨网走 [UdpTunnel]。
+ * 正因为握手、身份锚、加密、帧协议都只依赖字节流，跨网不需要另造一套私有协议。
  */
-class StreamConnection(private val socket: Socket) : Closeable {
-    private val input = BufferedInputStream(socket.getInputStream())
-    private val output = BufferedOutputStream(socket.getOutputStream())
+class StreamConnection private constructor(private val channel: FrameChannel) : Closeable {
+    private val input = channel.input
+    private val output = channel.output
+
+    constructor(socket: Socket) : this(SocketChannel(socket))
 
     private var writeCipher: MediaCipher? = null
     private var readCipher: MediaCipher? = null
@@ -40,7 +45,6 @@ class StreamConnection(private val socket: Socket) : Closeable {
         key: KeyExchange.Ephemeral? = KeyExchange.generate(),
         credential: String = "",
     ): Handshake.HelloAck {
-        socket.tcpNoDelay = true
         val proof = if (key != null && CodeAnchor.usable(credential)) {
             CodeAnchor.clientProof(credential, key.publicSpki)
         } else {
@@ -98,7 +102,6 @@ class StreamConnection(private val socket: Socket) : Closeable {
         key: KeyExchange.Ephemeral? = KeyExchange.generate(),
         credentials: List<String> = emptyList(),
     ): Handshake.Hello {
-        socket.tcpNoDelay = true
         val helloFrame = Protocol.read(input) ?: throw java.io.IOException("connection closed before HELLO")
         if (helloFrame.type != Protocol.Type.HELLO) {
             throw Handshake.HandshakeException("expected HELLO, got ${helloFrame.type}")
@@ -188,11 +191,11 @@ class StreamConnection(private val socket: Socket) : Closeable {
 
     /** 读超时：等待对端某一条特定帧时用，0 表示不超时 */
     fun setReadTimeout(timeoutMs: Int) {
-        socket.soTimeout = timeoutMs
+        channel.setReadTimeout(timeoutMs)
     }
 
     override fun close() {
-        runCatching { socket.close() }
+        channel.close()
     }
 
     private fun enableEncryption(
@@ -223,5 +226,49 @@ class StreamConnection(private val socket: Socket) : Closeable {
 
     companion object {
         private val PLAIN_TYPES = setOf(Protocol.Type.HELLO, Protocol.Type.HELLO_ACK, Protocol.Type.ERROR)
+
+        /**
+         * 跨网：在已打通的隧道上跑同一条私有通道。
+         * 握手、投屏码身份锚、端到端加密、帧协议全部复用，跨网因此不需要第二套私有协议——
+         * 差异只在「字节流从哪来」，而这一层已经被隧道收敛掉了。
+         */
+        fun overTunnel(
+            tunnel: io.github.wangnan05563.airmirror.crossnet.UdpTunnel,
+        ): StreamConnection = StreamConnection(TunnelChannel(tunnel))
     }
+}
+
+/** 私有通道只依赖字节流与读超时，传输方式的差异全部收敛在这里。 */
+internal interface FrameChannel : Closeable {
+    val input: java.io.InputStream
+    val output: java.io.OutputStream
+    fun setReadTimeout(timeoutMs: Int)
+}
+
+private class SocketChannel(private val socket: Socket) : FrameChannel {
+    override val input = BufferedInputStream(socket.getInputStream())
+    override val output = BufferedOutputStream(socket.getOutputStream())
+
+    init {
+        runCatching { socket.tcpNoDelay = true }
+    }
+
+    override fun setReadTimeout(timeoutMs: Int) {
+        runCatching { socket.soTimeout = timeoutMs }
+    }
+
+    override fun close() {
+        runCatching { socket.close() }
+    }
+}
+
+private class TunnelChannel(
+    private val tunnel: io.github.wangnan05563.airmirror.crossnet.UdpTunnel,
+) : FrameChannel {
+    override val input: java.io.InputStream get() = tunnel.input
+    override val output: java.io.OutputStream get() = tunnel.output
+
+    override fun setReadTimeout(timeoutMs: Int) = tunnel.setReadTimeout(timeoutMs)
+
+    override fun close() = tunnel.close()
 }

@@ -35,7 +35,8 @@ class UdpPuncherTest {
             assertTrue("发起端应打通", results[0].connected)
             assertTrue("接收端应打通", results[1].connected)
             assertTrue(results[0].probes >= 1)
-            assertTrue(results[0].peer!!.startsWith("127.0.0.1:"))
+            assertEquals("127.0.0.1", results[0].peer!!.address.hostAddress)
+            assertTrue(results[0].peer!!.port > 0)
         } finally {
             left.close()
             right.close()

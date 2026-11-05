@@ -166,29 +166,39 @@ object StunCodec {
 object StunClient {
     fun query(host: String, port: Int, timeoutMs: Int = 2_000): StunCodec.MappedAddress? {
         require(host.isNotBlank()) { "STUN host is blank" }
-        require(port in 1..65535) { "STUN port out of range: $port" }
-        require(timeoutMs > 0) { "STUN timeout must be positive" }
         DatagramSocket().use { socket ->
             socket.soTimeout = timeoutMs
-            val transaction = StunCodec.newTransactionId()
-            val request = StunCodec.bindingRequest(transaction)
-            val address = InetAddress.getByName(host)
-            socket.send(DatagramPacket(request, request.size, address, port))
-            val deadline = System.currentTimeMillis() + timeoutMs
-            while (System.currentTimeMillis() < deadline) {
-                val buffer = ByteArray(StunCodec.MAX_SIZE)
-                val packet = DatagramPacket(buffer, buffer.size)
-                try {
-                    socket.receive(packet)
-                } catch (e: SocketTimeoutException) {
-                    return null
-                }
-                val reply = packet.data.copyOf(packet.length)
-                val mapped = StunCodec.decode(reply, transaction) ?: continue
-                return mapped
-            }
-            return null
+            return query(socket, host, port, timeoutMs)
         }
+    }
+
+    /**
+     * 复用调用方的 socket。打洞必须与 STUN 查询共用同一个本地端口——
+     * 换端口就等于换了一个 NAT 映射，对方打到旧映射上是永远收不到的。
+     */
+    fun query(socket: DatagramSocket, host: String, port: Int, timeoutMs: Int = 2_000): StunCodec.MappedAddress? {
+        require(host.isNotBlank()) { "STUN host is blank" }
+        require(port in 1..65535) { "STUN port out of range: $port" }
+        require(timeoutMs > 0) { "STUN timeout must be positive" }
+        socket.soTimeout = timeoutMs
+        val transaction = StunCodec.newTransactionId()
+        val request = StunCodec.bindingRequest(transaction)
+        val address = InetAddress.getByName(host)
+        socket.send(DatagramPacket(request, request.size, address, port))
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            val buffer = ByteArray(StunCodec.MAX_SIZE)
+            val packet = DatagramPacket(buffer, buffer.size)
+            try {
+                socket.receive(packet)
+            } catch (e: SocketTimeoutException) {
+                return null
+            }
+            val reply = packet.data.copyOf(packet.length)
+            val mapped = StunCodec.decode(reply, transaction) ?: continue
+            return mapped
+        }
+        return null
     }
 }
 
