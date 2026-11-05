@@ -64,6 +64,17 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    testOptions {
+        unitTests.all { test ->
+            // 单测会写临时文件（下载器、上传服务）。默认 java.io.tmpdir 常在系统盘，
+            // 系统盘满时会出现「磁盘空间不足」这种与被测代码无关的失败，统一指到仓库内 build 目录。
+            test.systemProperty("java.io.tmpdir", layout.buildDirectory.dir("test-tmp").get().asFile.absolutePath)
+            test.doFirst {
+                layout.buildDirectory.dir("test-tmp").get().asFile.mkdirs()
+            }
+        }
+    }
+
     kotlinOptions {
         jvmTarget = "17"
     }

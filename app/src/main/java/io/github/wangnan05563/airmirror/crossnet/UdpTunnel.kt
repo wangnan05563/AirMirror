@@ -349,17 +349,25 @@ class UdpTunnel(
     private data class Segment(val seq: Long, val payload: ByteArray, var sentAt: Long)
     private data class Frame(val flags: Int, val seq: Long, val ack: Long, val payload: ByteArray)
 
-    private companion object {
+    internal companion object {
         const val MAGIC = 0x414D
         const val VERSION = 1
         const val HEADER = 14
         const val MAX_FRAME = 1400
         /** 1000 字节载荷 + 14 字节头仍远小于常见 1500 MTU，避免 IP 分片带来的整包丢失 */
         const val MSS = 1000
-        const val WINDOW = 8
+
+        /**
+         * 在途窗口。镜像的 IDR 关键帧常有几十 KB，窗口若只按 8 片（8KB）算，
+         * 一帧就要拆成十几轮往返；跨网 RTT 50ms 时单帧就要接近 1 秒，画面根本跟不上。
+         * 68 片 ≈ 68KB 在途（>64KiB），覆盖一个中等关键帧，内存代价仍可忽略。
+         */
+        const val WINDOW = 68
+
         const val RTO_MS = 250L
         const val MAX_RETRANSMITS = 40
-        const val MAX_OUT_OF_ORDER = 32
+        /** 乱序缓存必须不小于窗口，否则整窗乱序时会被自己的上限挤掉、触发重传风暴 */
+        const val MAX_OUT_OF_ORDER = 128
         const val QUEUE_CHUNKS = 2048
         const val CLOSE_GRACE_MS = 600L
         const val CLOSE_POLL_MS = 20L
