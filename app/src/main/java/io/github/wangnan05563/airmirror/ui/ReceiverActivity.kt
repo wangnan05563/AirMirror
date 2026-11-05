@@ -20,6 +20,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import io.github.wangnan05563.airmirror.R
 import io.github.wangnan05563.airmirror.crossnet.SignalingSettings
 import io.github.wangnan05563.airmirror.device.DisplayFit
 import io.github.wangnan05563.airmirror.device.DisplayMode
@@ -56,6 +57,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     private lateinit var waiting: LinearLayout
     private lateinit var deviceNameText: TextView
     private lateinit var codeText: TextView
+    private lateinit var browserText: TextView
     private lateinit var countdownText: TextView
     private lateinit var ring: CountdownRingView
     private lateinit var qrView: ImageView
@@ -317,6 +319,17 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT),
         )
         waiting.addView(codeBlock, centeredBlock(side).apply { topMargin = Theme.dp(this@ReceiverActivity, 16) })
+
+        // PRD §5.9：访客免装入口。地址带一次性 token，只有看得到大屏的人才能上传；
+        // 服务未起来时整行隐藏，不给一个打不开的地址。
+        browserText = TextView(this).apply {
+            textSize = Theme.BODY_SP
+            setTextColor(Theme.TEXT_SECONDARY)
+            gravity = Gravity.CENTER
+            setPadding(0, Theme.dp(this@ReceiverActivity, 10), 0, 0)
+            visibility = View.GONE
+        }
+        waiting.addView(browserText, matchWidth())
 
         countdownText = TextView(this).apply {
             textSize = Theme.BODY_SP
@@ -1157,6 +1170,13 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         ring.fraction = if (locked) 0f else seconds / 60f
         val address = localIpv4() ?: "127.0.0.1"
         val port = host.port
+        val browser = host.browserCastUrl()
+        if (browser.isNullOrBlank()) {
+            browserText.visibility = View.GONE
+        } else {
+            browserText.visibility = View.VISIBLE
+            browserText.text = getString(R.string.browser_cast_url, browser)
+        }
         val payload = if (port > 0 && !locked) pairing.qrPayload(address, port, deviceNameText.text.toString()) else ""
         if (payload.isNotEmpty() && payload != lastPayload) {
             lastPayload = payload

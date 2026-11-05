@@ -21,6 +21,8 @@ import io.github.wangnan05563.airmirror.pairing.CastCode
 import io.github.wangnan05563.airmirror.pairing.DeviceStore
 import io.github.wangnan05563.airmirror.pairing.Pairing
 import io.github.wangnan05563.airmirror.privacy.Diagnostics
+import io.github.wangnan05563.airmirror.web.BrowserCastServer
+import java.io.File
 import kotlin.concurrent.thread
 
 /**
@@ -66,6 +68,7 @@ class ReceiverHost private constructor(context: Context) {
     private var probe: ProbeResponder? = null
     private var probeName = ""
     private var crossNet: CrossNetInbound? = null
+    private var browserCast: BrowserCastServer? = null
 
     /**
      * 本机等级决定协议是否常驻（PRD 1152）：A/B 级常驻，只有 C 级参与闲置释放。
@@ -155,6 +158,7 @@ class ReceiverHost private constructor(context: Context) {
             // 进程还在、服务被重启（或设置里改了设备名）时，只把探测应答器补齐/换名即可
             ensureProbe(deviceName)
             startCrossNet()
+            dlna?.let { startBrowserCast(it) }
             return
         }
         val active = ReceiverSession(
@@ -227,7 +231,50 @@ class ReceiverHost private constructor(context: Context) {
         main.removeCallbacks(idleSweep)
         main.postDelayed(idleSweep, ProtocolResidency.TICK_MILLIS)
         holder?.let { mount(it) }
+        startBrowserCast(renderer)
         startCrossNet()
+    }
+
+    /**
+     * PRD §5.9：接收端内置网页服务，访客用浏览器上传文件即可投屏。
+     * 入口带一次性 token，只有看得到大屏的人才知道地址；服务只在进程内监听，不向外网开放。
+     */
+    private fun startBrowserCast(renderer: DlnaServer) {
+        if (browserCast != null) return
+        // PRD 1266：本地缓存 200MB，C 级 64MB；分级结果已在后台算好，这里只读
+        val maxBytes = if (protocolsResident) {
+            BrowserCastServer.DEFAULT_MAX_BYTES
+        } else {
+            64L * 1024 * 1024
+        }
+        val server = BrowserCastServer(
+            dir = File(appContext.cacheDir, "browser-cast"),
+            maxBytes = maxBytes,
+            onUpload = { uploaded ->
+                main.post {
+                    val played = renderer.playLocal(uploaded.file, uploaded.name, uploaded.mime)
+                    if (!played) {
+                        runCatching { uploaded.file.delete() }
+                        post { it.onNotice("浏览器上传的文件无法播放：${uploaded.name}") }
+                    }
+                }
+            },
+        )
+        val started = runCatching { server.start() }.isSuccess
+        if (!started) {
+            Log.w(TAG, "browser cast service failed to start")
+            return
+        }
+        browserCast = server
+        Log.i(TAG, "browser cast on port ${server.port}")
+    }
+
+    /** 待连接页展示的访客入口；未监听时返回 null，界面不显示这一行。 */
+    fun browserCastUrl(): String? {
+        val server = browserCast ?: return null
+        val address = runCatching { io.github.wangnan05563.airmirror.dlna.localIpv4() }.getOrNull()
+            ?: return null
+        return server.url(address)
     }
 
     /**
@@ -296,6 +343,8 @@ class ReceiverHost private constructor(context: Context) {
         probeName = ""
         crossNet?.stop()
         crossNet = null
+        browserCast?.stop()
+        browserCast = null
     }
 
     /** 界面回到前台：先订阅后续变化，再按宿主快照补回画面、横幅与角标读数。 */

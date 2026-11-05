@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 访客浏览器入口地址；URL 由运行时生成，不含用户内容 -->
+    <string name="browser_cast_url">浏览器投屏：%1$s</string>
+</resources>

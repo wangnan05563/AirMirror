@@ -12,6 +12,7 @@ import io.github.wangnan05563.airmirror.media.DlnaPlayer
 import io.github.wangnan05563.airmirror.media.ImageFetcher
 import io.github.wangnan05563.airmirror.privacy.Redactor
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.io.InputStream
 import java.net.ServerSocket
 import java.net.Socket
@@ -480,6 +481,33 @@ class DlnaServer(
 
     private fun isImage(meta: Upnp.MediaMeta? = machine.media): Boolean =
         meta != null && MediaKinds.of(meta) == MediaKind.IMAGE
+
+    /**
+     * 浏览器访客上传的本地文件直接播放（PRD §5.9 浏览器直连）。
+     *
+     * 走与 DLNA SetAVTransportURI 相同的机器与播放器，只是 URI 换成 `file://`：
+     * 上传文件已经在本机缓存，再绕一圈 URL 只会多一次磁盘到网络的往返。
+     * 调用方负责先确认文件类型；图片复用 15 秒轮播的既有链路。
+     */
+    fun playLocal(file: File, title: String, mime: String): Boolean {
+        if (!file.isFile || file.length() <= 0) return false
+        val uri = "file://" + file.absolutePath
+        val meta = Upnp.MediaMeta(uri, title, mime, file.length(), "")
+        if (MediaKinds.of(meta) == MediaKind.IMAGE) {
+            prepareImages(listOf(meta))
+            machine.onPlayInvoked()
+            return true
+        }
+        // 换本地文件同样要让上一张图退出：否则图片层会压在视频上
+        clearImage()
+        machine.setUri(meta)
+        if (!player.load(uri)) return false
+        machine.onPlayInvoked()
+        player.play()
+        onPlayingChanged?.invoke(true)
+        onStatus("浏览器上传 ${meta.title}")
+        return true
+    }
 
     /** 接收一组图片：图片不走 MediaPlayer，上一个视频的播放器要立刻放掉，别占着解码器。 */
     private fun prepareImages(items: List<Upnp.MediaMeta>) {
