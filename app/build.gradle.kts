@@ -7,6 +7,13 @@ plugins {
 // 普通调试构建不传，versionName 保持固定的 0.1.0-m0，保证同一 commit 的产物可复现。
 val versionPatch = providers.gradleProperty("versionPatch").orNull
 
+// 可选 release 签名：只有显式传入 keystore 参数时才生成签名配置。
+// 不传就保持未签名（默认行为不变），避免把密钥路径与口令写进仓库。
+val keystoreFile = providers.gradleProperty("keystoreFile").orNull
+val keystorePassword = providers.gradleProperty("keystorePassword").orNull
+val keyAliasName = providers.gradleProperty("keyAlias").orNull
+val keyPasswordValue = providers.gradleProperty("keyPassword").orNull
+
 android {
     namespace = "io.github.wangnan05563.airmirror"
     compileSdk = 35
@@ -33,9 +40,22 @@ android {
     // 注：各 ABI 包需独立 versionCode 时（Play 商店分发）再按 ABI 分配基段；本项目发到 GitHub，
     // 多 ABI 包可并存，故此处不强制覆盖 versionCode，避免耦合 AGP 内部 API。
 
+    signingConfigs {
+        if (!keystoreFile.isNullOrBlank() && !keystorePassword.isNullOrBlank() && !keyAliasName.isNullOrBlank()) {
+            create("release") {
+                storeFile = file(keystoreFile)
+                storePassword = keystorePassword
+                keyAlias = keyAliasName
+                keyPassword = keyPasswordValue ?: keystorePassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            // 没传签名参数时为 null，产物仍是未签名包（与 T04396 的包体核对口径一致）
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 

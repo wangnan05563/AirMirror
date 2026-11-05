@@ -48,6 +48,15 @@ $env:JAVA_HOME = '<你的 JDK 17 目录>'
 .\gradlew.bat testDebugUnitTest assembleDebug --console=plain --offline
 ```
 
+发布包默认**未签名**。配置好密钥后可显式签名（密钥路径与口令只走命令行参数，不入库）：
+
+```powershell
+.\gradlew.bat assembleRelease -PkeystoreFile=D:\keys\airmirror.jks `
+  -PkeystorePassword=<store-password> -PkeyAlias=airmirror -PkeyPassword=<key-password>
+```
+
+App 内「检查更新」会查询内置仓库的 GitHub Release；安装新版本时由系统弹「未知来源」授权，App 不自批。
+
 产物在 `app/build/outputs/apk/debug/`（`app-universal-debug.apk` 为全 ABI 包）。装到已连接的设备并拉起接收端：
 
 ```cmd
