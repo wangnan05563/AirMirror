@@ -16,6 +16,19 @@ android {
         versionName = "0.1.0-m0"
     }
 
+    // PRD 1.1 安装包与 ABI 适配：发布侧产出 armeabi-v7a(32 位, 老盒子默认) + arm64-v8a(64 位)
+    // 双 ABI 独立包；universal 仍含 x86_64，供开发机与模拟器(emulator-5554)安装验证。
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("armeabi-v7a", "arm64-v8a")
+            isUniversalApk = true
+        }
+    }
+    // 注：各 ABI 包需独立 versionCode 时（Play 商店分发）再按 ABI 分配基段；本项目发到 GitHub，
+    // 多 ABI 包可并存，故此处不强制覆盖 versionCode，避免耦合 AGP 内部 API。
+
     buildTypes {
         release {
             isMinifyEnabled = false
