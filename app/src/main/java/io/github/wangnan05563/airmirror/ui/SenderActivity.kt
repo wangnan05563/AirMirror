@@ -87,9 +87,10 @@ class SenderActivity : Activity() {
     /** 本进程里见过授予的权限：只有「先授予后丢失」才算被收回，从未授予过的不算 */
     private val everGranted = mutableSetOf<String>()
 
-    private val projectionManager by lazy {
+    /** MediaProjection 是 API 21：只在 [startCapture] 的版本守卫之后取，4.4 上不会触碰这个类 */
+    @android.annotation.TargetApi(Build.VERSION_CODES.LOLLIPOP)
+    private fun projectionManager(): MediaProjectionManager =
         getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-    }
 
     /** 采集在后台服务里跑，界面按拍轮询它的结论。 */
     private val refresh = object : Runnable {
@@ -549,9 +550,14 @@ class SenderActivity : Activity() {
     }
 
     private fun startCapture(target: Target, credential: String) {
+        // MediaProjection 从 API 21 才有：4.4 手机点了也只会崩，明确告知改用推送
+        if (Build.VERSION.SDK_INT < 21) {
+            toast("当前系统版本过低，无法镜像；请改用 DLNA 推送视频")
+            return
+        }
         pending = target
         pendingCredential = credential
-        startActivityForResult(projectionManager.createScreenCaptureIntent(), REQUEST_CAPTURE)
+        startActivityForResult(projectionManager().createScreenCaptureIntent(), REQUEST_CAPTURE)
     }
 
     /** 「声音：开」是采集本机播放的声音，用到这一刻才申请；关声音永远不需要权限 */
@@ -597,7 +603,8 @@ class SenderActivity : Activity() {
     private fun isSystemBlocked(permission: RuntimePermission, granted: Set<String> = grantedKeys()): Boolean =
         RuntimePermission.isBlocked(
             granted = permission.key in granted,
-            rationale = shouldShowRequestPermissionRationale(permission.key),
+            // shouldShowRequestPermissionRationale 是 API 23：旧系统没有「不再询问」概念
+            rationale = Build.VERSION.SDK_INT >= 23 && shouldShowRequestPermissionRationale(permission.key),
             asked = store.permissionAsked(permission.key),
         )
 
@@ -645,6 +652,9 @@ class SenderActivity : Activity() {
 
     /** 真正向系统发起申请前先落盘「问过了」，这是把「从未问过」与「不再询问」分开的唯一依据 */
     private fun requestPermissionNow(askable: List<RuntimePermission>) {
+        // 运行时权限从 API 23 才存在；更早的系统权限在安装时授予，
+        // 调用 requestPermissions 会 NoSuchMethodError，直接按已授予继续。
+        if (Build.VERSION.SDK_INT < 23) return
         for (p in askable) store.savePermissionAsked(p.key)
         requestPermissions(askable.map { it.key }.toTypedArray(), REQUEST_PERMISSION)
     }

@@ -1,5 +1,6 @@
 package io.github.wangnan05563.airmirror.sender
 
+import android.annotation.TargetApi
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
@@ -56,6 +57,7 @@ object SystemAudio {
         }
     }
 
+    @TargetApi(Build.VERSION_CODES.R)
     private fun buildRecord(projection: MediaProjection): AudioRecord {
         val config = AudioPlaybackCaptureConfiguration.Builder(projection)
             .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
@@ -74,6 +76,7 @@ object SystemAudio {
             .build()
     }
 
+    @TargetApi(Build.VERSION_CODES.R)
     private fun pcmFormat(): AndroidAudioFormat = AndroidAudioFormat.Builder()
         .setEncoding(AndroidAudioFormat.ENCODING_PCM_16BIT)
         .setChannelMask(AndroidAudioFormat.CHANNEL_IN_STEREO)

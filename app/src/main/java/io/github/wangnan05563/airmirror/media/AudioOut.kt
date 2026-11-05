@@ -207,7 +207,7 @@ class AudioOut(private val spec: AudioFormat.Spec) {
         val mask = if (spec.channels == 1) AndroidAudioFormat.CHANNEL_OUT_MONO else AndroidAudioFormat.CHANNEL_OUT_STEREO
         val minBuffer = AudioTrack.getMinBufferSize(spec.sampleRate, mask, AndroidAudioFormat.ENCODING_PCM_16BIT)
             .coerceAtLeast(4 * 1024)
-        return if (Build.VERSION.SDK_INT >= 21) {
+        return if (Build.VERSION.SDK_INT >= 23) {
             AudioTrack.Builder()
                 .setAudioFormat(
                     AndroidAudioFormat.Builder()

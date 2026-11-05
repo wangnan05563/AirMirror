@@ -1,5 +1,6 @@
 package io.github.wangnan05563.airmirror.sender
 
+import android.annotation.TargetApi
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -100,7 +101,11 @@ object SenderControl {
 /**
  * 发送端前台服务：MediaProjection 采集 → H.264 硬编码 → 私有通道发送。
  * 音频、触摸注入与弱网重连不在 M0 范围。
+ *
+ * MediaProjection 自 API 21 才有；入口 [io.github.wangnan05563.airmirror.ui.SenderActivity] 已按版本拦截，
+ * 4.4 上不会走到这里。
  */
+@TargetApi(Build.VERSION_CODES.LOLLIPOP)
 class CaptureService : Service() {
 
     @Volatile

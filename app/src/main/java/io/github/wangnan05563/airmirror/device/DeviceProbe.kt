@@ -174,16 +174,20 @@ object DeviceProbe {
      * 按「不设网络上限」处理——宁可画质高一点，也不要在探测失败时擅自降档。
      */
     @Suppress("DEPRECATION")
-    fun band(context: Context): NetworkBand = try {
-        val manager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
-        val info = manager.connectionInfo
-        when {
-            info == null || info.frequency <= 0 -> NetworkBand.UNKNOWN
-            info.frequency >= 4900 -> NetworkBand.GHZ_5
-            else -> NetworkBand.GHZ_2
+    fun band(context: Context): NetworkBand {
+        // WifiInfo.frequency 是 API 21：4.4 上直接读会抛异常，按「不设网络上限」处理
+        if (Build.VERSION.SDK_INT < 21) return NetworkBand.UNKNOWN
+        return try {
+            val manager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+            val info = manager.connectionInfo
+            when {
+                info == null || info.frequency <= 0 -> NetworkBand.UNKNOWN
+                info.frequency >= 4900 -> NetworkBand.GHZ_5
+                else -> NetworkBand.GHZ_2
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "band probe failed: ${Redactor.throwable(e)}")
+            NetworkBand.UNKNOWN
         }
-    } catch (e: Exception) {
-        Log.w(TAG, "band probe failed: ${Redactor.throwable(e)}")
-        NetworkBand.UNKNOWN
     }
 }

@@ -268,7 +268,8 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             textSize = Theme.TITLE_SP
             setTextColor(Theme.TEXT_PRIMARY)
             gravity = Gravity.CENTER
-            letterSpacing = 0.02f
+            // setLetterSpacing 是 API 21：接收端硬下限 19，4.4 上不能在这里崩
+            if (Build.VERSION.SDK_INT >= 21) letterSpacing = 0.02f
         }
         waiting.addView(deviceNameText, matchWidth())
         // PRD §04 / §13.1：只写本机真能做到的入口，AirPlay 与 Miracast 在补齐前明确说不支持
@@ -306,7 +307,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             textSize = Theme.CODE_SP
             setTextColor(Theme.ACCENT)
             gravity = Gravity.CENTER
-            letterSpacing = 0.02f
+            if (Build.VERSION.SDK_INT >= 21) letterSpacing = 0.02f
             maxLines = 1
         }
         codeBlock.addView(
