@@ -76,12 +76,8 @@ object DeviceProbe {
      * 内置屏同样按模式表判。API 23 以前没有模式表，退回按当前输出像素判。
      */
     private fun interfaceReaches4K(context: Context): Boolean = try {
-        if (Build.VERSION.SDK_INT < 17) {
-            false
-        } else {
-            val manager = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
-            manager.displays.any { it.modes4K() }
-        }
+        val manager = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+        manager.displays.any { it.modes4K() }
     } catch (e: Exception) {
         Log.w(TAG, "interface probe failed: ${Redactor.throwable(e)}")
         false
@@ -139,12 +135,8 @@ object DeviceProbe {
     }
 
     private fun outputSupports4K(context: Context): Boolean = try {
-        if (Build.VERSION.SDK_INT < 17) {
-            false
-        } else {
-            val manager = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
-            manager.displays.any { it.reaches(3840, 2160) }
-        }
+        val manager = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+        manager.displays.any { it.reaches(3840, 2160) }
     } catch (e: Exception) {
         Log.w(TAG, "output probe failed: ${Redactor.throwable(e)}")
         false

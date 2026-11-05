@@ -214,7 +214,8 @@ class SsdpResponder(
     }
 
     private fun acquireMulticastLock() {
-        val wifi = appContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return
+        // WifiManager 必须从 Application 取：拿 Activity 会在 Android N 以前泄漏整棵视图树
+        val wifi = appContext.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return
         multicastLock = wifi.createMulticastLock("airmirror-ssdp").apply {
             setReferenceCounted(false)
             runCatching { acquire() }
