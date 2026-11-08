@@ -7,7 +7,11 @@ param(
     [switch]$Release,
     [switch]$Online,
     [switch]$SkipTests,
-    [switch]$Patch
+    [switch]$Patch,
+    [string]$KeystoreFile = '',
+    [string]$KeystorePassword = '',
+    [string]$KeyAlias = '',
+    [string]$KeyPassword = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -127,12 +131,43 @@ if (-not $SkipTests) { $gradleArgs += $(if ($Release) { 'testReleaseUnitTest' } 
 $gradleArgs += $(if ($Release) { 'assembleRelease' } else { 'assembleDebug' })
 $gradleArgs += '--console=plain'
 
-Write-Host "running: gradlew.bat $($gradleArgs -join ' ')"
+# Optional release signing. Passwords only ever travel as command-line arguments
+# (never written to the repo); the echoed command below redacts them.
+$signingRequested = $KeystoreFile -or $KeystorePassword -or $KeyAlias -or $KeyPassword
+if ($signingRequested) {
+    if (-not $Release) {
+        Stop-WithError 'Signing only applies to -Release builds.'
+    }
+    if (-not $KeystoreFile -or -not $KeystorePassword -or -not $KeyAlias) {
+        Stop-WithError 'Signing needs -KeystoreFile, -KeystorePassword and -KeyAlias together.'
+    }
+    if (-not (Test-Path $KeystoreFile)) {
+        Stop-WithError "keystore not found: $KeystoreFile"
+    }
+    $gradleArgs += "-PkeystoreFile=$((Resolve-Path $KeystoreFile).Path)"
+    $gradleArgs += "-PkeystorePassword=$KeystorePassword"
+    $gradleArgs += "-PkeyAlias=$KeyAlias"
+    if ($KeyPassword) { $gradleArgs += "-PkeyPassword=$KeyPassword" }
+    Write-Host "[INFO] release signing: $KeystoreFile (alias $KeyAlias)" -ForegroundColor Cyan
+}
+
+$shownArgs = $gradleArgs | ForEach-Object { $_ -replace '^-P(keystorePassword|keyPassword)=.*', '-P$1=***' }
+Write-Host "running: gradlew.bat $($shownArgs -join ' ')"
 Push-Location $root
 try {
-    & $gradlew @gradleArgs
-    if ($LASTEXITCODE -ne 0) {
-        Stop-WithError "Gradle failed (exit $LASTEXITCODE)."
+    # PowerShell 5.1 turns native stderr into a terminating NativeCommandError under
+    # $ErrorActionPreference='Stop'. Gradle/JDK legitimately warn on stderr (e.g. the
+    # JDK 24+ restricted-method notice), which must not abort a build that exits 0.
+    $previousEap = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        & $gradlew @gradleArgs
+        $gradleExit = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousEap
+    }
+    if ($gradleExit -ne 0) {
+        Stop-WithError "Gradle failed (exit $gradleExit)."
     }
 } finally {
     Pop-Location

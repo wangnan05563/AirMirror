@@ -68,6 +68,12 @@ $env:GITHUB_TOKEN = '<your token>'   # 仅无 gh 时需要；不要写进仓库
 .\scripts\release.ps1             # 构建 → 打 tag → 建 Release → 上传 APK
 ```
 
+发布包默认未签名。要一次产出可安装的包，把签名参数一并传给一键脚本（构建阶段透传给 Gradle，口令只走命令行、不入库）：
+
+```powershell
+.\scripts\release.ps1 -KeystoreFile D:\keys\airmirror.jks -KeystorePassword '<store>' -KeyAlias airmirror
+```
+
 脚本在前置检查全部通过后才写远端：缺凭据、工作区有未提交改动、产物不全或 tag 已存在时当场失败，不会留下「本地有 tag、远端没 Release」的半成品。REST 通道先建草稿 Release、传完资产再转正，任何一步失败都会回滚本次创建的远端 tag 与草稿。工作区检查是为了让 Release 里的包能从 tag 原样重建——`-DryRun` 只读，允许脏工作区。现有产物若带 `-unsigned` 会显式警告（未签名包安装会被系统拒绝）。
 
 产物在 `app/build/outputs/apk/debug/`（`app-universal-debug.apk` 为全 ABI 包）。装到已连接的设备并拉起接收端：
