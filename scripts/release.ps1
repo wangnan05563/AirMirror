@@ -35,7 +35,11 @@ param(
     [switch]$DryRun,
     [string]$Tag = '',
     [switch]$SkipBuild,
-    [string]$Notes = ''
+    [string]$Notes = '',
+    [string]$KeystoreFile = '',
+    [string]$KeystorePassword = '',
+    [string]$KeyAlias = '',
+    [string]$KeyPassword = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -64,6 +68,18 @@ if (-not $SkipBuild) {
     $buildScript = Join-Path $root 'scripts\build.ps1'
     if (-not (Test-Path $buildScript)) { Fail "缺少构建脚本：$buildScript" }
     Ok "构建脚本存在"
+}
+
+$signingRequested = $KeystoreFile -or $KeystorePassword -or $KeyAlias -or $KeyPassword
+if ($signingRequested) {
+    if ($SkipBuild) { Fail '-SkipBuild 与签名参数冲突：复用旧产物无法保证它是用这个 keystore 签的。' }
+    if (-not $KeystoreFile -or -not $KeystorePassword -or -not $KeyAlias) {
+        Fail '签名需要同时提供 -KeystoreFile、-KeystorePassword、-KeyAlias（可选 -KeyPassword）。'
+    }
+    if (-not (Test-Path $KeystoreFile)) { Fail "keystore 不存在：$KeystoreFile" }
+    Ok "release 签名：$KeystoreFile（alias $KeyAlias）"
+} elseif (-not $SkipBuild) {
+    Warn '未传签名参数：将产出 unsigned 包，安装会被系统拒绝。'
 }
 
 if ($gh) {
@@ -107,9 +123,16 @@ Step '构建'
 if ($SkipBuild) {
     Ok '按 -SkipBuild 跳过构建'
 } elseif ($DryRun) {
-    Ok "将执行：scripts\build.ps1 -Release -Patch"
+    $plan = '将执行：scripts\build.ps1 -Release -Patch'
+    if ($signingRequested) { $plan += '（含 release 签名）' }
+    Ok $plan
 } else {
-    & (Join-Path $root 'scripts\build.ps1') -Release -Patch
+    $buildArgs = @('-Release', '-Patch')
+    if ($signingRequested) {
+        $buildArgs += @('-KeystoreFile', $KeystoreFile, '-KeystorePassword', $KeystorePassword, '-KeyAlias', $KeyAlias)
+        if ($KeyPassword) { $buildArgs += @('-KeyPassword', $KeyPassword) }
+    }
+    & (Join-Path $root 'scripts\build.ps1') @buildArgs
     if ($LASTEXITCODE -ne 0) { Fail "构建失败（exit=$LASTEXITCODE）。" }
     Ok '构建完成'
 }
@@ -142,7 +165,10 @@ if ($apks.Count -eq 0) {
     foreach ($apk in $apks) {
         Ok ("{0} ({1:N0} B)" -f $apk.Name, $apk.Length)
         if ($apk.Name -like '*unsigned*') {
-            Warn "$($apk.Name) 未签名，安装会被系统拒绝；请按 README 传 -PkeystoreFile 重新构建。"
+            if ($signingRequested) {
+                Fail "已传签名参数但产物仍是未签名包：$($apk.Name)（签名未生效，检查 keystore/alias/口令）。"
+            }
+            Warn "$($apk.Name) 未签名，安装会被系统拒绝；请按 README 传 -KeystoreFile 重新构建。"
         }
     }
 }
