@@ -57,14 +57,18 @@ $env:JAVA_HOME = '<你的 JDK 17 目录>'
 
 App 内「检查更新」会查询内置仓库的 GitHub Release；安装新版本时由系统弹「未知来源」授权，App 不自批。
 
-一键发布（需要 `gh` 且已 `gh auth login`）：
+一键发布（两条凭据通道，任选其一，都只从环境变量读取）：
+
+- `gh` 已 `gh auth login`；或
+- 没有 `gh` 时设置 `GITHUB_TOKEN`（细粒度 token 需 `Contents: Read and write`），脚本经 GitHub REST API 创建远端 tag 与 Release，不需要 `git push` 凭据。
 
 ```powershell
+$env:GITHUB_TOKEN = '<your token>'   # 仅无 gh 时需要；不要写进仓库
 .\scripts\release.ps1 -DryRun     # 只校验流程与产物，不写任何远端
-.\scripts\release.ps1             # 构建 → 打 tag → 推 tag → 发 GitHub Release
+.\scripts\release.ps1             # 构建 → 打 tag → 建 Release → 上传 APK
 ```
 
-脚本在前置检查全部通过后才写远端：缺 `gh`/凭据、产物不全或 tag 已存在时当场失败，不会留下「本地有 tag、远端没 Release」的半成品。现有产物若带 `-unsigned` 会显式警告。
+脚本在前置检查全部通过后才写远端：缺凭据、工作区有未提交改动、产物不全或 tag 已存在时当场失败，不会留下「本地有 tag、远端没 Release」的半成品。REST 通道先建草稿 Release、传完资产再转正，任何一步失败都会回滚本次创建的远端 tag 与草稿。工作区检查是为了让 Release 里的包能从 tag 原样重建——`-DryRun` 只读，允许脏工作区。现有产物若带 `-unsigned` 会显式警告（未签名包安装会被系统拒绝）。
 
 产物在 `app/build/outputs/apk/debug/`（`app-universal-debug.apk` 为全 ABI 包）。装到已连接的设备并拉起接收端：
 
