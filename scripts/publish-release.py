@@ -111,6 +111,8 @@ def main():
     parser.add_argument('--notes-file')
     parser.add_argument('assets', nargs='*')
     parser.add_argument('--dry-run', action='store_true')
+    parser.add_argument('--verify-upload', action='store_true',
+                        help='create a draft, upload, verify remote sizes, then delete the draft and tag')
     args = parser.parse_args()
 
     repo = args.repo
@@ -183,6 +185,22 @@ def main():
                 status, asset = request('POST', '%s?name=%s' % (upload_base, urllib.parse.quote(name)),
                                         tok, raw=handle.read(), timeout=300)
             print('  ok id=%s' % asset.get('id'))
+
+        if args.verify_upload:
+            status, published = request('GET', '%s/repos/%s/releases/%s' % (API, repo, release_id), tok)
+            remote = {item['name']: item['size'] for item in published.get('assets') or []}
+            for path in args.assets:
+                name = os.path.basename(path)
+                local = os.path.getsize(path)
+                if remote.get(name) != local:
+                    raise ApiError('verify', 'asset %s size mismatch: remote=%s local=%s'
+                                   % (name, remote.get(name), local))
+            request('DELETE', '%s/repos/%s/releases/%s' % (API, repo, release_id), tok)
+            release_id = None
+            request('DELETE', '%s/repos/%s/git/refs/tags/%s' % (API, repo, urllib.parse.quote(args.tag)), tok)
+            created_ref = False
+            print('VERIFY OK: %d asset(s) uploaded with matching sizes; draft and tag removed' % len(args.assets))
+            return 0
 
         request('PATCH', '%s/repos/%s/releases/%s' % (API, repo, release_id), tok,
                 payload={'draft': False})
