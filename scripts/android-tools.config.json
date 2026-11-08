@@ -1,0 +1,37 @@
+{
+  "build": {
+    "script": "scripts/build.ps1",
+    "javaHomeCandidates": [
+      "%AIRMIRROR_JAVA_HOME%",
+      "D:\\code\\Java\\zulu17.52.17-ca-jdk17.0.12-win_x64",
+      "%JAVA_HOME%"
+    ],
+    "minJavaMajor": 17,
+    "maxJavaMajor": 22
+  },
+  "push": {
+    "package": "io.github.wangnan05563.airmirror",
+    "activity": ".ui.ReceiverActivity",
+    "startFlags": "0x10020000",
+    "variant": "debug",
+    "apkCandidates": [
+      "app-universal-{variant}.apk",
+      "app-arm64-v8a-{variant}.apk",
+      "app-armeabi-v7a-{variant}.apk"
+    ],
+    "adbCandidates": [
+      "%ANDROID_HOME%\\platform-tools\\adb.exe",
+      "%ANDROID_SDK_ROOT%\\platform-tools\\adb.exe"
+    ]
+  },
+  "launchers": [
+    "scripts/安卓构建打包.bat",
+    "scripts/安卓推送测试.bat"
+  ],
+  "logicScripts": [
+    "scripts/build_launcher.ps1",
+    "scripts/push_apk.ps1",
+    "scripts/verify_launchers.ps1"
+  ],
+  "smokeArgs": "-Help"
+}
