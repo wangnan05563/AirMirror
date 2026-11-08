@@ -283,6 +283,8 @@ class SenderActivity : Activity() {
         startBrowsing()
         startScanning()
         main.post(refresh)
+        // 冷启动静默查一次：只有发现新版本才弹框，已最新/检查失败都不打扰（手动入口仍走 checkUpdate 默认形态）
+        checkUpdate(silent = true)
 
         // 联调入口：adb 直接拉起时带 host/port/凭据，跳过发现
         val directHost = intent.getStringExtra(EXTRA_TARGET_HOST)
@@ -940,11 +942,12 @@ class SenderActivity : Activity() {
             .show()
     }
 
-    /** 检查更新：远端是 GitHub Release，本端按 ABI 优先挑独立包，其次 universal。 */
-    private fun checkUpdate() {
+    /** 检查更新：远端是 GitHub Release，本端按 ABI 优先挑独立包，其次 universal。
+     *  silent=true 供启动自检：不改状态行、不弹「已最新/失败」提示，只有发现新版本才弹框。 */
+    private fun checkUpdate(silent: Boolean = false) {
         if (updateBusy) return
         updateBusy = true
-        updateRow.text = "检查更新：正在检查…"
+        if (!silent) updateRow.text = "检查更新：正在检查…"
         val version = runCatching {
             packageManager.getPackageInfo(packageName, 0).versionName
         }.getOrNull().orEmpty()
@@ -965,10 +968,10 @@ class SenderActivity : Activity() {
             main.post {
                 if (isFinishing) return@post
                 updateBusy = false
-                updateRow.text = "检查更新"
+                if (!silent) updateRow.text = "检查更新"
                 when (result) {
-                    is UpdateResult.UpToDate -> toast("已是最新版本（${version.ifEmpty { "未知" }}）")
-                    is UpdateResult.Failed -> toast(result.reason)
+                    is UpdateResult.UpToDate -> if (!silent) toast("已是最新版本（${version.ifEmpty { "未知" }}）")
+                    is UpdateResult.Failed -> if (!silent) toast(result.reason)
                     is UpdateResult.Available -> promptUpdate(result.release)
                 }
             }
