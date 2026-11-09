@@ -440,7 +440,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
 
     private fun buildRecoveryBar(): TextView {
         recoveryBar = TextView(this).apply {
-            text = "连接中断，正在恢复"
+            text = CastStatus.line(CastStatus.State.RECOVERING)
             textSize = Theme.BODY_SP
             maxLines = 1
             setTextColor(Theme.TEXT_PRIMARY)

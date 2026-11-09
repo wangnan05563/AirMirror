@@ -139,6 +139,15 @@ class SenderActivity : Activity() {
                 if (casting) expandedFingerprint = null
             }
             if (casting) {
+                // UX-03：暂停是发送端本地状态（只停送帧），状态条跟着切换；错误文案优先级更高
+                if (SenderReport.last.isEmpty()) {
+                    val pausedLine = CastStatus.line(CastStatus.State.PAUSED)
+                    if (SenderControl.paused) {
+                        if (status.text != pausedLine) status.text = pausedLine
+                    } else if (status.text == pausedLine) {
+                        status.text = SenderReport.quality.ifEmpty { CastStatus.castingLine() }
+                    }
+                }
                 pauseButton.text = DeviceCardPolicy.pauseLabel(SenderControl.paused)
                 audioButton.text = audioLabel()
             }
@@ -626,7 +635,7 @@ class SenderActivity : Activity() {
     }
 
     private fun connectTo(target: Target, credential: String = codeInput.text.toString().trim()) {
-        status.text = CONNECTING
+        status.text = CastStatus.line(CastStatus.State.CONNECTING)
         lastReport = ""
         codeInput.isEnabled = false
         // 记进 10 分钟缓存：下次组播/广播全被挡住时，这个地址就是直连探测的唯一入口
@@ -927,7 +936,7 @@ class SenderActivity : Activity() {
         }
         pendingCrossNetToken = null
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent) else startService(intent)
-        status.text = if (token != null) "正在投屏到跨网设备" else "正在投屏到 ${target.name}"
+        status.text = CastStatus.line(CastStatus.State.CASTING, if (token != null) "跨网设备" else target.name)
     }
 
     /** 跨网端点与应用内说明；与接收端共用同一份落盘设置，手机上填一次即可。 */
@@ -1073,7 +1082,6 @@ class SenderActivity : Activity() {
         private const val REQUEST_CAPTURE = 1
         private const val REQUEST_PERMISSION = 2
         private const val SEARCHING = "正在搜索同一网络里的电视…"
-        private const val CONNECTING = "正在连接…"
         private const val PROTOCOL = "AMRC"
         private const val CODE_LENGTH = 6
         private const val DEFAULT_PORT = 41523
