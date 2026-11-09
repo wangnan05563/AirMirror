@@ -34,7 +34,7 @@ class CastStatusGuardTest {
     fun `发送端三态走共享文案表 不留本地中文串`() {
         val src = sender()
         assertTrue(src.contains("CastStatus.line(CastStatus.State.CONNECTING)"))
-        assertTrue(src.contains("CastStatus.line(CastStatus.State.CASTING, castingStatusTarget)"))
+        assertTrue(src.contains("CastStatus.line(CastStatus.State.CASTING, if (token != null) "跨网设备" else target.name)"))
         assertTrue(src.contains("CastStatus.line(CastStatus.State.PAUSED)"))
         assertFalse("连接中文案不得再写第二份", src.contains("\"正在连接…\""))
         assertFalse("投屏中文案不得再写第二份", src.contains("\"正在投屏到"))
@@ -52,7 +52,7 @@ class CastStatusGuardTest {
     fun `暂停只在无错误时接管状态条 恢复后还原投屏目标`() {
         val src = sender()
         assertTrue("暂停提示必须让位给错误文案", src.contains("if (SenderReport.last.isEmpty())"))
-        assertTrue("恢复后要还原投屏目标", src.contains("castingStatusTarget"))
+        assertTrue("恢复后要回到画质文案", src.contains("SenderReport.quality.ifEmpty { CastStatus.castingLine() }"))
     }
 
     @Test
