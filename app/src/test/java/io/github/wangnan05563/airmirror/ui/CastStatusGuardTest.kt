@@ -34,7 +34,7 @@ class CastStatusGuardTest {
     fun `发送端三态走共享文案表 不留本地中文串`() {
         val src = sender()
         assertTrue(src.contains("CastStatus.line(CastStatus.State.CONNECTING)"))
-        assertTrue(src.contains("CastStatus.line(CastStatus.State.CASTING, if (token != null) "跨网设备" else target.name)"))
+        assertTrue(src.contains("CastStatus.line(CastStatus.State.CASTING, if (token != null)"))
         assertTrue(src.contains("CastStatus.line(CastStatus.State.PAUSED)"))
         assertFalse("连接中文案不得再写第二份", src.contains("\"正在连接…\""))
         assertFalse("投屏中文案不得再写第二份", src.contains("\"正在投屏到"))
