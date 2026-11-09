@@ -39,6 +39,18 @@ class BrowserCastServerTest {
     }
 
     @Test
+    fun `页面标题行显示实时设备名并转义`() {
+        startServer(deviceName = "客厅电视")
+        assertEquals(200, get(server!!.url("127.0.0.1")).first)
+        assertTrue("标题行必须显示大屏名", get(server!!.url("127.0.0.1")).second.contains("<h1>客厅电视</h1>"))
+        server?.stop()
+        startServer(deviceName = "<img src=x>")
+        val page = get(server!!.url("127.0.0.1")).second
+        assertFalse("设备名未转义，注入面直接落到页面", page.contains("<img src=x>"))
+        assertTrue(page.contains("&lt;img src=x&gt;"))
+    }
+
+    @Test
     fun `上传后文件落盘并回调`() {
         val uploaded = AtomicReference<BrowserCastServer.UploadedFile>()
         val latch = CountDownLatch(1)
@@ -114,8 +126,12 @@ class BrowserCastServerTest {
         assertTrue(remaining.first().name.endsWith("b.mp4"))
     }
 
-    private fun startServer(maxBytes: Long = BrowserCastServer.DEFAULT_MAX_BYTES, onUpload: (BrowserCastServer.UploadedFile) -> Unit = {}) {
-        server = BrowserCastServer(dir, maxBytes, onUpload).start()
+    private fun startServer(
+        maxBytes: Long = BrowserCastServer.DEFAULT_MAX_BYTES,
+        deviceName: String = BrowserCastServer.DEFAULT_DEVICE_NAME,
+        onUpload: (BrowserCastServer.UploadedFile) -> Unit = {},
+    ) {
+        server = BrowserCastServer(dir, maxBytes, onUpload, deviceName = { deviceName }).start()
     }
 
     private fun get(url: String): Pair<Int, String> {

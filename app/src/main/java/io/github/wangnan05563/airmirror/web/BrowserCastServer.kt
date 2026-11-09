@@ -28,6 +28,8 @@ class BrowserCastServer(
     private val maxBytes: Long = DEFAULT_MAX_BYTES,
     private val onUpload: (UploadedFile) -> Unit,
     private val token: String = newToken(),
+    /** 页面标题行显示的大屏名；用取值函数，改名后不必重建服务也能刷新。 */
+    private val deviceName: () -> String = { DEFAULT_DEVICE_NAME },
 ) {
     data class UploadedFile(val file: File, val name: String, val mime: String, val size: Long)
 
@@ -163,54 +165,7 @@ class BrowserCastServer(
         return MessageDigest.isEqual(segment.toByteArray(Charsets.US_ASCII), token.toByteArray(Charsets.US_ASCII))
     }
 
-    private fun page(): String = """
-        <!doctype html>
-        <html lang="zh-CN"><head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width,initial-scale=1">
-        <title>投到大屏</title>
-        <style>
-          body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0;background:#0b1f3a;color:#f2f6fb}
-          main{max-width:560px;margin:0 auto;padding:32px 20px}
-          h1{font-size:24px;margin:0 0 8px}
-          p{color:#a9b8cc;line-height:1.6}
-          .card{background:#12314f;border-radius:14px;padding:20px;margin-top:20px}
-          input[type=file]{width:100%;padding:12px;background:#0b1f3a;color:#f2f6fb;border:1px solid #2a4a6b;border-radius:10px}
-          button{margin-top:16px;width:100%;padding:14px;border:0;border-radius:10px;background:#4da3ff;color:#04101f;font-size:16px;font-weight:600}
-          button:disabled{opacity:.55}
-          #state{margin-top:14px;color:#a9b8cc;font-size:14px}
-          .hint{font-size:13px;color:#8fa2ba;margin-top:18px}
-        </style></head>
-        <body><main>
-          <h1>投到大屏</h1>
-          <p>选择手机或电脑里的视频、音频或图片，上传后会直接在电视上播放。不需要安装任何 App。</p>
-          <div class="card">
-            <input id="file" type="file" accept="video/*,audio/*,image/*">
-            <button id="send" type="button">发送到大屏</button>
-            <div id="state"></div>
-          </div>
-          <p class="hint">屏幕共享/标签页共享需要浏览器支持 WebRTC；当前版本请使用文件上传。</p>
-        </main>
-        <script>
-          const input=document.getElementById('file');
-          const button=document.getElementById('send');
-          const state=document.getElementById('state');
-          button.onclick=function(){
-            const file=input.files[0];
-            if(!file){state.textContent='请先选择一个文件';return;}
-            button.disabled=true;state.textContent='正在上传 0%';
-            const xhr=new XMLHttpRequest();
-            xhr.open('POST','${uploadPath}');
-            xhr.setRequestHeader('X-File-Name',encodeURIComponent(file.name));
-            xhr.setRequestHeader('Content-Type',file.type||'application/octet-stream');
-            xhr.upload.onprogress=function(e){if(e.lengthComputable){state.textContent='正在上传 '+Math.round(e.loaded*100/e.total)+'%';}};
-            xhr.onload=function(){button.disabled=false;state.textContent=xhr.status===200?'已发送，电视正在播放':'上传失败（'+xhr.status+'）';};
-            xhr.onerror=function(){button.disabled=false;state.textContent='上传失败，请检查是否还在同一网络';};
-            xhr.send(file);
-          };
-        </script>
-        </body></html>
-    """.trimIndent()
+    private fun page(): String = GuestPage.html(deviceName(), uploadPath)
 
     private val pagePath: String get() = "/w/$token/"
     private val uploadPath: String get() = "/w/$token/upload"
@@ -218,6 +173,9 @@ class BrowserCastServer(
     companion object {
         const val DEFAULT_MAX_BYTES = 200L * 1024 * 1024
         private const val MAX_HEAD_BYTES = 16 * 1024
+
+        /** 没有设备名时的页面标题，避免标题行空白。 */
+        const val DEFAULT_DEVICE_NAME = "大屏"
 
         fun newToken(): String {
             val bytes = ByteArray(4)

@@ -69,6 +69,8 @@ class ReceiverHost private constructor(context: Context) {
     private var probeName = ""
     private var crossNet: CrossNetInbound? = null
     private var browserCast: BrowserCastServer? = null
+    /** 访客页标题行显示的大屏名，随 start(deviceName) 刷新。 */
+    private var browserCastName: String = BrowserCastServer.DEFAULT_DEVICE_NAME
 
     /**
      * 本机等级决定协议是否常驻（PRD 1152）：A/B 级常驻，只有 C 级参与闲置释放。
@@ -158,7 +160,7 @@ class ReceiverHost private constructor(context: Context) {
             // 进程还在、服务被重启（或设置里改了设备名）时，只把探测应答器补齐/换名即可
             ensureProbe(deviceName)
             startCrossNet()
-            dlna?.let { startBrowserCast(it) }
+            dlna?.let { startBrowserCast(it, deviceName) }
             return
         }
         val active = ReceiverSession(
@@ -231,7 +233,7 @@ class ReceiverHost private constructor(context: Context) {
         main.removeCallbacks(idleSweep)
         main.postDelayed(idleSweep, ProtocolResidency.TICK_MILLIS)
         holder?.let { mount(it) }
-        startBrowserCast(renderer)
+        startBrowserCast(renderer, deviceName)
         startCrossNet()
     }
 
@@ -239,7 +241,9 @@ class ReceiverHost private constructor(context: Context) {
      * PRD §5.9：接收端内置网页服务，访客用浏览器上传文件即可投屏。
      * 入口带一次性 token，只有看得到大屏的人才知道地址；服务只在进程内监听，不向外网开放。
      */
-    private fun startBrowserCast(renderer: DlnaServer) {
+    private fun startBrowserCast(renderer: DlnaServer, deviceName: String) {
+        // 页面每次请求都重新取值：改名后不必重建监听也能在标题行看到新名字
+        browserCastName = deviceName
         if (browserCast != null) return
         // PRD 1266：本地缓存 200MB，C 级 64MB；分级结果已在后台算好，这里只读
         val maxBytes = if (protocolsResident) {
@@ -259,6 +263,7 @@ class ReceiverHost private constructor(context: Context) {
                     }
                 }
             },
+            deviceName = { browserCastName },
         )
         val started = runCatching { server.start() }.isSuccess
         if (!started) {
