@@ -22,11 +22,14 @@ object CastStatus {
     fun line(state: State, target: String = ""): String? = when (state) {
         State.IDLE -> "未连接，选择设备或输入投屏码"
         State.CONNECTING -> "正在连接…"
-        State.CASTING -> if (target.isEmpty()) "正在投屏" else "正在投屏到$target"
+        State.CASTING -> castingLine(target)
         State.PAUSED -> "已暂停，按遥控器继续"
         State.RECOVERING -> "连接中断，正在恢复"
         State.ERROR -> null
     }
+
+    /** 投屏态文案；无目标时不留悬空介词。 */
+    fun castingLine(target: String = ""): String = if (target.isEmpty()) "正在投屏" else "正在投屏到$target"
 
     /** 恢复提示是否仍在 30 秒保留窗口内（FS-10 / UX-03 常驻判据）。 */
     fun recoveryVisible(elapsedMs: Long): Boolean = elapsedMs in 0 until RECOVERY_WINDOW_MS

@@ -512,7 +512,7 @@ class SenderActivity : Activity() {
             DeviceRegistry.EmptyReason.HAS_ONLINE -> "点设备名开始投屏"
         }
         hint.text = reason
-        if (status.text == SEARCHING || status.text == CONNECTING) status.text = reason
+        if (status.text == SEARCHING || status.text == CastStatus.line(CastStatus.State.CONNECTING)) status.text = reason
     }
 
     private fun targetOf(fingerprint: String, name: String): Target? {
