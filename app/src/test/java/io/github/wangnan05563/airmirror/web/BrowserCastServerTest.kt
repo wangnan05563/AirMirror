@@ -41,11 +41,11 @@ class BrowserCastServerTest {
 
     @Test
     fun `页面标题行显示实时设备名并转义`() {
-        startServer(deviceName = "客厅电视")
+        val name = AtomicReference("客厅电视")
+        server = BrowserCastServer(dir, BrowserCastServer.DEFAULT_MAX_BYTES, {}, deviceName = { name.get() }).start()
         assertEquals(200, get(server!!.url("127.0.0.1")).first)
         assertTrue("标题行必须显示大屏名", get(server!!.url("127.0.0.1")).second.contains("<h1>客厅电视</h1>"))
-        server?.stop()
-        startServer(deviceName = "<img src=x>")
+        name.set("<img src=x>")
         val page = get(server!!.url("127.0.0.1")).second
         assertFalse("设备名未转义，注入面直接落到页面", page.contains("<img src=x>"))
         assertTrue(page.contains("&lt;img src=x&gt;"))
