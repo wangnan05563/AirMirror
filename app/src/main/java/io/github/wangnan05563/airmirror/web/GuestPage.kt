@@ -68,7 +68,6 @@ object GuestPage {
           --text:${cssColor(Theme.TEXT_PRIMARY)};
           --text-dim:${cssAlpha(Theme.TEXT_SECONDARY)};
           --text-faint:${cssAlpha(Theme.OFFLINE)};
-          --divider:${cssAlpha(Theme.DIVIDER)};
         }
     """.trimIndent()
 
