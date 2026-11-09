@@ -33,6 +33,7 @@ import io.github.wangnan05563.airmirror.crossnet.HttpSignalingTransport
 import io.github.wangnan05563.airmirror.crossnet.SignalingClient
 import io.github.wangnan05563.airmirror.crossnet.SignalingSettings
 import io.github.wangnan05563.airmirror.dlna.localIpv4
+import io.github.wangnan05563.airmirror.error.ErrorNotice
 import io.github.wangnan05563.airmirror.net.DeviceRegistry
 import io.github.wangnan05563.airmirror.net.ProbeResponder
 import io.github.wangnan05563.airmirror.net.ProbeScanner
