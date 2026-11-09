@@ -122,7 +122,9 @@ class SenderActivity : Activity() {
             val note = if (report.isEmpty()) SenderReport.quality else report
             if (note != lastReport) {
                 lastReport = note
-                status.text = note.ifEmpty { hint.text.ifEmpty { SEARCHING } }
+                // UX-02：码类拒绝是发送端唯一可观测的「换码」时刻，按输入态给可重新确认的提示，
+                // 输入框保留不清空（这里从不 setText("")）；非码类错误照旧走原提示。
+                status.text = codeRotationNotice(report) ?: note.ifEmpty { hint.text.ifEmpty { SEARCHING } }
                 // 出错时把输入放开让用户重试；正常投屏中保持禁用，避免重复发起
                 codeInput.isEnabled = report.isNotEmpty()
             }
@@ -511,6 +513,20 @@ class SenderActivity : Activity() {
     }
 
     /** 投屏码路径：一台能用 AirMirror 的设备直接连，多台时先点选，避免投错屏。 */
+    /**
+     * UX-02：码类拒绝（不正确/已过期/已用过/锁定）是发送端唯一可观测的「换码」时刻。
+     * 反查回 Cause 再交给 CodeInputPolicy 按输入态判决；非码类错误返回 null，不接管原提示。
+     * 输入框始终保留（判决 preserveInput 恒真，界面从不 setText("")），不弹模态框。
+     */
+    private fun codeRotationNotice(report: String): String? {
+        val cause = ErrorNotice.causeOfRendered(report) ?: return null
+        val locked = cause == ErrorNotice.Cause.CODE_LOCKED
+        val isCode = locked || cause == ErrorNotice.Cause.CODE_WRONG ||
+            cause == ErrorNotice.Cause.CODE_EXPIRED || cause == ErrorNotice.Cause.CODE_USED
+        if (!isCode) return null
+        return CodeInputPolicy.onCodeRotated(codeInput.text.length, locked).notice
+    }
+
     private fun connectByCode() {
         val code = codeInput.text.toString().trim()
         if (code.length != CODE_LENGTH) {

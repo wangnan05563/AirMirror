@@ -219,7 +219,16 @@ object ErrorNotice {
         ),
     )
 
+    /** 渲染文案 → Cause 的反查表：report 里存的是 textFor 的结果，causeOfLegacyReason 不能round-trip。 */
+    private val renderedToCause: Map<String, Cause> = table.keys.associateBy { textFor(it) }
+
     fun noticeFor(cause: Cause): Notice = table.getValue(cause)
+
+    /**
+     * 把已经渲染成文案的 report 反查回 Cause；非 ErrorNotice 文案（画质/自定义提示）回 null。
+     * 供界面区分「码类拒绝」与其它错误，避免在界面层重新散落中文串匹配。
+     */
+    fun causeOfRendered(text: String): Cause? = renderedToCause[text]
 
     /** 供旧代码把已经散在外面的中文原因串归一化；认不出的回落到最通用的一条 */
     fun causeOfLegacyReason(reason: String): Cause = when {
