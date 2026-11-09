@@ -68,6 +68,8 @@ class SenderActivity : Activity() {
 
     private lateinit var store: DeviceStore
     private lateinit var status: TextView
+    /** 当前状态条的语义态：只影响取色，不参与任何状态判定（PRD UI-04 依赖约束）。 */
+    private var statusState = CastStatus.State.IDLE
     private lateinit var hint: TextView
     private lateinit var permissionFix: Button
     private lateinit var list: LinearLayout
@@ -126,6 +128,13 @@ class SenderActivity : Activity() {
                 // UX-02：码类拒绝是发送端唯一可观测的「换码」时刻，按输入态给可重新确认的提示，
                 // 输入框保留不清空（这里从不 setText("")）；非码类错误照旧走原提示。
                 status.text = codeRotationNotice(report) ?: note.ifEmpty { hint.text.ifEmpty { SEARCHING } }
+                statusState = when {
+                    report.isNotEmpty() -> CastStatus.State.ERROR
+                    SenderReport.quality.isNotEmpty() ->
+                        if (SenderControl.paused) CastStatus.State.PAUSED else CastStatus.State.CASTING
+                    else -> CastStatus.State.IDLE
+                }
+                status.setTextColor(StatusColors.textOf(statusState))
                 // 出错时把输入放开让用户重试；正常投屏中保持禁用，避免重复发起
                 codeInput.isEnabled = report.isNotEmpty()
             }
@@ -143,9 +152,9 @@ class SenderActivity : Activity() {
                 if (SenderReport.last.isEmpty()) {
                     val pausedLine = CastStatus.line(CastStatus.State.PAUSED)
                     if (SenderControl.paused) {
-                        if (status.text != pausedLine) status.text = pausedLine
+                        if (status.text != pausedLine) showStatus(CastStatus.State.PAUSED, pausedLine)
                     } else if (status.text == pausedLine) {
-                        status.text = SenderReport.quality.ifEmpty { CastStatus.castingLine() }
+                        showStatus(CastStatus.State.CASTING, SenderReport.quality.ifEmpty { CastStatus.castingLine() })
                     }
                 }
                 pauseButton.text = DeviceCardPolicy.pauseLabel(SenderControl.paused)
@@ -181,7 +190,7 @@ class SenderActivity : Activity() {
         status = TextView(this).apply {
             text = SEARCHING
             textSize = Theme.PHONE_BODY_SP
-            setTextColor(Theme.ACCENT)
+            setTextColor(StatusColors.textOf(CastStatus.State.IDLE))
             setPadding(0, Theme.dp(this@SenderActivity, 6), 0, Theme.dp(this@SenderActivity, 14))
         }
         root.addView(status)
@@ -249,7 +258,7 @@ class SenderActivity : Activity() {
         root.addView(TextView(this).apply {
             text = "局域网直连 · 无广告 · 不经服务器"
             textSize = Theme.PHONE_BODY_SP
-            setTextColor(Theme.OFFLINE)
+            setTextColor(StatusColors.offlineText())
             gravity = Gravity.CENTER
             setPadding(0, Theme.dp(this@SenderActivity, 10), 0, 0)
         }, matchWidth())
@@ -358,7 +367,7 @@ class SenderActivity : Activity() {
         this.inputType = inputType
         setTextSize(TypedValue.COMPLEX_UNIT_SP, Theme.PHONE_BODY_SP)
         setTextColor(Theme.TEXT_PRIMARY)
-        setHintTextColor(Theme.OFFLINE)
+        setHintTextColor(StatusColors.offlineText())
         setBackgroundColor(Theme.SURFACE)
         setPadding(Theme.dp(this@SenderActivity, 12), Theme.dp(this@SenderActivity, 6), Theme.dp(this@SenderActivity, 12), Theme.dp(this@SenderActivity, 6))
     }
@@ -458,7 +467,7 @@ class SenderActivity : Activity() {
                     addView(TextView(this@SenderActivity).apply {
                         text = row.name
                         textSize = 18f
-                        setTextColor(if (row.online) Theme.TEXT_PRIMARY else Theme.OFFLINE)
+                        setTextColor(if (row.online) Theme.TEXT_PRIMARY else StatusColors.offlineText())
                         layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                     })
                     addView(TextView(this@SenderActivity).apply {
@@ -468,7 +477,7 @@ class SenderActivity : Activity() {
                             else -> "不支持"
                         }
                         textSize = Theme.PHONE_BODY_SP
-                        setTextColor(if (row.online && usable != null) Theme.ACCENT else Theme.OFFLINE)
+                        setTextColor(if (row.online && usable != null) Theme.ACCENT else StatusColors.offlineText())
                     })
                     // PRD §11.3：点击先展开两个动作，不再「点一下就先连上再选」
                     setOnClickListener {
@@ -567,12 +576,19 @@ class SenderActivity : Activity() {
         }
     }
 
+    /** PRD UI-04：状态文案与六态语义色一起落，避免同一条状态行在不同入口换出不同颜色。 */
+    private fun showStatus(state: CastStatus.State, line: CharSequence?) {
+        statusState = state
+        status.text = line
+        status.setTextColor(StatusColors.textOf(state))
+    }
+
     /**
      * 跨网：先用信令配对并打洞，成功后把隧道交给前台采集服务。
      * 这一步必须在后台线程做（信令轮询与 UDP 打洞都是阻塞 IO）。
      */
     private fun connectCrossNet(code: String) {
-        status.text = "正在跨网连接…"
+        showStatus(CastStatus.State.CONNECTING, "正在跨网连接…")
         codeInput.isEnabled = false
         thread(name = "airmirror-crossnet-out", isDaemon = true) {
             val outcome = runCatching {
@@ -606,7 +622,7 @@ class SenderActivity : Activity() {
                     requestCapture(Target("跨网设备", "", 0, "crossnet"), code, token)
                 } else {
                     codeInput.isEnabled = true
-                    status.text = outcome.prompt.ifEmpty { "跨网连接失败" }
+                    showStatus(CastStatus.State.ERROR, outcome.prompt.ifEmpty { "跨网连接失败" })
                     toast(outcome.prompt.ifEmpty { "跨网连接失败" })
                 }
             }
@@ -635,7 +651,7 @@ class SenderActivity : Activity() {
     }
 
     private fun connectTo(target: Target, credential: String = codeInput.text.toString().trim()) {
-        status.text = CastStatus.line(CastStatus.State.CONNECTING)
+        showStatus(CastStatus.State.CONNECTING, CastStatus.line(CastStatus.State.CONNECTING))
         lastReport = ""
         codeInput.isEnabled = false
         // 记进 10 分钟缓存：下次组播/广播全被挡住时，这个地址就是直连探测的唯一入口
@@ -793,7 +809,7 @@ class SenderActivity : Activity() {
         val line = if (blocked.isEmpty()) missing.joinToString("；") { it.declined } else RuntimePermission.blockedMessage(blocked)
         // 状态行会被随后的录屏授权流程覆盖，原文留一份在日志里，取证与客服都能对得上用户看到的字
         Log.i(TAG, "permission note: " + line.replace("\n", " / "))
-        status.text = line
+        showStatus(CastStatus.State.ERROR, line)
         toast(if (blocked.isEmpty()) line else "权限已在系统里关掉，请点「去设置打开权限」")
         refreshFixEntry()
     }
@@ -836,7 +852,7 @@ class SenderActivity : Activity() {
             val missing = RuntimePermission.entries.filter { it.key !in granted }
             Log.i(TAG, "permission settings back: missing=" + missing.joinToString(",") { it.key })
             // 投屏中的状态行归画质文案，这里只在没投屏时占位，避免刚写就被轮询覆盖成假象
-            if (!lastCasting) status.text = RuntimePermission.settingsReturnNote(missing)
+            if (!lastCasting) showStatus(CastStatus.State.ERROR, RuntimePermission.settingsReturnNote(missing))
             toast(if (missing.isEmpty()) "权限已全部打开" else "还有权限没打开：" + missing.joinToString("、") { it.label })
         }
         reconcileRevoked(granted)
@@ -861,7 +877,7 @@ class SenderActivity : Activity() {
                     setMirrorAudio(false)
                     val line = "声音权限已被系统收回，画面继续；要恢复声音请到设置打开权限后再开"
                     Log.i(TAG, "permission revoked mid-cast: " + permission.key)
-                    status.text = line
+                    showStatus(CastStatus.State.ERROR, line)
                     toast(line)
                     refreshFixEntry(granted)
                 }
@@ -869,7 +885,7 @@ class SenderActivity : Activity() {
                 RuntimePermission.CASTING_NOTIFICATION -> {
                     Log.i(TAG, "permission revoked mid-cast: " + permission.key)
                     val line = "通知权限已被收回：通知栏不再有停止入口，请在本页点「停止」"
-                    status.text = line
+                    showStatus(CastStatus.State.ERROR, line)
                     toast(line)
                 }
             }
@@ -913,7 +929,7 @@ class SenderActivity : Activity() {
             // 没拿到录屏授权就没有会话，跨网隧道必须在此时释放，否则线程和 socket 一直挂着
             pendingCrossNetToken?.let { CrossNetLinkRegistry.discard(it) }
             pendingCrossNetToken = null
-            status.text = if (lastReport.isEmpty()) hint.text else lastReport
+            showStatus(CastStatus.State.ERROR, if (lastReport.isEmpty()) hint.text else lastReport)
             toast("未获得屏幕录制授权")
             return
         }
@@ -936,7 +952,7 @@ class SenderActivity : Activity() {
         }
         pendingCrossNetToken = null
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent) else startService(intent)
-        status.text = CastStatus.line(CastStatus.State.CASTING, if (token != null) "跨网设备" else target.name)
+        showStatus(CastStatus.State.CASTING, CastStatus.line(CastStatus.State.CASTING, if (token != null) "跨网设备" else target.name))
     }
 
     /** 跨网端点与应用内说明；与接收端共用同一份落盘设置，手机上填一次即可。 */

@@ -28,6 +28,7 @@ import io.github.wangnan05563.airmirror.dlna.localIpv4
 import io.github.wangnan05563.airmirror.device.DeviceProbe
 import io.github.wangnan05563.airmirror.device.FourGates
 import io.github.wangnan05563.airmirror.device.GateReport
+import io.github.wangnan05563.airmirror.device.Grade
 import io.github.wangnan05563.airmirror.device.QualityTier
 import io.github.wangnan05563.airmirror.device.QualityTiers
 import io.github.wangnan05563.airmirror.pairing.CastCode
@@ -61,6 +62,8 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     private lateinit var browserQr: ImageView
     private var lastBrowserUrl = ""
     private lateinit var countdownText: TextView
+    /** PRD UI-04：C 级设备用静态高对比态（不依赖半透明字与底色的合成值）。 */
+    private val highContrastUi: Boolean by lazy { DeviceProbe.policy(this).grade == Grade.C }
     private lateinit var ring: CountdownRingView
     private lateinit var qrView: ImageView
     private lateinit var statusText: TextView
@@ -296,7 +299,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         waiting.addView(TextView(this).apply {
             text = ProtocolBoundary.receiverUnsupportedLine()
             textSize = Theme.BODY_SP
-            setTextColor(Theme.OFFLINE)
+            setTextColor(StatusColors.offlineText())
             gravity = Gravity.CENTER
             setPadding(0, 0, 0, Theme.dp(this@ReceiverActivity, 12))
         }, matchWidth())
@@ -346,7 +349,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
 
         countdownText = TextView(this).apply {
             textSize = Theme.BODY_SP
-            setTextColor(Theme.TEXT_SECONDARY)
+            setTextColor(StatusColors.secondaryText(highContrastUi))
             gravity = Gravity.CENTER
             setPadding(0, Theme.dp(this@ReceiverActivity, 12), 0, 0)
         }
@@ -372,7 +375,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         waiting.addView(TextView(this).apply {
             text = "局域网直连 · 无广告 · 不保存画面"
             textSize = Theme.BODY_SP
-            setTextColor(Theme.OFFLINE)
+            setTextColor(StatusColors.offlineText())
             gravity = Gravity.CENTER
             setPadding(0, Theme.dp(this@ReceiverActivity, 16), 0, 0)
         }, matchWidth())
@@ -380,7 +383,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         waiting.addView(TextView(this).apply {
             text = "电视重启后若未自动打开，请从应用列表打开"
             textSize = Theme.BODY_SP
-            setTextColor(Theme.OFFLINE)
+            setTextColor(StatusColors.offlineText())
             gravity = Gravity.CENTER
             setPadding(0, Theme.dp(this@ReceiverActivity, 6), 0, 0)
         }, matchWidth())
@@ -418,8 +421,8 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     private fun buildNoticeOverlay(): TextView {
         noticeOverlay = TextView(this).apply {
             textSize = Theme.BODY_SP
-            setTextColor(Theme.ACCENT)
-            setBackgroundColor(0xCC0B1F3A.toInt())
+            setTextColor(StatusColors.overlayText())
+            setBackgroundColor(StatusColors.OVERLAY_LAYER)
             setPadding(Theme.dp(this@ReceiverActivity, 20), Theme.dp(this@ReceiverActivity, 10), Theme.dp(this@ReceiverActivity, 20), Theme.dp(this@ReceiverActivity, 10))
             visibility = View.GONE
         }
@@ -443,8 +446,8 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             text = CastStatus.line(CastStatus.State.RECOVERING)
             textSize = Theme.BODY_SP
             maxLines = 1
-            setTextColor(Theme.TEXT_PRIMARY)
-            setBackgroundColor(0xE60B1F3A.toInt())
+            setTextColor(StatusColors.textOf(CastStatus.State.RECOVERING))
+            setBackgroundColor(StatusColors.BAR_LAYER)
             setPadding(
                 Theme.dp(this@ReceiverActivity, 20), Theme.dp(this@ReceiverActivity, 12),
                 Theme.dp(this@ReceiverActivity, 20), Theme.dp(this@ReceiverActivity, 12),

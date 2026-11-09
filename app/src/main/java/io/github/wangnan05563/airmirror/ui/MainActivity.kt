@@ -57,7 +57,7 @@ class MainActivity : Activity() {
         root.addView(TextView(this).apply {
             text = "局域网直连 · 无广告 · 不需要账号"
             textSize = bodySp
-            setTextColor(Theme.OFFLINE)
+            setTextColor(StatusColors.offlineText())
             gravity = Gravity.CENTER
             setPadding(0, Theme.dp(this@MainActivity, 24), 0, 0)
         })
@@ -65,7 +65,7 @@ class MainActivity : Activity() {
         root.addView(TextView(this).apply {
             text = "内容不出门，数据不落地 · 画面、文件名、地址都不保存"
             textSize = bodySp
-            setTextColor(Theme.OFFLINE)
+            setTextColor(StatusColors.offlineText())
             gravity = Gravity.CENTER
             setPadding(0, Theme.dp(this@MainActivity, 8), 0, 0)
         })
