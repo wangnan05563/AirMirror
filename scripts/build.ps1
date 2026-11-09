@@ -76,10 +76,19 @@ if ($javaText -notmatch 'version "(\d+)') {
     Stop-WithError "Cannot parse java version: $javaText"
 }
 $javaMajor = [int]$Matches[1]
-if ($javaMajor -lt 17) {
-    Stop-WithError "JDK 17+ required, found major $javaMajor ($javaText)."
+# Range comes from the same config the .bat launcher reads, so a direct build.ps1
+# call and a double-click build enforce one identical gate (no hardcoded bounds).
+$configPath = Join-Path $PSScriptRoot 'android-tools.config.json'
+if (-not (Test-Path $configPath)) {
+    Stop-WithError "JDK range config not found: $configPath"
 }
-Write-Check 'JDK' "$javaText"
+$buildConfig = (Get-Content $configPath -Raw -Encoding UTF8 | ConvertFrom-Json).build
+$minMajor = [int]$buildConfig.minJavaMajor
+$maxMajor = [int]$buildConfig.maxJavaMajor
+if ($javaMajor -lt $minMajor -or $javaMajor -gt $maxMajor) {
+    Stop-WithError ("JDK major {0} is outside the supported range {1}-{2} ({3}). Gradle/AGP will not run on this JDK. Point JAVA_HOME at a JDK in range, or run scripts\build_launcher.ps1 (the .bat build launcher) which auto-selects a supported JDK from android-tools.config.json." -f $javaMajor, $minMajor, $maxMajor, $javaText)
+}
+Write-Check 'JDK' "$javaText (supported $minMajor-$maxMajor)"
 
 # 2. Android SDK: same precedence Gradle uses (env, then local.properties).
 $sdk = $env:ANDROID_HOME
