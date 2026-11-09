@@ -25,7 +25,10 @@ class DeviceCardInteractionTest {
         assertTrue("停止按钮未复用 ACTION_STOP", src.contains("CaptureService.ACTION_STOP"))
         assertTrue("投屏中控制条未接线", src.contains("controlBar.visibility = if (casting)"))
         assertTrue("投屏中列表未收起", src.contains("listScroller.visibility = if (casting)"))
-        assertTrue("离线卡片未显示上次连接", src.contains("DeviceCardPolicy.offlineLabel("))
+        assertTrue(
+            "离线卡片未显示上次连接",
+            src.contains("DeviceCardPolicy.subtitle(") || src.contains("DeviceCardPolicy.offlineLabel("),
+        )
         // 旧行为：点卡片直接 connectTo(target)，现在只允许在展开后的动作按钮里调
         val directConnect = Regex("""setOnClickListener \{\s*if \(usable != null\) \{\s*connectTo\(target\)""")
         assertTrue("卡片又退回点一下直连", !directConnect.containsMatchIn(src))

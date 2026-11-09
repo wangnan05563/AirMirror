@@ -464,21 +464,20 @@ class SenderActivity : Activity() {
                 addView(LinearLayout(this@SenderActivity).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
+                    minimumHeight = Theme.dp(this@SenderActivity, DeviceCardPolicy.TOUCH_TARGET_DP)
                     addView(TextView(this@SenderActivity).apply {
                         text = row.name
                         textSize = 18f
                         setTextColor(if (row.online) Theme.TEXT_PRIMARY else StatusColors.offlineText())
                         layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                     })
-                    addView(TextView(this@SenderActivity).apply {
-                        text = when {
-                            !row.online -> DeviceCardPolicy.offlineLabel(row.lastConnectedAt, System.currentTimeMillis())
-                            usable != null -> ProtocolBoundary.badgeFor(usable)
-                            else -> "不支持"
-                        }
-                        textSize = Theme.PHONE_BODY_SP
-                        setTextColor(if (row.online && usable != null) Theme.ACCENT else StatusColors.offlineText())
-                    })
+                    // PRD UI-05：协议角标统一成平台绘制的圆角标签，离线/不支持共用同一形状只换配色
+                    addView(
+                        DeviceCardTag.chip(
+                            this@SenderActivity,
+                            DeviceCardPolicy.tag(card, usable?.let { ProtocolBoundary.badgeFor(it) }.orEmpty()),
+                        ),
+                    )
                     // PRD §11.3：点击先展开两个动作，不再「点一下就先连上再选」
                     setOnClickListener {
                         if (actions.isEmpty()) {
@@ -489,6 +488,22 @@ class SenderActivity : Activity() {
                         }
                     }
                 }, matchWidth())
+                // PRD UI-05：离线说清「上次连接 + 可能原因」，在线且近期连过给「最近使用」，其余不占行
+                DeviceCardPolicy.subtitle(card, System.currentTimeMillis())?.let { note ->
+                    addView(LinearLayout(this@SenderActivity).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        setPadding(0, Theme.dp(this@SenderActivity, 6), 0, 0)
+                        if (DeviceCardPolicy.needsOfflineMarker(card)) {
+                            addView(DeviceCardTag.offlineDot(this@SenderActivity))
+                        }
+                        addView(TextView(this@SenderActivity).apply {
+                            text = note
+                            textSize = Theme.PHONE_BODY_SP
+                            setTextColor(StatusColors.offlineText())
+                        })
+                    }, matchWidth())
+                }
                 if (row.fingerprint == expandedFingerprint && actions.isNotEmpty()) {
                     addView(LinearLayout(this@SenderActivity).apply {
                         orientation = LinearLayout.HORIZONTAL
@@ -509,9 +524,12 @@ class SenderActivity : Activity() {
                                         DeviceCardPolicy.CardAction.PUSH_VIDEO -> toast(DeviceCardPolicy.pushVideoFallback())
                                     }
                                 }
-                            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                            }, LinearLayout.LayoutParams(0, Theme.dp(this@SenderActivity, DeviceCardPolicy.ACTION_ROW_DP), 1f))
                         }
-                    }, matchWidth())
+                    }, LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        Theme.dp(this@SenderActivity, DeviceCardPolicy.ACTION_ROW_DP) + gap,
+                    ))
                 }
             }, matchWidth())
         }

@@ -11,6 +11,22 @@ object DeviceCardPolicy {
     enum class CardAction { MIRROR, PUSH_VIDEO }
     enum class ControlAction { PAUSE, STOP, AUDIO }
 
+    /** PRD UI-05 触控基线：卡片头行与展开动作按钮都不小于 48dp。 */
+    const val TOUCH_TARGET_DP = 48
+
+    /** 展开区高度固定：换一张卡片展开时动作行等高，列表不上下跳。 */
+    const val ACTION_ROW_DP = 48
+
+    /** 协议角标圆角半径：标签由平台 GradientDrawable 绘制，不引位图。 */
+    const val TAG_RADIUS_DP = 10
+
+    /** 「最近使用」时间窗：只读现有缓存里的连接时间，不新增网络请求。 */
+    const val RECENT_WINDOW_MS = 24L * 60 * 60 * 1000
+
+    enum class TagKind { PROTOCOL, OFFLINE, UNSUPPORTED }
+
+    data class Tag(val kind: TagKind, val text: String)
+
     data class Card(
         val fingerprint: String,
         val online: Boolean,
@@ -48,4 +64,27 @@ object DeviceCardPolicy {
      */
     fun pushVideoFallback(): String =
         "发送端暂未内置视频选择：请在视频 App 里用系统投屏按钮推送，或改用「镜像屏幕」"
+
+    /** 卡片右侧只有一个标签位，三态互斥：离线 > 不支持 > 协议角标。 */
+    fun tag(card: Card, protocolBadge: String): Tag = when {
+        !card.online -> Tag(TagKind.OFFLINE, "离线")
+        card.supported -> Tag(TagKind.PROTOCOL, protocolBadge)
+        else -> Tag(TagKind.UNSUPPORTED, "不支持")
+    }
+
+    /** 24h 内连过算「最近使用」；时钟回拨造成的时间差按 0 处理，不当成很久以前。 */
+    fun isRecent(lastConnectedAt: Long?, nowMs: Long): Boolean {
+        if (lastConnectedAt == null || lastConnectedAt <= 0L) return false
+        return (nowMs - lastConnectedAt).coerceAtLeast(0L) <= RECENT_WINDOW_MS
+    }
+
+    /** 卡片副行：离线说清上次连接与原因，在线近期连过给「最近使用」，都不满足时不占行。 */
+    fun subtitle(card: Card, nowMs: Long): String? = when {
+        !card.online -> offlineLabel(card.lastConnectedAt, nowMs)
+        isRecent(card.lastConnectedAt, nowMs) -> "最近使用"
+        else -> null
+    }
+
+    /** UI-05：离线不能只靠灰度，副行要同时挂一个形状标记。 */
+    fun needsOfflineMarker(card: Card): Boolean = !card.online
 }
