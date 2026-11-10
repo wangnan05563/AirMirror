@@ -1194,17 +1194,16 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         } else {
             browserText.visibility = View.VISIBLE
             browserText.text = getString(R.string.browser_cast_url, browser)
-            // 二维码重算要走 zxing，不能每秒刷新都做一次；地址不变就复用上一张
             if (browser != lastBrowserUrl) {
                 lastBrowserUrl = browser
-                browserQr.setImageBitmap(Qr.bitmap(browser, BROWSER_QR_PIXELS))
+                Qr.into(browserQr, browser, BROWSER_QR_PIXELS)
             }
             browserQr.visibility = View.VISIBLE
         }
         val payload = if (port > 0 && !locked) pairing.qrPayload(address, port, deviceNameText.text.toString()) else ""
         if (payload.isNotEmpty() && payload != lastPayload) {
             lastPayload = payload
-            qrView.setImageBitmap(Qr.bitmap(payload, QR_PIXELS))
+            Qr.into(qrView, payload, QR_PIXELS)
         }
     }
 
