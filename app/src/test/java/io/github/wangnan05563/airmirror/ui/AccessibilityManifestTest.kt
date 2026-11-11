@@ -170,10 +170,27 @@ class AccessibilityManifestTest {
             "fun liveStatus(",
             "fun announce(",
             "fun talkBackEnabled(",
+            "fun traversalOrder(",
         ).forEach { assertTrue("缺适配接口：$it", src.contains(it)) }
         assertTrue("announce 必须节流", src.contains("THROTTLE_MS"))
-        assertFalse("minSdk 19 不可用 API 21 动作", src.contains("AccessibilityAction."))
-        assertFalse("minSdk 19 不可用 API 28 标题语义", src.contains("isHeading"))
-        assertFalse("minSdk 19 不可用 AndroidX", src.contains("androidx."))
+        assertFalse("适配层保持最小接口，不引 AccessibilityAction", src.contains("AccessibilityAction."))
+        assertFalse("minSdk 22 仍不可用 API 28 标题语义", src.contains("isHeading"))
+        assertFalse("适配层不引入 AndroidX", src.contains("androidx."))
+        assertTrue("minSdk 22 应启用 API 22 遍历先后（T04908 裁决 1）", src.contains("setAccessibilityTraversalBefore("))
+        assertTrue("遍历先后须成对可回退", src.contains("setAccessibilityTraversalAfter("))
+    }
+
+    @Test
+    fun `待连接页焦点与无障碍遍历顺序按视觉顺序串接（T04908 裁决 1）`() {
+        val tv = source("TvFocus.kt")
+        assertTrue("TvFocus 缺 D-pad 链助手", tv.contains("fun chain("))
+        assertTrue("D-pad 链须用 nextFocusDownId 覆盖几何搜索", tv.contains("nextFocusDownId"))
+        assertTrue("D-pad 链须可回退（nextFocusUpId）", tv.contains("nextFocusUpId"))
+        val recv = source("ReceiverActivity.kt")
+        assertTrue("待连接页须串 显示设置→更多信息", recv.contains("TvFocus.chain(settingsEntry, moreInfoToggle)"))
+        assertTrue("待连接页须经 A11y 设 显示设置→更多信息 的无障碍遍历顺序",
+            recv.contains("A11y.traversalOrder(settingsEntry, moreInfoToggle)"))
+        assertFalse("遍历先后统一走 A11y 适配层，界面层不得直写", recv.contains("setAccessibilityTraversalBefore("))
+        assertFalse("遍历先后统一走 A11y 适配层，TvFocus 不得直写", tv.contains("setAccessibilityTraversalBefore("))
     }
 }

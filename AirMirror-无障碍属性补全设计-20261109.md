@@ -329,12 +329,17 @@ object A11y {
 
 > **基线订正（2026-11-10，T04908）**：「Receiver 待连接」行原写「显示设置（唯一可点）」，该前提在 UI-02 新增「更多信息」折叠入口后已失效——待连接页实为两个可点控件。期望顺序按视觉从上到下为「显示设置（y≈121）→ 更多信息（y≈1488）」。
 >
-> **当前未达标（如实标注）**：新鲜 debug 包 + 专用 AVD（QuietCam29，API 29）UI dump 实测层级顺序仍为「更多信息 → 显示设置」。裁决 A（调整 `addView` 先后）与裁决 C（同容器结构化改造，两种 `addView` 顺序）均经运行时标记验证包新鲜后实测证伪；证据见 `build/mtask/T04901_note.md`、`T04908_note.md` 与 `t04908_ui_probe.*.json`。本行是验收期望，不代表现状已通过。
+> **判据修订与收口（2026-11-11，T04908 二次裁决）**：实测证明「UI dump 层级顺序」判据对本平台任何无障碍顺序修复都**结构性失明**——`uiautomator dump` 按子节点索引深度优先遍历，属性集不含 traversal / nextFocus 提示（原始 dump XML 为证：root 里含「更多信息」的 ScrollView 是 index 1，「显示设置」是 index 2，故前者恒先）。裁决 A（`addView` 先后）、C（同容器改造）、以及 minSdk 22+ 的 `setAccessibilityTraversalBefore/After` 三条路线均经新鲜包运行时验证后实测**无法让 dump 顺序变绿**（证据 `t04908_ui_probe.*.json`、`t04908r2_ui_probe.json`、`t04908r2_raw.xml`；dex 检出 `traversalOrder` 证明遍历 API 确已入包运行）。
+>
+> **决策反转（2026-11-12，T04908 裁决 1，最终口径）**：上一段（2026-11-11）「回退 minSdk 19、否掉 minSdk 22」已被用户**推翻**。最终裁决 1 = **采用 minSdk 22+（重签 Q-5 硬下限）**，用 API 22 的 `View.setAccessibilityTraversalBefore/After`（`A11y.traversalOrder(settingsEntry, moreInfoToggle)`）显式修正 TalkBack 线性朗读顺序。理由：dump 层级顺序对该 API「结构性失明」只是**可观测性缺失**（dump 按子节点索引深度优先，属性集不含 traversal 提示），并非 API 不生效——dex 已检出 `traversalOrder` 入包运行；而真机 TalkBack 朗读顺序本就该走 traversal API（D-pad 链 `TvFocus.chain` 仅管输入焦点、不读 nextFocusId），两者互补。代价是放弃 Android 4.4–5.0（§15 C 级代表设备 EC6108V9 / 创维 T2 需重新选型）。
+>
+> **验收判据（2026-11-12 口径）**：① **D-pad 焦点链断言**——从显示设置按 DOWN 落更多信息、按 UP 回显示设置，模拟器可实测（已在本轮 `-gpu host` AVD 双向验证通过）；② **`A11y.traversalOrder` 接线守卫**——`AccessibilityManifestTest` 正向断言 `setAccessibilityTraversalBefore/After` 成对出现且统一走 A11y 适配层（源码守卫可查）；③ TalkBack **真机线性朗读顺序**仍归 T04871 真机复验（R 级，本 AVD 无 TalkBack 不可验）。原「UI dump 层级顺序」判据正式作废（结构性失明）。
 
 实现要点：
 
 - 打开设置时 `modeRows[displayMode]?.requestFocus()`，并把无障碍焦点一并移过去（`sendAccessibilityEvent(TYPE_VIEW_FOCUSED)`）。
 - 关闭设置时焦点回到 `settingsEntry`。
+- 待连接页 D-pad 链：`TvFocus.chain(settingsEntry, moreInfoToggle)`（nextFocusId 覆盖几何焦点搜索，跨子树按视觉先后移动）；`applyTree(root, requestInitialFocus = false)` 后由非首启分支与 `finishOnboarding` 显式把起始焦点落到 `settingsEntry`（与 `hideSettings` 一致）。
 - `renderList()` 重建后按 `expandedFingerprint` 恢复：展开态焦点到第一个动作按钮，收起态回到卡片容器。
 - 动态新增的画质行沿用 `TvFocus.applyTree(settingsPanel, requestInitialFocus = false)`，不抢焦点（已有）。
 

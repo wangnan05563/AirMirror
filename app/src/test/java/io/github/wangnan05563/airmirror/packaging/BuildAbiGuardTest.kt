@@ -25,10 +25,12 @@ class BuildAbiGuardTest {
     private fun gradleText(): String = File(projectRoot(), "app/build.gradle.kts").readText()
 
     @Test
-    fun `minSdk 仍是 19（Q-5 硬下限不被抬高）`() {
+    fun `minSdk 为 22（Q-5 重签后的硬下限）`() {
         val m = Regex("""minSdk\s*=\s*(\d+)""").find(gradleText())
         assertTrue("build.gradle.kts 未声明 minSdk", m != null)
-        assertEquals("minSdk 必须等于 19（Q-5 已裁，不得静默抬高）", 19, m!!.groupValues[1].toInt())
+        // Q-5 原裁 19（Android 4.4）；2026-11-12 T04908 裁决 1 重签为 22，
+        // 换取 View.setAccessibilityTraversalBefore/After（API 22）修正无障碍遍历顺序。
+        assertEquals("minSdk 必须等于 22（Q-5 已重签，不得静默回退）", 22, m!!.groupValues[1].toInt())
     }
 
     @Test

@@ -284,7 +284,13 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> refitVideo() }
         setContentView(root)
         // 待连接页 / 设置面板 / 授权与结束按钮统一接遥控器焦点
-        TvFocus.applyTree(root)
+        TvFocus.applyTree(root, requestInitialFocus = false)
+        // T04908 裁决 1（2026-11-12）：视觉「显示设置」(右上) 先于「更多信息」(待连接页内)，
+        // 但视图层级里待连接页子树在前，几何焦点搜索与深度优先遍历都先落到更多信息。
+        // D-pad 输入焦点用 nextFocusId 串链（API 11+），TalkBack 线性朗读用 API 22 的
+        // setAccessibilityTraversalBefore/After 显式指定；两者互补，开局焦点定位到显示设置。
+        TvFocus.chain(settingsEntry, moreInfoToggle)
+        A11y.traversalOrder(settingsEntry, moreInfoToggle)
 
         deviceNameText.text = receiverName()
         if (store.firstLaunch()) {
@@ -293,6 +299,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         } else {
             startSessions(receiverName())
             main.post(ticker)
+            root.post { settingsEntry.requestFocus() }
         }
         Log.i(TAG, "activity attached to host casting=${host.casting} recovering=${host.recovering}")
     }
@@ -1301,6 +1308,9 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         onboarding.visibility = View.GONE
         A11y.showSubtree(waiting)
         A11y.showSubtree(settingsEntry)
+        // 引导结束回到待连接页：起始焦点落到显示设置（§8.3，与 hideSettings 一致）
+        settingsEntry.requestFocus()
+        settingsEntry.sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_VIEW_FOCUSED)
         startSessions(name)
         main.post(ticker)
     }

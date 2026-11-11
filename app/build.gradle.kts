@@ -20,8 +20,9 @@ android {
 
     defaultConfig {
         applicationId = "io.github.wangnan05563.airmirror"
-        // Q-5 已裁：Android 4.4 (API 19) 为接收端硬下限，不得静默抬高
-        minSdk = 19
+        // Q-5 已重签（2026-11-12，T04908 裁决 1）：下限抬到 Android 5.1 (API 22)，
+        // 以启用 View.setAccessibilityTraversalBefore/After 修正无障碍遍历顺序。
+        minSdk = 22
         targetSdk = 35
         versionCode = 1
         versionName = if (versionPatch.isNullOrBlank()) "0.1.0-m0" else "0.1.0-m0.$versionPatch"

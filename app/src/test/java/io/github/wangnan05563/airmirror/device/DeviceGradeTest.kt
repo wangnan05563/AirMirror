@@ -78,10 +78,10 @@ class DeviceGradeTest {
 
     @Test
     fun `old api gets an actionable unsupported message`() {
-        val policy = DeviceGrading.policyFor(facts(api = 18))
+        val policy = DeviceGrading.policyFor(facts(api = 21))
         assertEquals(Grade.UNSUPPORTED, policy.grade)
         assertEquals(QualityTier.OFF, policy.maxTier)
-        assertTrue(policy.unsupportedReason.contains("Android 4.4"))
+        assertTrue(policy.unsupportedReason.contains("Android 5.1"))
         assertTrue(policy.unsupportedReason.contains("自带投屏"))
     }
 

@@ -28,7 +28,7 @@ class FocusCoverageTest {
         val main = File(ui, "MainActivity.kt").readText()
         val receiver = File(ui, "ReceiverActivity.kt").readText()
         assertTrue("MainActivity 未接 TvFocus.applyTree", main.contains("TvFocus.applyTree(root)"))
-        assertTrue("ReceiverActivity 未接 TvFocus.applyTree", receiver.contains("TvFocus.applyTree(root)"))
+        assertTrue("ReceiverActivity 未接 TvFocus.applyTree", receiver.contains("TvFocus.applyTree(root"))
         assertTrue(
             "设置页动态档位行需要在 refreshSettings 时再扫一次",
             receiver.contains("TvFocus.applyTree(settingsPanel"),

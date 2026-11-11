@@ -11,8 +11,8 @@ import android.widget.Button
  * 无障碍适配层（PRD UI-03 / 设计 §4.2）：界面层只允许经此设置无障碍属性，
  * 不直接写 contentDescription / importantForAccessibility / accessibilityLiveRegion（源码守卫强制）。
  *
- * minSdk 19 安全：只用 API 16 的 announceForAccessibility / importantForAccessibility、
- * API 19 的 accessibilityLiveRegion；不引入 AccessibilityAction(API 21) / heading(API 28) / AndroidX。
+ * Q-5 重签后 minSdk 22：API 22 的 setAccessibilityTraversalBefore/After 可用（见 [traversalOrder]）；
+ * 仍不引入 heading(API 28) / AndroidX，也不引入 AccessibilityAction 以免适配层接口膨胀。
  */
 object A11y {
 
@@ -66,6 +66,19 @@ object A11y {
         if (last != null && now - last < THROTTLE_MS) return
         recent[key] = now
         view.announceForAccessibility(text)
+    }
+
+    /**
+     * 显式指定无障碍遍历先后（API 22）：[first] 先于 [second] 被 TalkBack 线性朗读。
+     *
+     * 两端必须已有 id（[TvFocus.chain] 会分配）。注意 `uiautomator dump` 输出的是视图树
+     * 子节点索引顺序，不受本方法影响；验收判据应看本接线 + 真机 TalkBack，而非 dump 层级顺序
+     * （T04908 实测：dump 顺序对该 API 结构性失明）。
+     */
+    fun traversalOrder(first: View, second: View) {
+        require(first.id != View.NO_ID && second.id != View.NO_ID) { "遍历顺序两端必须先分配 id" }
+        first.setAccessibilityTraversalBefore(second.id)
+        second.setAccessibilityTraversalAfter(first.id)
     }
 
     /** TalkBack 是否开启：投屏中设置入口据此对读屏用户保持可达（设计 §8.2）。 */

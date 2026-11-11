@@ -1,8 +1,8 @@
 # AirMirror
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Android%204.4%2B-green.svg)](#技术栈)
-[![minSdk](https://img.shields.io/badge/minSdk-19-lightgrey.svg)](#技术栈)
+[![Platform](https://img.shields.io/badge/platform-Android%205.1%2B-green.svg)](#技术栈)
+[![minSdk](https://img.shields.io/badge/minSdk-22-lightgrey.svg)](#技术栈)
 [![GitHub](https://img.shields.io/badge/GitHub-wangnan05563%2FAirMirror-blue?logo=github)](https://github.com/wangnan05563/AirMirror)
 [![Release](https://img.shields.io/github/v/release/wangnan05563/AirMirror?label=Release)](https://github.com/wangnan05563/AirMirror/releases)
 
@@ -10,9 +10,9 @@
 
 ## 现状
 
-- 主文档：[AirMirror 产品需求文档 v1.5](AirMirror-PRD-v1.1.md) —— 注意文件名仍是 `v1.1`，内部版本号已到 v1.5，改名会在 §15 与评审文档里留下断链，故保留。
+- 主文档：[AirMirror 产品需求文档 v1.6](AirMirror-PRD-v1.1.md) —— 注意文件名仍是 `v1.1`，内部版本号已到 v1.6，改名会在 §15 与评审文档里留下断链，故保留。
 - 里程碑路线：M0 协议验证 → M1 最小可用 → M2 P0 完整 → M3 P1 → M4 P2（见 PRD §15）。
-- 目标设备：接收端为 Android 4.4（API 19）及以上的电视与盒子，硬下限已由 PRD 的 Q-5 裁定。
+- 目标设备：接收端为 Android 5.1（API 22）及以上的电视与盒子。Q-5 原裁 Android 4.4（API 19），2026-11-12 经 T04908 裁决 1 重签为 API 22，以启用无障碍遍历顺序 API；Android 4.4–5.0 设备不再受支持。
 
 ## GitHub 仓库与发布
 
@@ -92,7 +92,7 @@ scripts\push-apk.cmd emulator-5554 clean   :: 清 App 数据，复验首启引�
 
 ## 技术栈
 
-- Kotlin 2.0 + AGP 8.7，`minSdk 19` / `targetSdk 35`；无 AndroidX，界面用平台 View 代码绘制（包体 ≈1.05MB）。
+- Kotlin 2.0 + AGP 8.7，`minSdk 22`（Q-5 重签） / `targetSdk 35`；无 AndroidX，界面用平台 View 代码绘制（包体 ≈1.05MB）。
 - 协议与判定拆成不引用 `android.*` 的纯逻辑，JVM JUnit4 覆盖；设备侧（MediaProjection、MediaPlayer、SSDP/HTTP）保留在 android 层。
 - 私有通道（AMRC 帧格式 + HKDF 密钥派生 + AES 端到端加密）、DLNA 接收端（SSDP/描述/SOAP/媒体播放）、局域网发现（NSD + 广播 + 定向探测）。
 - 安全与隐私：投屏内容不落盘、诊断默认关闭、连接限流、中继侧不可解密（帧头明文，内容加密）。
@@ -101,7 +101,7 @@ scripts\push-apk.cmd emulator-5554 clean   :: 清 App 数据，复验首启引�
 
 | 文件 | 内容 |
 | --- | --- |
-| `AirMirror-PRD-v1.1.md` | 产品需求文档（当前 v1.5） |
+| `AirMirror-PRD-v1.1.md` | 产品需求文档（当前 v1.6） |
 | `AirMirror-需求详细评审-T03781.md` | P0 边界、协议支持与验收标准的逐行评审，含 12 条裁决 |
 | `AirMirror-PRD修订草案-T03781.md` | 上述评审落到 PRD 的修订清单（已写入 v1.3/v1.4） |
 | `AirMirror-代表设备选型-T03931.md` | A/B/C 三级代表设备（当贝 MAX1、腾讯极光 5S 2GB、EC6108V9、创维 T2） |

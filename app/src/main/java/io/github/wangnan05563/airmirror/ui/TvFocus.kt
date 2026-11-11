@@ -45,6 +45,25 @@ object TvFocus {
         }
     }
 
+    /**
+     * 显式串接 D-pad 焦点链（API 11+ nextFocusDown/Up/ForwardId）。
+     * 视觉顺序与视图层级顺序不一致时（右上角「显示设置」视觉上先于待连接页内「更多信息」，
+     * 但深度优先遍历/几何焦点搜索都先落到后者），nextFocusId 直接覆盖几何搜索，
+     * 跨子树也按 [views] 先后移动：Down/Forward 走向下一个，Up 回到上一个。
+     * 只修 D-pad 输入焦点；TalkBack 线性朗读顺序由 [A11y.traversalOrder] 用 API 22 遍历先后指定，
+     * 不读 nextFocusId。真机朗读复验仍归 T04871（R 级）。
+     */
+    fun chain(vararg views: View) {
+        for (v in views) if (v.id == View.NO_ID) v.id = View.generateViewId()
+        for (i in 0 until views.size - 1) {
+            val a = views[i]
+            val b = views[i + 1]
+            a.nextFocusDownId = b.id
+            a.nextFocusForwardId = b.id
+            b.nextFocusUpId = a.id
+        }
+    }
+
     /** 返回遍历到的第一个可聚焦控件（深度优先），供 TV 模式开局定位焦点。 */
     private fun walk(view: View, animationsEnabled: Boolean): View? {
         var first: View? = null

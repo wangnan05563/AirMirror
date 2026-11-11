@@ -40,7 +40,8 @@ data class GradePolicy(
 )
 
 object DeviceGrading {
-    const val MIN_API = 19
+    /** Q-5 重签（2026-11-12，T04908 裁决 1）：minSdk 抬到 22，与 build.gradle.kts 保持一致。 */
+    const val MIN_API = 22
 
     /** 不支持：无 Wi-Fi、系统裁剪无法创建本地服务、可用存储 < 100MB（PRD 7.2） */
     private const val MIN_FREE_STORAGE_MB = 100L
@@ -117,7 +118,7 @@ object DeviceGrading {
     }
 
     private fun unsupportedMessage(facts: DeviceFacts): String = when {
-        facts.apiLevel < MIN_API -> "本机系统低于 Android 4.4，无法运行投屏接收端。可改用电视自带投屏。"
+        facts.apiLevel < MIN_API -> "本机系统低于 Android 5.1，无法运行投屏接收端。可改用电视自带投屏。"
         !facts.hasWifi -> "本机没有可用的 Wi-Fi 模块，局域网投屏无法工作。可改用有线网络或系统投屏。"
         !facts.canCreateLocalService -> "本机系统被裁剪，无法创建本地服务。可使用电视自带投屏。"
         else -> "可用存储不足 ${MIN_FREE_STORAGE_MB}MB，请先清理空间再投屏。"
