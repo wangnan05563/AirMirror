@@ -22,7 +22,7 @@ No source code from these projects is compiled into or distributed with AirMirro
 - Genymobile/scrcpy (Apache-2.0)
 - barry-ran/QtScrcpy (Apache-2.0)
 - alexballas/go2tv (MIT)
-- antimof/UxPlay (GPL-3.0)
+- FDH2/UxPlay (GPL-3.0)（当前开发地址；旧地址 antimof/UxPlay 保留旧版本）
 - openairplay/airplay2-receiver (license TBD)
 - albfan/miraclecast (LGPL)
 - pavlobu/deskreen (AGPL)

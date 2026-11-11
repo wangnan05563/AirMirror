@@ -166,14 +166,14 @@
 
 | 类型 | 内容 | 出处 |
 | --- | --- | --- |
-| 公开用户评价 | 官网「用户怎么说」栏目有一条评价（原文为英文，此处中文转述）：把一台 Windows 笔记本作为 Linux 桌面的第二屏，配合虚拟显示器约 5 分钟完成配置且运行流畅 | `deskreen.com` |
+| 公开用户评价（不可复核，已降级为不可引用） | 原记「官网『用户怎么说』栏目有一条评价：把 Windows 笔记本作为 Linux 桌面第二屏，约 5 分钟配置且流畅」。2026-11-09 复核：该栏目已改版为 “What Others Say About Deskreen”，仅剩 “Watch video demos / Find out more what people say on Reddit” 两个跳转入口，无评价原文、无 Reddit 具体链接与抓取时间，无法复核。按第 00 节证据纪律，不作为可引用反馈，也不据此下结论（T04880 裁决订正） | `deskreen.com`（栏目已改版，原文缺失） |
 | 作者自述的产品化动作 | QtScrcpy 作者在 README 顶部说明已开发更专业的 QuickMirror，列出批量投屏、分组管理、按键映射可视化编辑等能力 | `barry-ran/QtScrcpy` README |
 | 文档明示的使用摩擦 | UxPlay 需终端启动、配置文件与端口排障；go2tv 的 CLI 需先扫描再把设备 URL 传给 `-t`；scrcpy 的快捷键需查 `doc/shortcuts.md`，修饰键可改 | 各仓 README / 官方文档 |
 | 明确不编造 | 本轮未抓取 issue 区与商店评论，不写「用户普遍抱怨 X」这类无来源结论 | 调研纪律（第 00 节） |
 
 ### 3.5 可观察的界面惯例（基于上述文档事实的归纳，不是竞品自述）
 
-1. **深色底 + 单一强调色**：Deskreen 页面用 `#0b1f3a` / `#12314f`，scrcpy 留边默认深灰 `#222`，AirMirror `Theme.kt` 用深蓝 + 青绿。
+1. **深色底 + 单一强调色**：scrcpy 留边默认深灰 `#222`；AirMirror `Theme.kt` 用深蓝 + 青绿，本仓访客页用 `#0B1F3A` / `#12314F`（`web/GuestPage.kt:65-66` 的 `--bg`/`--surface` ← `Theme.BACKGROUND/SURFACE`，`ui/Theme.kt:12-13`）。原「Deskreen 页面用 #0b1f3a/#12314f」系把本仓取色误记为竞品事实，已按 T04880 裁决订正删除（deskreen.com 首页与 CSS chunk 实测无此二值）。
 2. **连接状态持续可见**：进度百分比与状态文本（Deskreen / go2tv Web UI）、环形倒计时（AirMirror `CountdownRingView`）、一次性 PIN 提示（UxPlay）。
 3. **复杂度前置到配置、操作收敛到一致入口**：QtScrcpy 启动配置、scrcpy 快捷键与窗口文档、UxPlay 配置文件。
 4. **零安装入口**：Deskreen 浏览器、AirMirror 访客上传页。
