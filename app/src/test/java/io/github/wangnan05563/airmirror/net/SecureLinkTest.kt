@@ -94,10 +94,70 @@ class SecureLinkTest {
 
     @Test
     fun plainFrameStillFlowsOnAnEncryptedSession() {
-        // 握手帧本身在密钥建立之前就要发得出去；加密位缺失的帧在已加密会话上按明文收下
+        // 握手类帧的明文是协议的一部分：它们要在密钥建立之前发出（或握手失败时回 ERROR）。
+        // 只放行这一类，媒体与控制帧不放行——见下面的注入用例。
         val link = negotiated(KeyExchange.generate(), KeyExchange.generate())
         link.client.send(Protocol.Frame(Protocol.Type.HELLO, payload = "not really a hello".toByteArray()))
         assertEquals("not really a hello", String(link.server.receive()!!.payload, Charsets.UTF_8))
+    }
+
+    /**
+     * 加密会话里出现明文媒体/控制/BYE 帧只有一种解释：线路被人插了帧。
+     * 收下就等于允许中间人伪造画面、假暂停或假结束，所以必须当场断开而不是降级成明文。
+     */
+    @Test
+    fun plainMediaControlAndByeOnAnEncryptedSessionAreRefused() {
+        for (type in listOf(Protocol.Type.VIDEO, Protocol.Type.AUDIO, Protocol.Type.CONTROL, Protocol.Type.BYE, Protocol.Type.PING)) {
+            val error = assertThrows(
+                "明文 $type 应被拒绝",
+                Protocol.ProtocolException::class.java,
+            ) { injectPlainFrameOnEncryptedSession(type) }
+            assertTrue("拒绝原因要指明帧类型：" + error.message, error.message.orEmpty().contains(type.name))
+        }
+    }
+
+    /** 手工握手后在原始 socket 上直接写一帧明文，绕开客户端 send 的自动加密（模拟中间人注入）。 */
+    private fun injectPlainFrameOnEncryptedSession(type: Protocol.Type) {
+        val serverSocket = ServerSocket(0)
+        val accepted = AtomicReference<StreamConnection>()
+        val failure = AtomicReference<Throwable>()
+        val ready = CountDownLatch(1)
+        val serverThread = thread(isDaemon = true) {
+            try {
+                accepted.set(StreamConnection(serverSocket.accept()))
+                accepted.get().acceptAsServer("电视", Handshake.Capability.ALL, KeyExchange.generate())
+            } catch (e: Throwable) {
+                failure.set(e)
+            } finally {
+                ready.countDown()
+            }
+        }
+        try {
+            Socket("127.0.0.1", serverSocket.localPort).use { socket ->
+                val clientKey = KeyExchange.generate()
+                val hello = Handshake.Hello(
+                    Version.MIN_SUPPORTED,
+                    Version.CURRENT,
+                    Handshake.Capability.ALL,
+                    "手机",
+                    clientKey.publicSpki,
+                )
+                Protocol.write(socket.getOutputStream(), Protocol.Frame(Protocol.Type.HELLO, payload = hello.encode()))
+                assertEquals(Protocol.Type.HELLO_ACK, Protocol.read(socket.getInputStream())!!.type)
+                ready.await()
+                serverThread.join(2_000)
+                failure.get()?.let { throw it }
+                val server = accepted.get() ?: throw IllegalStateException("server handshake never finished")
+                assertTrue("这条连接必须是加密会话", server.secure)
+                Protocol.write(
+                    socket.getOutputStream(),
+                    Protocol.Frame(type, flags = Protocol.Flags.KEY_FRAME, ptsUs = 1L, payload = ByteArray(32)),
+                )
+                server.receive()
+            }
+        } finally {
+            serverSocket.close()
+        }
     }
 
     /** 与 [negotiated] 同构，但把「发送端要交的码」和「大屏当前受理的码」带上（T04493 身份锚） */

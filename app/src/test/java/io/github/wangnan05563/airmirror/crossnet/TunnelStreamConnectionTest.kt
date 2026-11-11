@@ -1,4 +1,4 @@
-﻿package io.github.wangnan05563.airmirror.crossnet
+package io.github.wangnan05563.airmirror.crossnet
 
 import io.github.wangnan05563.airmirror.net.StreamConnection
 import io.github.wangnan05563.airmirror.protocol.Handshake

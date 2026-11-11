@@ -40,6 +40,21 @@ class ProbeProtocolTest {
     }
 
     @Test
+    fun `协议数量与单项长度在解析侧封顶`() {
+        // 协议串来自任意 UDP 包：一条包就能塞进上千条，解析侧必须自己封顶
+        val many = (1..20).map { "P$it" }
+        val reply = ProbeProtocol.parse(ProbeProtocol.ack("n", "fp", "电视", 41523, many))
+            as? ProbeProtocol.Packet.Reply
+        assertTrue(reply != null)
+        assertEquals(8, reply!!.protocols.size)
+
+        val longName = "X".repeat(200)
+        val clipped = ProbeProtocol.parse(ProbeProtocol.ack("n", "fp", "电视", 41523, listOf(longName)))
+            as? ProbeProtocol.Packet.Reply
+        assertEquals(32, clipped!!.protocols.single().length)
+    }
+
+    @Test
     fun `坏包一律丢掉不抛异常`() {
         val bad = listOf(
             ByteArray(0),

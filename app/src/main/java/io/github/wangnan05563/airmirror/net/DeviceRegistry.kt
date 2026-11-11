@@ -35,17 +35,33 @@ class DeviceRegistry(
 
     private val entries = LinkedHashMap<String, Entry>()
 
+    /**
+     * 本机指纹：同一台设备同时开着发送端与接收端时，接收端的广播会回环到自己，
+     * 列表里不该出现这台设备。用可写字段是因为 store 初始化晚于本表构造。
+     */
+    var selfFingerprint: String? = null
+
     /** 同一次发现可能被 NSD/UPnP/组播各报一遍，地址与协议在合并条目上累加。 */
     fun report(fingerprint: String, name: String, protocol: String, address: String) {
+        if (fingerprint == selfFingerprint) return
         val t = now()
         val entry = entries.getOrPut(fingerprint) {
+            // 局域网里任何人都能伪造广播：条目数必须有上限，否则一台刷屏设备就能把列表和内存撑爆
+            if (entries.size >= MAX_ENTRIES) evictOldest()
             Entry(fingerprint, name, LinkedHashSet(), LinkedHashSet(), t, null, null)
         }
         if (name.isNotBlank()) entry.name = name
-        entry.addresses.add(address)
-        entry.protocols.add(protocol)
+        // 单个指纹的地址同样封顶：反复换源地址的伪造广播不该把这一条越撑越大
+        if (entry.addresses.size < MAX_ADDRESSES) entry.addresses.add(address)
+        // 协议集合同样封顶：探测应答里的协议串来自任意 UDP 包，不能让一条目无限累加
+        if (protocol in entry.protocols || entry.protocols.size < MAX_PROTOCOLS) entry.protocols.add(protocol)
         entry.lastSeenAt = t
         entry.lostAt = null
+    }
+
+    /** 超出容量时淘汰最久没出现的一条：新出现的设备比早已消失的更可能被用户选择。 */
+    private fun evictOldest() {
+        entries.values.minByOrNull { it.lastSeenAt }?.let { entries.remove(it.fingerprint) }
     }
 
     fun markLost(fingerprint: String) {
@@ -105,6 +121,15 @@ class DeviceRegistry(
 
     private companion object {
         const val DEFAULT_RETENTION = 10 * 60_000L
+
+        /** 设备列表的条目上限：家庭/会议室远达不到，超出只可能是伪造广播刷屏 */
+        const val MAX_ENTRIES = 64
+
+        /** 单个设备保留的地址上限：同一次发现可能来自多个接口，但不需要无限累加 */
+        const val MAX_ADDRESSES = 8
+
+        /** 单个设备的协议上限：已知协议只有四个，超出只可能是伪造广播 */
+        const val MAX_PROTOCOLS = 8
 
         /** 接收端能力优先级：私有通道能承载镜像，其余仅推送。 */
         val STRONGEST_FIRST = listOf("AMRC", "AirPlay", "DLNA", "Cast")

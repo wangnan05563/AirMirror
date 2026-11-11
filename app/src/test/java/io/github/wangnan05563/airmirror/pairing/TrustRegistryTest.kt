@@ -43,6 +43,19 @@ class TrustRegistryTest {
     }
 
     @Test
+    fun `海量拒绝不会让静默表无限增长`() {
+        val subject = registry()
+        // 每次拒绝都按设备指纹记一条静默：伪造随机指纹的人能让它随连接次数一直涨
+        repeat(200) { i ->
+            clock = i.toLong()
+            subject.deny("forged-$i")
+        }
+        // 容量满后按「最早过期」淘汰，最新那条的静默不受影响
+        assertEquals(TrustRegistry.Verdict.ASK, subject.decide("forged-0").verdict)
+        assertEquals(TrustRegistry.Verdict.SUPPRESSED, subject.decide("forged-199").verdict)
+    }
+
+    @Test
     fun oneTimeGrantFromQrOrCastCodeDoesNotEnterTheTrustedList() {
         val subject = registry()
         subject.allow("guest-pad", "访客平板", permanent = false)

@@ -4,6 +4,7 @@ import android.annotation.TargetApi
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
@@ -13,7 +14,9 @@ import android.media.AudioRecord
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.WindowManager
@@ -116,6 +119,8 @@ class CaptureService : Service() {
     private var projection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var encoder: VideoEncoder? = null
+
+    /** 工作线程与主线程（ACTION_STOP / onDestroy）都会读写 */
     @Volatile
     private var connection: StreamConnection? = null
 
@@ -125,6 +130,15 @@ class CaptureService : Service() {
 
     /** 重连后的画质回档：先低一档，10 秒内回到协商档位 */
     private val recoveryQuality = RecoveryQuality()
+
+    /** 主线程排程：通知文案的延迟重置要有个不会被服务停止丢掉的队列 */
+    private val main = Handler(Looper.getMainLooper())
+
+    /**
+     * 通知文案的事件号：延迟把「已恢复投屏」重置回常态时用它确认期间没有新事件，
+     * 否则会把刚写上的「连接中断」又盖回「传输中」。
+     */
+    private val noticeEpoch = java.util.concurrent.atomic.AtomicInteger(0)
 
     /** 发现时的服务名与本次会话的本地地址：切换 Wi-Fi 后要按服务名重新解析，不能用旧地址硬连 */
     private var serviceName = ""
@@ -196,10 +210,34 @@ class CaptureService : Service() {
     /** 接收端换了解码器流水线时会请求关键帧；编码器只能在采集线程上操作，所以先置位再由循环消费。 */
     private val syncRequested = java.util.concurrent.atomic.AtomicBoolean(false)
 
+    /** 会话收尾有「停止命令」和「cleanup」两条路，只让第一条把 BYE 发出去，免得第二条得到 Broken pipe。 */
+    private val byeSent = java.util.concurrent.atomic.AtomicBoolean(false)
+
     override fun onBind(intent: Intent?): IBinder? = null
+
+    /**
+     * BYE 必须离开主线程再发：主线程上的 socket 写会被系统拦成 NetworkOnMainThreadException，
+     * 异常又被 runCatching 吞掉，对端只看到断链，于是把「用户主动停止」当成意外中断、白等 30 秒。
+     * 停止命令与 onDestroy 都在主线程，这里统一切到后台并把发送等完，保证 BYE 先于 close 落地。
+     */
+    private fun sendBye(conn: StreamConnection) {
+        if (!byeSent.compareAndSet(false, true)) return
+        val send = Runnable {
+            runCatching { conn.send(Protocol.Frame(Protocol.Type.BYE)) }
+                .onFailure { Log.w(TAG, "bye failed: ${it.javaClass.simpleName}: ${Redactor.throwable(it)}") }
+        }
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            send.run()
+            return
+        }
+        thread(name = "airmirror-bye") { send.run() }.join(BYE_JOIN_MS)
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent == null || intent.action == ACTION_STOP) {
+            // 主动停止必须在这里把 BYE 写出去：走到 onDestroy 时工作线程可能已经把连接关了，
+            // 大屏就会把「用户主动停止」误判成断线并进入 30 秒恢复窗口
+            connection?.let(::sendBye)
             stopSelf()
             return START_NOT_STICKY
         }
@@ -230,6 +268,7 @@ class CaptureService : Service() {
         }
         startForegroundCompat()
         running = true
+        byeSent.set(false)
         val deviceId = intent.getStringExtra(EXTRA_DEVICE_ID).orEmpty()
         val credential = intent.getStringExtra(EXTRA_CREDENTIAL).orEmpty()
         val serviceName = intent.getStringExtra(EXTRA_SERVICE_NAME).orEmpty()
@@ -253,7 +292,18 @@ class CaptureService : Service() {
         // 14.1「投屏码校验：提交到结果 ≤1 秒」的取样点，含网络往返与接收端判定
         val sentAt = System.nanoTime()
         conn.send(Protocol.Frame(Protocol.Type.AUTH, payload = Auth.request(deviceId, credential)))
-        val reply = conn.receive()
+        // 首次授权可能停在大屏的人工确认上（空凭据最长等 60 秒），不能套续会那 4 秒；
+        // 但也必须有上限：大屏进程挂死时无限等会让这条采集线程永远卡在 receive 上，
+        // 用户在界面上点停止也收不回来（worker.join 超时后线程仍挂着，只能杀进程）。
+        conn.setReadTimeout(AUTH_TIMEOUT_MS)
+        val reply = try {
+            conn.receive()
+        } catch (e: Exception) {
+            Log.w(TAG, "credential check failed: ${Redactor.throwable(e)}")
+            null
+        } finally {
+            runCatching { conn.setReadTimeout(0) }
+        }
         if (reply == null || reply.type != Protocol.Type.AUTH_RESULT) {
             Log.w(TAG, "credential check timed out after ${(System.nanoTime() - sentAt) / 1_000_000}ms")
             SenderReport.last = "接收端未应答授权"
@@ -309,7 +359,9 @@ class CaptureService : Service() {
                         running = false
                     }
                 },
-                null,
+                // 必须显式给主线程 Looper：registerCallback 传 null 会用「当前线程」，
+                // 而这条采集线程没有 Looper，运行到这一步会直接抛「Can't create handler」把投屏打断
+                Handler(Looper.getMainLooper()),
             )
 
             val metrics = DisplayMetrics()
@@ -626,15 +678,21 @@ class CaptureService : Service() {
             StreamConnection(socket)
         }
         // 投屏码同时进握手签名与密钥派生（T04493）：中间人换公钥会在 HELLO 阶段被大屏拒掉
-        val ack = runCatching { conn.connectAsClient(Build.MODEL, MIRROR_CAPABILITIES, credential = credential) }
-            .getOrElse { e ->
-                conn.close()
-                // 锚校验失败的真实原因（码错/链路被替换）必须原样传给界面，不能落成一句「连不上」
-                if (e is Handshake.HandshakeException && e.message.orEmpty().contains("不正确")) {
-                    SenderReport.last = ErrorNotice.textFor(ErrorNotice.Cause.CODE_WRONG)
-                }
-                throw e
+        // 握手也要有读超时：对端 accept 之后不发 HELLO_ACK（进程挂死、半开连接、包被吞）时，
+        // 无超时的 read 会把这条采集线程永久挂住，用户点停止也收不回来。
+        conn.setReadTimeout(HANDSHAKE_TIMEOUT_MS)
+        val ack = try {
+            conn.connectAsClient(Build.MODEL, MIRROR_CAPABILITIES, credential = credential)
+        } catch (e: Exception) {
+            conn.close()
+            // 锚校验失败的真实原因（码错/链路被替换）必须原样传给界面，不能落成一句「连不上」
+            if (e is Handshake.HandshakeException && e.message.orEmpty().contains("不正确")) {
+                SenderReport.last = ErrorNotice.textFor(ErrorNotice.Cause.CODE_WRONG)
             }
+            throw e
+        } finally {
+            runCatching { conn.setReadTimeout(0) }
+        }
         peerAcceptsAudio = ack.capabilities and Handshake.Capability.AUDIO_AAC != 0
         Log.i(
             TAG,
@@ -710,6 +768,13 @@ class CaptureService : Service() {
                     )
                     SenderReport.quality = recoveryQuality.text()
                     updateNotification("已恢复投屏")
+                    // 通知栏不该长期挂着一次早已过去的事件：3 秒后回常态文案。
+                    // 期间若有新状态（再次断线等），其 epoch 已变，这次重置自动作废。
+                    val epoch = noticeEpoch.get()
+                    main.postDelayed(
+                        { if (running && noticeEpoch.get() == epoch) updateNotification() },
+                        3_000,
+                    )
                     // 恢复后按低一档重开编码器，关键帧让大屏立刻续上而不是等自然 IDR
                     restartEncoder()
                     return ResumedLink(result.conn, targetHost, targetPort)
@@ -739,7 +804,13 @@ class CaptureService : Service() {
             socket.tcpNoDelay = true
             socket.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
             val conn = StreamConnection(socket)
-            val ack = conn.connectAsClient(Build.MODEL, MIRROR_CAPABILITIES)
+            // 续会同样要有握手超时：这条路径在断线后自动重试，卡住比首次连接更难被用户发现
+            conn.setReadTimeout(HANDSHAKE_TIMEOUT_MS)
+            val ack = try {
+                conn.connectAsClient(Build.MODEL, MIRROR_CAPABILITIES)
+            } finally {
+                runCatching { conn.setReadTimeout(0) }
+            }
             peerAcceptsAudio = ack.capabilities and Handshake.Capability.AUDIO_AAC != 0
             conn.send(Protocol.Frame(Protocol.Type.AUTH, payload = Auth.request(deviceId, "", resume = true)))
             conn.setReadTimeout(AUTH_WAIT_MS)
@@ -846,6 +917,9 @@ class CaptureService : Service() {
                         Protocol.Type.BYE -> {
                             // 大屏按了「结束投屏」：这是有序收尾，不进恢复窗口
                             Log.i(TAG, "peer ended session (bye), yielded=$yielded")
+                            // 对端先结束并会在读完 BYE 后关连接，本端锚着同一条连接再发一次
+                            // 只会得到 Broken pipe；标记成已发，让 cleanup 跳过这一步
+                            byeSent.set(true)
                             SenderReport.last = if (yielded) {
                                 "已让出投屏"
                             } else {
@@ -1055,8 +1129,15 @@ class CaptureService : Service() {
         stopAudio()
         audioNote = ""
         peerAcceptsAudio = false
-        runCatching { connection?.close() }
+        // 主动停止（界面按钮 / 通知按钮 / 服务销毁）要先发 BYE 再关连接：
+        // 不发就会被大屏当成意外断链，进入 30 秒恢复窗口并显示「连接中断，正在恢复」。
+        // 先取走再置空：cleanup 会在主线程与 worker 各跑一次，重复发只会得到 Broken pipe。
+        val byeConn = connection
         connection = null
+        if (byeConn != null) {
+            sendBye(byeConn)
+            runCatching { byeConn.close() }
+        }
         runCatching { virtualDisplay?.release() }
         virtualDisplay = null
         runCatching { encoder?.release() }
@@ -1067,7 +1148,9 @@ class CaptureService : Service() {
 
     override fun onDestroy() {
         running = false
-        worker?.join(1_000)
+        val joined = worker?.let { it.join(1_000); !it.isAlive } ?: true
+        // 收不住说明 worker 卡在音频/编码初始化里，收尾只能由主线程代劳；BYE 仍在后台线程发
+        if (!joined) Log.w(TAG, "worker still running after stop")
         cleanup()
         super.onDestroy()
     }
@@ -1098,6 +1181,22 @@ class CaptureService : Service() {
             @Suppress("DEPRECATION")
             Notification.Builder(this)
         }
+        // PRD §295/§620：镜像期间可锁屏、切后台，通知栏必须留一条「停止投屏」。
+        // 复用既有 ACTION_STOP，与发送端界面上的停止走同一条收尾路径。
+        val stop = PendingIntent.getService(
+            this,
+            0,
+            Intent(this, CaptureService::class.java).setAction(ACTION_STOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or
+                (if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0),
+        )
+        val stopIcon = android.R.drawable.ic_menu_close_clear_cancel
+        if (Build.VERSION.SDK_INT >= 20) {
+            builder.addAction(Notification.Action.Builder(stopIcon, "停止投屏", stop).build())
+        } else {
+            @Suppress("DEPRECATION")
+            builder.addAction(stopIcon, "停止投屏", stop)
+        }
         return builder
             .setContentTitle("AirMirror 正在投屏")
             .setContentText(text)
@@ -1107,7 +1206,8 @@ class CaptureService : Service() {
     }
 
     /** 断线恢复期间通知栏也要能看出状态（PRD FS-10 步骤 2：切后台保留控制条）。 */
-    private fun updateNotification(text: String) {
+    private fun updateNotification(text: String = "私有通道传输中") {
+        noticeEpoch.incrementAndGet()
         val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         runCatching { manager.notify(NOTIFICATION_ID, buildNotification(text)) }
     }
@@ -1128,6 +1228,15 @@ class CaptureService : Service() {
         private const val CHANNEL_ID = "airmirror-capture"
         private const val NOTIFICATION_ID = 1
         private const val CONNECT_TIMEOUT_MS = 5_000
+
+        /** 握手读超时，与接收端的同名上限对齐：连上却迟迟等不到 HELLO_ACK 时不能无限占用采集线程。 */
+        private const val HANDSHAKE_TIMEOUT_MS = 10_000
+
+        /**
+         * 首次授权的读超时：覆盖接收端 60 秒人工确认窗口再留网络余量。
+         * 比它更短会误杀「人还在走向大屏」的正常场景，更长则挂死时收不回来。
+         */
+        private const val AUTH_TIMEOUT_MS = 70_000
         private const val AUTH_WAIT_MS = 4_000
         private const val CEILING_WAIT_MS = 1_500
         private const val TAKEOVER_WINDOW_MS = 60_000L
@@ -1141,5 +1250,8 @@ class CaptureService : Service() {
 
         /** 空转时的取样间隔：太密是白耗 CPU，太疏会让 1 秒判定迟一拍 */
         private const val AUDIO_IDLE_MS = 10L
+
+        /** 等后台发 BYE 的上限：局域网一个空帧就几十微秒，留足余量是为了卡顿链路也不至于把收尾拖住 */
+        private const val BYE_JOIN_MS = 500L
     }
 }

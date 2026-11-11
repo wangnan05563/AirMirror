@@ -35,7 +35,7 @@ class ReferenceServerIntegrationTest {
             "--port", port.toString(),
         ).redirectErrorStream(true).start()
         try {
-            waitUntilListening(port)
+            waitUntilListening(port, server)
             val base = "http://127.0.0.1:$port"
             val signaling = SignalingClient(HttpSignalingTransport(base), pollIntervalMs = 50)
             val pool = Executors.newFixedThreadPool(2)
@@ -114,12 +114,22 @@ class ReferenceServerIntegrationTest {
         return roots.firstOrNull { it.isFile }
     }
 
-    private fun waitUntilListening(port: Int) {
-        repeat(60) {
+    private fun waitUntilListening(port: Int, server: Process) {
+        // 6 秒在满载机器上不够：全量单测与 lint 并行时 Python 启动会被拖到 10 秒以上，
+        // 于是这条端到端用例偶发红。给 20 秒，并在服务进程提前退出时立刻失败、带上它的输出，
+        // 免得真出错（参数变了、端口被占）也被表现成「等超时」。
+        val deadline = System.currentTimeMillis() + 20_000
+        while (System.currentTimeMillis() < deadline) {
             val connected = runCatching { Socket("127.0.0.1", port).use { true } }.getOrDefault(false)
             if (connected) return
+            if (!server.isAlive) {
+                val output = runCatching {
+                    server.inputStream.bufferedReader().readText().take(400)
+                }.getOrDefault("")
+                throw AssertionError("reference signaling server exited before listening: $output")
+            }
             Thread.sleep(100)
         }
-        throw AssertionError("reference signaling server did not start on $port")
+        throw AssertionError("reference signaling server did not start on $port within 20s")
     }
 }

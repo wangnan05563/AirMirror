@@ -83,6 +83,26 @@ class ProtocolTest {
     }
 
     @Test
+    fun handshakeReadRejectsPayloadAboveTheHandshakeCap() {
+        // 握手发生在认证之前：只允许 64KB，不能让未认证连接用一帧头换来 8MB 堆分配
+        val bytes = ByteArrayOutputStream().also {
+            Protocol.write(it, Protocol.Frame(Protocol.Type.HELLO))
+        }.toByteArray()
+        val declared = Protocol.HANDSHAKE_MAX_PAYLOAD + 1
+        bytes[16] = (declared ushr 24).toByte()
+        bytes[17] = (declared ushr 16).toByte()
+        bytes[18] = (declared ushr 8).toByte()
+        bytes[19] = declared.toByte()
+        assertThrows(Protocol.ProtocolException::class.java) {
+            Protocol.read(ByteArrayInputStream(bytes), Protocol.HANDSHAKE_MAX_PAYLOAD)
+        }
+        // 同一份声明在媒体阶段（默认 8MB 上限）仍被接受：收紧只作用于握手
+        assertThrows(EOFException::class.java) {
+            Protocol.read(ByteArrayInputStream(bytes))
+        }
+    }
+
+    @Test
     fun writeRejectsOversizedPayload() {
         val tooBig = Protocol.Frame(Protocol.Type.VIDEO, payload = ByteArray(Protocol.MAX_PAYLOAD + 1))
         assertThrows(IllegalArgumentException::class.java) {

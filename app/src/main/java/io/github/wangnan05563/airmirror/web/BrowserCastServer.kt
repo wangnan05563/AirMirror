@@ -12,12 +12,12 @@ import java.util.Locale
 import kotlin.concurrent.thread
 
 /**
- * 访客浏览器投屏服务（PRD §5.9 / §6.6：接收端内置网页服务，上传文件、共享标签页）。
+ * 访客浏览器投屏服务（PRD §5.9 / §6.6：接收端内置网页服务，上传文件、投送浏览器标签页）。
  *
  * 零安装的代价是「谁都能访问」，所以入口不是裸路径，而是一次性会话 token：
  * 大屏上显示带 token 的地址，拿到地址的人才能上传；token 每次进程启动重新生成，不落盘。
  *
- * 本轮只做「文件上传 + 大屏播放」这条降级路径。浏览器标签页共享需要 WebRTC，
+ * 本轮只做「文件上传 + 大屏播放」这条降级路径。浏览器标签页投送需要 WebRTC，
  * 在 MediaProjection + 自定义信令之外还要一套 SDP/ICE 协商，不是这一片能闭环的量；
  * 网页会明确提示「当前浏览器不支持时请上传文件」，与 PRD 543 的降级口径一致。
  *
@@ -30,11 +30,21 @@ class BrowserCastServer(
     private val token: String = newToken(),
     /** 页面标题行显示的大屏名；用取值函数，改名后不必重建服务也能刷新。 */
     private val deviceName: () -> String = { DEFAULT_DEVICE_NAME },
+    /**
+     * 读请求头与读文件体的超时。这个服务对局域网敞开，谁都能连上；
+     * 没有超时的话，一个连上就不发字节的客户端会把处理线程永久挂住——
+     * 每个连接一条线程，几千个空连接就足以把接收端拖垮。
+     */
+    private val headTimeoutMs: Int = DEFAULT_HEAD_TIMEOUT_MS,
+    private val bodyTimeoutMs: Int = DEFAULT_BODY_TIMEOUT_MS,
 ) {
     data class UploadedFile(val file: File, val name: String, val mime: String, val size: Long)
 
     private var server: ServerSocket? = null
     private var acceptThread: Thread? = null
+
+    /** 活动连接：stop 时要当场关掉，否则上传线程能继续把文件写回已清空的目录 */
+    private val clients: MutableSet<Socket> = java.util.Collections.synchronizedSet(HashSet())
 
     val port: Int get() = server?.localPort ?: 0
 
@@ -50,10 +60,28 @@ class BrowserCastServer(
         server = socket
         acceptThread = thread(name = "airmirror-web-accept", isDaemon = true) {
             while (!socket.isClosed) {
-                val client = runCatching { socket.accept() }.getOrNull() ?: break
+                val client = try {
+                    socket.accept()
+                } catch (e: IOException) {
+                    // 一次 accept 失败不该结束线程：地址还挂在待连接页上，线程一退，
+                    // 之后每次上传都只会「连不上」，而界面看不出任何异常。
+                    if (socket.isClosed) break
+                    // 连续失败时不空转，给系统一点时间回收句柄
+                    runCatching { Thread.sleep(ACCEPT_RETRY_MS) }
+                    continue
+                }
+                // 每个连接一条线程：只加读超时挡不住「开几千个连接、每个慢慢发」，
+                // 线程与栈内存会先被占满。与接收端私有通道同一口径，超出的当场断开、连线程都不起。
+                // 浏览器投屏同时只会有几台设备，8 条足够。
+                if (clients.size >= MAX_CLIENTS) {
+                    runCatching { client.close() }
+                    continue
+                }
+                clients.add(client)
                 thread(name = "airmirror-web-client", isDaemon = true) {
                     runCatching { serve(client) }
                     runCatching { client.close() }
+                    clients.remove(client)
                 }
             }
         }
@@ -66,10 +94,16 @@ class BrowserCastServer(
         server = null
         acceptThread?.interrupt()
         acceptThread = null
+        // 先断活动连接再清文件：否则正在上传的线程会把文件重新写回目录，
+        // 或者白占一条线程到 body 超时才退出
+        clients.toList().forEach { runCatching { it.close() } }
+        clients.clear()
         dir.listFiles()?.forEach { runCatching { it.delete() } }
     }
 
     private fun serve(client: Socket) {
+        // 先定读超时再读头：空连接（连上不发任何字节）是最省事的占线程方式，必须自己到期释放
+        client.soTimeout = headTimeoutMs
         val input = client.getInputStream()
         val head = readHead(input) ?: return
         val lines = head.split("\r\n")
@@ -86,6 +120,8 @@ class BrowserCastServer(
     }
 
     private fun handleUpload(client: Socket, input: InputStream, lines: List<String>) {
+        // 文件体按需放宽到 bodyTimeoutMs：200MB 的大文件要慢慢传，但也不能让慢速客户端无限占着线程
+        client.soTimeout = bodyTimeoutMs
         val length = lines.drop(1)
             .firstOrNull { it.startsWith("Content-Length:", ignoreCase = true) }
             ?.substringAfter(':')?.trim()?.toLongOrNull()
@@ -176,6 +212,21 @@ class BrowserCastServer(
 
         /** 没有设备名时的页面标题，避免标题行空白。 */
         const val DEFAULT_DEVICE_NAME = "大屏"
+
+        /** accept 连续失败时的退避：既不空转，也不至于让下一次上传等太久 */
+        private const val ACCEPT_RETRY_MS = 50L
+
+        /** 同时在处理的连接上限，与 `ReceiverSession.MAX_CLIENTS` 同一防护目的（见 accept 循环里的注释） */
+        const val MAX_CLIENTS = 8
+
+        /** 请求头必须在这个时间内读完：正常浏览器几百毫秒就发完了 */
+        const val DEFAULT_HEAD_TIMEOUT_MS = 10_000
+
+        /**
+         * 文件体的读超时。它约束的是「连续多久收不到字节」，不是整个上传的总时长：
+         * 大文件在正常网速下每次 read 都能拿到数据，只有卡死或恶意慢速连接才会撞上这个上限。
+         */
+        const val DEFAULT_BODY_TIMEOUT_MS = 60_000
 
         fun newToken(): String {
             val bytes = ByteArray(4)

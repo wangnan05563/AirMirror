@@ -18,6 +18,13 @@ object Protocol {
     const val HEADER_SIZE = 20
     const val MAX_PAYLOAD = 8 * 1024 * 1024
 
+    /**
+     * 握手帧（HELLO / HELLO_ACK）的载荷上限。这两帧只带版本、能力位、设备名与公钥，实测不到 1KB；
+     * 而握手发生在任何凭据校验之前——允许未认证连接声明 8MB 载荷，等于让 16 条空连接
+     * 各自用一帧头就换来 8MB 堆分配（合计 128MB），低端接收端会被直接 OOM。
+     */
+    const val HANDSHAKE_MAX_PAYLOAD = 64 * 1024
+
     enum class Type(val code: Int) {
         HELLO(1),
         HELLO_ACK(2),
@@ -99,8 +106,11 @@ object Protocol {
         data.flush()
     }
 
-    /** 读取一帧；对端正常关闭返回 null，读到半帧则抛 EOFException。 */
-    fun read(input: InputStream): Frame? {
+    /**
+     * 读取一帧；对端正常关闭返回 null，读到半帧则抛 EOFException。
+     * [maxPayload] 让握手阶段能收紧上限（见 [HANDSHAKE_MAX_PAYLOAD]），认证后的媒体帧仍用 [MAX_PAYLOAD]。
+     */
+    fun read(input: InputStream, maxPayload: Int = MAX_PAYLOAD): Frame? {
         val data = DataInputStream(input)
         val magic = try {
             data.readInt()
@@ -118,7 +128,7 @@ object Protocol {
             throw ProtocolException("unsupported version: $version")
         }
         val type = Type.fromCode(typeCode) ?: throw ProtocolException("unknown frame type: $typeCode")
-        if (length < 0 || length > MAX_PAYLOAD) throw ProtocolException("bad payload length: $length")
+        if (length < 0 || length > maxPayload) throw ProtocolException("bad payload length: $length")
         val payload = ByteArray(length)
         data.readFully(payload)
         return Frame(type, version, flags, ptsUs, payload)

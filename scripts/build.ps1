@@ -182,8 +182,10 @@ try {
     Pop-Location
 }
 
-# 6. Report the produced packages so the caller (or push script) can use them.
-$apkDir = Join-Path $root "app\build\outputs\apk\$variant"
+# 6. Collect the produced packages into release\<variant>\ - the single artifact root.
+#    release\ is disposable: delete it and the next build recreates the whole set.
+#    Cleaning runs after Gradle succeeds, so a failed build never destroys the last good set.
+$apkDir = Join-Path $root ("app\build\outputs\apk\" + $variant)
 if (-not (Test-Path $apkDir)) {
     Stop-WithError "No APK directory at $apkDir."
 }
@@ -191,7 +193,19 @@ $apks = Get-ChildItem $apkDir -Filter *.apk
 if (-not $apks) {
     Stop-WithError "No APK produced in $apkDir."
 }
-Write-Host "APK:"
+$releaseDir = Join-Path $root ("release\" + $variant)
+if (Test-Path $releaseDir) {
+    Remove-Item $releaseDir -Recurse -Force
+}
+New-Item -ItemType Directory -Path $releaseDir | Out-Null
+foreach ($apk in $apks) {
+    Copy-Item $apk.FullName (Join-Path $releaseDir $apk.Name) -Force
+}
+$apks = @(Get-ChildItem $releaseDir -Filter *.apk | Sort-Object Name)
+if ($apks.Count -eq 0) {
+    Stop-WithError "APK copy into $releaseDir failed."
+}
+Write-Host "APK (release dir):"
 foreach ($apk in $apks) {
     Write-Host ("  {0}  {1:N0} B" -f $apk.FullName, $apk.Length) -ForegroundColor Cyan
 }

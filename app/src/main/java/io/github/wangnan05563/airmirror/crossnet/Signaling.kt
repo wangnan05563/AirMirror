@@ -1,5 +1,6 @@
 package io.github.wangnan05563.airmirror.crossnet
 
+import io.github.wangnan05563.airmirror.util.readAtMost
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -59,7 +60,9 @@ class HttpSignalingTransport(
             configure(connection)
             val code = connection.responseCode
             val stream = if (code in 200..299) connection.inputStream else connection.errorStream
-            val body = stream?.use { it.readBytes() } ?: ByteArray(0)
+            // 信令消息都是几百字节的控制消息：读总量必须封顶，readTimeout 只管单次等待，
+            // 服务器（或中间人）持续回字节就能把堆撑爆
+            val body = stream?.use { it.readAtMost(MAX_RESPONSE_BYTES) } ?: ByteArray(0)
             if (code !in 200..299) {
                 // 5xx/4xx 也算信令不可用：让上层按「连续失败」收口，而不是把 500 当成「还没匹配上」
                 throw IOException("signaling http $code")
@@ -72,6 +75,9 @@ class HttpSignalingTransport(
 
     companion object {
         private const val CONTENT_TYPE = "application/octet-stream"
+
+        /** 单条信令响应的上限：候选列表也才几百字节，64KB 已经非常宽松 */
+        private const val MAX_RESPONSE_BYTES = 64 * 1024
 
         /**
          * 只接受 http(s) 且带主机名。空串表示「未配置」——跨网整体关闭，

@@ -28,6 +28,12 @@ object ProbeProtocol {
     /** 名字与标识里出现分隔符或控制字符会破坏帧结构，出门前先按同一套规则削平。 */
     private const val MAX_TEXT = 64
 
+    /** 一条应答里最多认几个协议：已知协议只有四个，8 足够宽松 */
+    private const val MAX_PROTOCOLS = 8
+
+    /** 单个协议名的上限：只会是 AMRC/DLNA 这类短标识 */
+    private const val MAX_PROTOCOL_LENGTH = 32
+
     sealed class Packet {
         /** 发送端问一句「这儿有大屏吗」。nonce 用来把应答对上自己发出去的那一问。 */
         data class Probe(val nonce: String, val senderName: String) : Packet()
@@ -90,7 +96,12 @@ object ProbeProtocol {
                     fingerprint = fingerprint,
                     name = name,
                     port = port,
-                    protocols = fields[6].split(',').filter { it.isNotEmpty() },
+                    // 协议串来自任意 UDP 包：数量与单项长度都要封顶，否则一条包就能塞进上千条，
+                    // 而它们会被并进设备列表并长期保留
+                    protocols = fields[6].split(',')
+                        .filter { it.isNotEmpty() }
+                        .take(MAX_PROTOCOLS)
+                        .map { it.take(MAX_PROTOCOL_LENGTH) },
                 )
             }
 

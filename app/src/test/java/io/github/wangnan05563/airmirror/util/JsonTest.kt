@@ -53,4 +53,19 @@ class JsonTest {
             assertTrue("应当拒绝: $bad", failed is JsonException)
         }
     }
+
+    @Test
+    fun `过深的嵌套以 JsonException 收口 而不是打爆栈`() {
+        // 递归下降遇到几十万层会抛 StackOverflowError（Error 而非 Exception，外层 catch 不住），
+        // 所以深度必须在解析器内部封顶
+        val deep = "[".repeat(5_000) + "]".repeat(5_000)
+        val failed = runCatching { Json.parse(deep) }.exceptionOrNull()
+        assertTrue("深层嵌套应当被拒绝，实际: $failed", failed is JsonException)
+    }
+
+    @Test
+    fun `正常深度的嵌套照常解析`() {
+        val ok = "[".repeat(40) + "]".repeat(40)
+        Json.parse(ok)
+    }
 }

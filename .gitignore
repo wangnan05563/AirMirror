@@ -22,6 +22,8 @@ $RECYCLE.BIN/
 *~
 
 # ---- Android / Gradle 构建产物 ----
+# 构建产物汇总目录：build.ps1 每次重建，删掉即可彻底清理（不进版本库）
+release/
 .gradle/
 build/
 app/build/
@@ -63,10 +65,21 @@ logs/
 hs_err_pid*.log
 replay_pid*.log
 
+# ---- Kotlin 编译守护进程缓存（Kotlin 2.x 在项目根生成的错误日志） ----
+.kotlin/
+
+# ---- 本机模拟器启动/取证临时目录（各片按 .mtask_tmp 布局另放） ----
+build-emu-tmp/
+
 # ---- 本项目的内部工作区（任务系统取证快照与脚本，不对外发布） ----
 .mtask_tmp/
 .screenshots/
 .scratch/
+
+# ---- 其它 Agent 的本机工作区（记忆/取证截图/任务文档，含潜在凭据，绝不入库） ----
+.trae/
+.workbuddy/
+.workbuddy-ai/
 
 # ---- 签名与凭据（公开仓库中绝不提交） ----
 *.keystore

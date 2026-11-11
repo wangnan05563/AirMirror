@@ -62,12 +62,27 @@ class ErrorNoticeTest {
     }
 
     @Test
+    fun `动作表不再提供无界面承接的扫码入口`() {
+        // T04881 裁定：发送端没有相机入口，扫码动作在任何界面都没有点击承接，保留即为死路
+        assertFalse(
+            "Action 仍含扫码",
+            ErrorNotice.Action.entries.any { it.name == "SCAN_QR" },
+        )
+        for (cause in ErrorNotice.Cause.entries) {
+            val notice = ErrorNotice.noticeFor(cause)
+            assertFalse("$cause 的下一步仍在提示扫码：${notice.nextStep}", notice.nextStep.contains("扫码"))
+        }
+    }
+
+    @Test
     fun `legacy receiver reasons map onto the right causes`() {
         assertEquals(ErrorNotice.Cause.SESSION_BUSY, ErrorNotice.causeOfLegacyReason("已有设备在投屏"))
         assertEquals(ErrorNotice.Cause.CODE_LOCKED, ErrorNotice.causeOfLegacyReason("投屏码错误次数过多"))
         assertEquals(ErrorNotice.Cause.CODE_USED, ErrorNotice.causeOfLegacyReason("投屏码已用过"))
         assertEquals(ErrorNotice.Cause.CODE_WRONG, ErrorNotice.causeOfLegacyReason("投屏码不正确"))
         assertEquals(ErrorNotice.Cause.REFUSED_BY_USER, ErrorNotice.causeOfLegacyReason("已拒绝"))
+        // 静默期拒绝：接收端在判码之前就返回了，不能再让用户去重新读码
+        assertEquals(ErrorNotice.Cause.REFUSED_BY_USER, ErrorNotice.causeOfLegacyReason("大屏已拒绝"))
         assertEquals(ErrorNotice.Cause.NO_AUTH, ErrorNotice.causeOfLegacyReason("缺少授权"))
     }
 

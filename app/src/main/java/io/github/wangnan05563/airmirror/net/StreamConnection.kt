@@ -59,7 +59,9 @@ class StreamConnection private constructor(private val channel: FrameChannel) : 
             proof,
         )
         Protocol.write(output, Protocol.Frame(Protocol.Type.HELLO, payload = hello.encode()))
-        val reply = Protocol.read(input) ?: throw java.io.IOException("connection closed during handshake")
+        // 握手帧只用小上限：此时还没验证任何凭据，不该让对端用一个帧头换来大块堆分配
+        val reply = Protocol.read(input, Protocol.HANDSHAKE_MAX_PAYLOAD)
+            ?: throw java.io.IOException("connection closed during handshake")
         if (reply.type == Protocol.Type.ERROR) {
             throw Handshake.HandshakeException(String(reply.payload, Charsets.UTF_8))
         }
@@ -102,7 +104,9 @@ class StreamConnection private constructor(private val channel: FrameChannel) : 
         key: KeyExchange.Ephemeral? = KeyExchange.generate(),
         credentials: List<String> = emptyList(),
     ): Handshake.Hello {
-        val helloFrame = Protocol.read(input) ?: throw java.io.IOException("connection closed before HELLO")
+        // HELLO 到达时还没有任何授权：上限按握手帧收紧，避免未认证连接申请 8MB 缓冲
+        val helloFrame = Protocol.read(input, Protocol.HANDSHAKE_MAX_PAYLOAD)
+            ?: throw java.io.IOException("connection closed before HELLO")
         if (helloFrame.type != Protocol.Type.HELLO) {
             throw Handshake.HandshakeException("expected HELLO, got ${helloFrame.type}")
         }
@@ -184,14 +188,31 @@ class StreamConnection private constructor(private val channel: FrameChannel) : 
 
     fun receive(): Protocol.Frame? {
         val frame = Protocol.read(input) ?: return null
-        if (frame.flags and Protocol.Flags.ENCRYPTED == 0) return frame
-        val cipher = readCipher ?: throw Protocol.ProtocolException("encrypted frame on an unencrypted session")
-        return frame.copy(flags = frame.flags and Protocol.Flags.ENCRYPTED.inv(), payload = cipher.open(frame))
+        val cipher = readCipher
+        if (frame.flags and Protocol.Flags.ENCRYPTED != 0) {
+            if (cipher == null) throw Protocol.ProtocolException("encrypted frame on an unencrypted session")
+            return frame.copy(flags = frame.flags and Protocol.Flags.ENCRYPTED.inv(), payload = cipher.open(frame))
+        }
+        // 已加密的会话里，只有握手类帧可以合法地保持明文（密钥建立前发出，或握手失败的 ERROR）。
+        // 媒体、控制、BYE 出现在明文里说明线路被人插了帧：照单全收等于让中间人注入伪造画面、
+        // 假暂停或假结束，端到端加密的完整性承诺就没了。
+        if (cipher != null && frame.type !in PLAIN_TYPES) {
+            throw Protocol.ProtocolException("plain ${frame.type} on an encrypted session")
+        }
+        return frame
     }
 
     /** 读超时：等待对端某一条特定帧时用，0 表示不超时 */
     fun setReadTimeout(timeoutMs: Int) {
         channel.setReadTimeout(timeoutMs)
+    }
+
+    /**
+     * 只关发送方向。用于「说完 BYE 就走」的收尾：接收缓冲里还留着对端推来的帧时，
+     * 直接 close 会发 RST 把 BYE 一起丢掉，对端就把它当成意外断链。
+     */
+    fun shutdownOutput() {
+        channel.shutdownOutput()
     }
 
     override fun close() {
@@ -243,6 +264,12 @@ internal interface FrameChannel : Closeable {
     val input: java.io.InputStream
     val output: java.io.OutputStream
     fun setReadTimeout(timeoutMs: Int)
+
+    /**
+     * 有序收尾：只关发送方向，先让对端读到 EOF。
+     * 接收缓冲里还留着对端推来的帧时直接 close 会发 RST，RST 会把本端刚写的 BYE 一起丢掉。
+     */
+    fun shutdownOutput()
 }
 
 private class SocketChannel(private val socket: Socket) : FrameChannel {
@@ -257,6 +284,10 @@ private class SocketChannel(private val socket: Socket) : FrameChannel {
         runCatching { socket.soTimeout = timeoutMs }
     }
 
+    override fun shutdownOutput() {
+        runCatching { socket.shutdownOutput() }
+    }
+
     override fun close() {
         runCatching { socket.close() }
     }
@@ -269,6 +300,9 @@ private class TunnelChannel(
     override val output: java.io.OutputStream get() = tunnel.output
 
     override fun setReadTimeout(timeoutMs: Int) = tunnel.setReadTimeout(timeoutMs)
+
+    /** 隧道没有半关概念：它的 close 自带 FIN 与重传，收尾语义与半关一致。 */
+    override fun shutdownOutput() = Unit
 
     override fun close() = tunnel.close()
 }

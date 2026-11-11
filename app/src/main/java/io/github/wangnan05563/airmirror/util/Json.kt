@@ -24,6 +24,9 @@ sealed interface JsonValue {
 class JsonException(message: String) : IllegalArgumentException(message)
 
 object Json {
+    /** GitHub Release 这类响应最深不到十层；64 层足够宽松，又能挡住让栈溢出的畸形输入 */
+    private const val MAX_DEPTH = 64
+
     fun parse(text: String): JsonValue {
         val parser = Parser(text)
         val value = parser.value()
@@ -36,6 +39,8 @@ object Json {
         var position = 0
             private set
 
+        private var depth = 0
+
         fun done(): Boolean = position >= text.length
 
         fun skipWhitespace() {
@@ -46,13 +51,27 @@ object Json {
             skipWhitespace()
             if (done()) throw JsonException("unexpected end of input")
             return when (val ch = text[position]) {
-                '{' -> obj()
-                '[' -> arr()
+                '{' -> descend { obj() }
+                '[' -> descend { arr() }
                 '"' -> JsonValue.Str(string())
                 't' -> literal("true", JsonValue.Bool(true))
                 'f' -> literal("false", JsonValue.Bool(false))
                 'n' -> literal("null", JsonValue.Null)
                 else -> if (ch == '-' || ch.isDigit()) number() else throw JsonException("unexpected '$ch' at $position")
+            }
+        }
+
+        /**
+         * 递归下降必须封顶：一兆字节的 `[[[[[` 是几十万层，会在栈上直接 StackOverflowError。
+         * 那是 Error，外层的 `catch (IllegalArgumentException)` 抓不住，整个进程会被带走。
+         */
+        private fun descend(parse: () -> JsonValue): JsonValue {
+            if (depth >= MAX_DEPTH) throw JsonException("nesting too deep: $depth")
+            depth++
+            try {
+                return parse()
+            } finally {
+                depth--
             }
         }
 

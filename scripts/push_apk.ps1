@@ -73,7 +73,11 @@ if ($devices -notcontains $Serial) {
 }
 Write-Host "[INFO] target device: $Serial"
 
-$apkDir = Join-Path $root ("app\build\outputs\apk\" + $push.variant)
+# Artifacts live in release\<variant>\; the Gradle output dir is only a fallback.
+$apkDir = Join-Path $root ("release\" + $push.variant)
+if (-not (Test-Path $apkDir)) {
+    $apkDir = Join-Path $root ("app\build\outputs\apk\" + $push.variant)
+}
 $apk = $null
 foreach ($candidate in $push.apkCandidates) {
     $path = Join-Path $apkDir ($candidate.Replace('{variant}', $push.variant))

@@ -69,6 +69,18 @@ class DlnaPlayer {
     var prepareMs = 0L
         private set
 
+    /**
+     * 当前媒体的原始画幅（纯音频为 0）。接收端拿它按显示模式等比摆放：
+     * MediaPlayer 默认会把画面拉满 Surface，不报尺寸就只能一直看拉伸变形。
+     */
+    @Volatile
+    var videoWidth = 0
+        private set
+
+    @Volatile
+    var videoHeight = 0
+        private set
+
     /** SetAVTransportURI 落地的时刻（nanoTime）；控制点线程写、主线程读，故为 Volatile。 */
     @Volatile
     private var pushAtNano = 0L
@@ -113,6 +125,9 @@ class DlnaPlayer {
         playAtNano = 0L
         prepared = false
         playing = false
+        // 换片先清画幅：新片纯音频时不能还留着上一部视频的尺寸去做适配
+        videoWidth = 0
+        videoHeight = 0
         val mediaPlayer = MediaPlayer()
         player = mediaPlayer
         try {
@@ -131,6 +146,9 @@ class DlnaPlayer {
                 cancelLoadTimeout()
                 prepared = true
                 prepareMs = (System.nanoTime() - pushAtNano) / 1_000_000
+                // prepared 之后 videoWidth/Height 才有效；纯音频两者都是 0，接收端据此不做适配
+                videoWidth = it.videoWidth
+                videoHeight = it.videoHeight
                 // setLooping 只能在非 Idle 状态调用，prepared 是第一个安全时点
                 runCatching { it.setLooping(looping) }
                 if (pendingPlay) start(it)

@@ -58,7 +58,11 @@ class VideoEncoder(
             setInteger(MediaFormat.KEY_FRAME_RATE, fps)
             // GOP 控制在 1 秒内（PRD 8.7）：超过一秒，丢帧后要等很久才等到 IDR
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
-            setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR)
+            // minSdk 19：这个键 API 21 才有，老系统的 codec 收到未知键会忽略，
+            // 个别厂商实现还会在 configure 时拒绝，所以只在支持的版本上写
+            if (Build.VERSION.SDK_INT >= 21) {
+                setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR)
+            }
             if (maxBFrames != null) setInteger(MediaFormat.KEY_MAX_B_FRAMES, maxBFrames)
         }
 
@@ -126,7 +130,9 @@ class VideoEncoder(
         return when {
             raws.isEmpty() -> null
             codec === VideoCodec.HEVC -> H265.packCsd(raws)
-            else -> raws.reduce { a, b -> a + b }
+            // 不能假设厂商给的 csd 自带起始码：裸 SPS/PPS 首尾相接后接收端拆不出边界，
+            // 会「配得上却一帧都解不出」。normalize 对已经带起始码的数据是幂等的。
+            else -> H264.normalize(raws.reduce { a, b -> a + b })
         }
     }
 

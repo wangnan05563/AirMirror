@@ -45,6 +45,8 @@ class ReceiverHost private constructor(context: Context) {
     interface Ui {
         fun onStatus(text: String)
         fun onPrompt(prompt: ReceiverSession.Prompt)
+        /** 确认请求已失效（超时），界面收起对应的提示条。 */
+        fun onPromptDismissed() = Unit
         fun onCasting(casting: Boolean, senderName: String)
         fun onNotice(text: String)
         fun onRecovery(active: Boolean)
@@ -54,6 +56,9 @@ class ReceiverHost private constructor(context: Context) {
         /** PRD FS-02 图片推送：接收端把解好的图交给界面显示，不走 Surface。 */
         fun onDlnaImage(image: Bitmap, title: String)
         fun onDlnaImageCleared()
+
+        /** 推送媒体的原始画幅：与镜像的 [onVideoSize] 分开，两路内容的适配不能互相覆盖。 */
+        fun onDlnaVideoSize(width: Int, height: Int) = Unit
         /** 画面角标的读数（PRD FS-05）：默认不显示，界面开了才渲染，所以给个空实现。[kiloBits] 为实测入流码率 kbps */
         fun onQualityReadout(width: Int, height: Int, kiloBits: Int) = Unit
     }
@@ -102,6 +107,49 @@ class ReceiverHost private constructor(context: Context) {
     /** 界面交下来的 Surface：宿主比 Surface 晚起来时（进程重启、界面重建）靠它补挂，否则画面会一直黑。 */
     private var holder: SurfaceHolder? = null
     private val main = Handler(Looper.getMainLooper())
+
+    private var wakeLock: android.os.PowerManager.WakeLock? = null
+    private var wifiLock: android.net.wifi.WifiManager.WifiLock? = null
+
+    /**
+     * 投屏会话期间锁住 CPU 与 Wi-Fi。真机实测：不持锁时接收端一锁屏，41523 就不再接受连接，
+     * 发送端三次续会全部超时；解锁后端口立刻恢复——是屏幕关闭后的省电/挂起，不是会话被关。
+     * PRD FS-10 要求锁屏 30 秒画面仍连续，所以只在会话期间持锁，待机不额外耗电。
+     *
+     * 释放点是 [releaseSessionLocks]：会话长短由用户决定，这里不给超时，
+     * 否则一次长投屏会在中途自己掉锁、又被系统判成后台省电。
+     */
+    @android.annotation.SuppressLint("WakelockTimeout", "Wakelock")
+    private fun holdSessionLocks() {
+        if (wakeLock == null) {
+            val power = appContext.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            wakeLock = power.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "airmirror:receiver").apply {
+                setReferenceCounted(false)
+                runCatching { acquire() }
+            }
+        }
+        if (wifiLock == null) {
+            // 老系统的 lint 只认「从 Application 取 WIFI_SERVICE」，否则会把它挂到 Activity 上泄漏
+            val wifi = appContext.applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+            val mode = if (Build.VERSION.SDK_INT >= 29) {
+                android.net.wifi.WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+            } else {
+                @Suppress("DEPRECATION")
+                android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF
+            }
+            wifiLock = wifi.createWifiLock(mode, "airmirror:receiver").apply {
+                setReferenceCounted(false)
+                runCatching { acquire() }
+            }
+        }
+    }
+
+    private fun releaseSessionLocks() {
+        runCatching { wakeLock?.release() }
+        wakeLock = null
+        runCatching { wifiLock?.release() }
+        wifiLock = null
+    }
 
     @Volatile
     private var ui: Ui? = null
@@ -171,10 +219,12 @@ class ReceiverHost private constructor(context: Context) {
                 post { it.onStatus(text) }
             },
             onPrompt = { prompt -> post { it.onPrompt(prompt) } },
+            onPromptDismissed = { post { it.onPromptDismissed() } },
             onCasting = { casting, sender ->
                 this.casting = casting
                 senderName = if (casting) sender else ""
                 if (!casting) recovering = false
+                if (casting) holdSessionLocks() else releaseSessionLocks()
                 post { it.onCasting(casting, sender) }
             },
             onNotice = { text -> post { it.onNotice(text) } },
@@ -222,6 +272,7 @@ class ReceiverHost private constructor(context: Context) {
             dlnaImageTitle = ""
             post { it.onDlnaImageCleared() }
         }
+        renderer.onVideoSize = { width, height -> post { it.onDlnaVideoSize(width, height) } }
         // 只投「此刻值得让用户看见」的一条：界面在后台时收到的是 lastStatus，
         // 回到前台 Surface 重建那一刻由 announceSurfaceBack 再补一条浮层
         renderer.onNotice = { text -> post { it.onNotice(text) } }
@@ -312,7 +363,7 @@ class ReceiverHost private constructor(context: Context) {
                     // 宿主还没准备好就交付链路：必须自己关掉，否则 socket 与线程会一直挂着
                     outcome.link?.let { runCatching { it.close() } }
                 } else {
-                    outcome.link?.let { active.offerTunnel(it) }
+                    outcome.link?.let { active.offerTunnel(it, outcome.credential) }
                 }
             },
         )

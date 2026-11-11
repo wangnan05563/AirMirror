@@ -79,6 +79,8 @@ class ProbeScanner(
     private val seenAt = LinkedHashMap<String, Long>()
     private var session = ""
     private var lastNotice = ""
+    @Volatile private var lastVerdict: DiscoveryLadder.Verdict =
+        DiscoveryLadder.Verdict.Nothing(DiscoveryLadder.Empty.SEARCHING, "")
     @Volatile private var running = false
     @Volatile private var failed = false
     private var worker: Thread? = null
@@ -97,10 +99,14 @@ class ProbeScanner(
 
     fun snapshot(): String = recent.encode()
 
+    /** 最近一次发现判决（只读暴露，不改判定逻辑）：界面据此做结构化空态诊断（UX-01）。 */
+    fun verdict(): DiscoveryLadder.Verdict = lastVerdict
+
     /** 只起判决表、不开后台线程：JVM 单测用 [begin] + [poll] 就能把整条节拍走完。 */
     fun begin(now: Long = clock()) {
         ladder.start(now)
         failed = false
+        lastVerdict = DiscoveryLadder.Verdict.Nothing(DiscoveryLadder.Empty.SEARCHING, "")
     }
 
     fun start(now: Long = clock()) {
@@ -175,6 +181,10 @@ class ProbeScanner(
             else -> return
         }
         ladder.noteHit(channel)
+        // 伪造应答能在 8 秒存活窗口内塞进任意多指纹（HELLO 连 nonce 都不需要）：
+        // 表无上限时内存跟着攻击者的发包速率走，正常局域网的同屏设备远不到这个数。
+        // 已跟踪的指纹仍可刷新，不受上限影响。
+        if (reply.fingerprint !in seenAt && seenAt.size >= MAX_TRACKED) return
         seenAt[reply.fingerprint] = now
         // reply.port 只是登记给连接流程，扫描器不会主动连它（媒体端口被 8.9 的限流闸门看着）
         sink.onDevice(reply.fingerprint, reply.name, datagram.host, reply.port, reply.protocols)
@@ -193,6 +203,7 @@ class ProbeScanner(
     private fun evaluate(now: Long) {
         val localPrefix = interfaces().firstOrNull()?.address?.substringBeforeLast('.')
         val verdict = ladder.verdict(now, recent.crossSubnet(now, localPrefix))
+        lastVerdict = verdict
         publishNotice(if (verdict is DiscoveryLadder.Verdict.Nothing) verdict.notice else "")
     }
 
@@ -210,5 +221,8 @@ class ProbeScanner(
         const val LOST_AFTER_MS = 8_000L
         const val CHANNEL_BROADCAST = 'b'
         const val CHANNEL_DIRECT = 'd'
+
+        /** 同时跟踪的设备上限：与 DeviceRegistry 的 64 条对齐再留一倍余量 */
+        const val MAX_TRACKED = 128
     }
 }

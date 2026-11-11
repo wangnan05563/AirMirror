@@ -3,6 +3,7 @@ package io.github.wangnan05563.airmirror.net
 import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -13,6 +14,9 @@ import java.util.concurrent.atomic.AtomicReference
 object Nsd {
     const val SERVICE_TYPE = "_airmirror._tcp."
     const val TAG = "AirMirrorNsd"
+
+    /** TXT 记录里的接收端长期身份：跨发现通道合并条目、过滤同机回环都靠它，而不是用户可改的服务名 */
+    const val FP_ATTRIBUTE = "fp"
 }
 
 /** 接收端在局域网内广播自己（PRD 8.2「后台常驻与发现」的发现部分）。 */
@@ -20,6 +24,11 @@ class ServiceAdvertiser(
     context: Context,
     private val serviceName: String,
     private val port: Int,
+    /**
+     * 本机长期身份。服务名是用户可见名，改名后与旧记录对不上；
+     * 同机双端时发送端要靠它把自己这条广播认出来丢掉，所以另带一份指纹。
+     */
+    private val fingerprint: String = "",
 ) {
     private val nsdManager = context.getSystemService(Context.NSD_SERVICE) as NsdManager
     private var listener: NsdManager.RegistrationListener? = null
@@ -30,6 +39,11 @@ class ServiceAdvertiser(
             serviceName = this@ServiceAdvertiser.serviceName
             serviceType = Nsd.SERVICE_TYPE
             setPort(this@ServiceAdvertiser.port)
+            // TXT 记录 API 21 才有：老系统上只能退回按服务名识别，
+            // 影响仅限「同机双端会看见自己」这一条，投屏本身不受影响
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && fingerprint.isNotEmpty()) {
+                setAttribute(Nsd.FP_ATTRIBUTE, fingerprint)
+            }
         }
         val registration = object : NsdManager.RegistrationListener {
             override fun onServiceRegistered(info: NsdServiceInfo) {
@@ -62,11 +76,18 @@ class ServiceBrowser(
     private val onFound: (DiscoveredService) -> Unit,
     private val onLost: (String) -> Unit,
 ) {
-    data class DiscoveredService(val name: String, val host: String, val port: Int)
+    /** [fingerprint] 是条目在列表里的身份；服务名只是展示用，改名不该把同一条拆成两条。 */
+    data class DiscoveredService(val name: String, val host: String, val port: Int, val fingerprint: String)
 
     private val nsdManager = context.getSystemService(Context.NSD_SERVICE) as NsdManager
     private var discovery: NsdManager.DiscoveryListener? = null
     private val resolving = HashSet<String>()
+
+    /**
+     * 服务名 → 指纹。onServiceLost 只带服务名、没有 TXT 记录，
+     * 不记这一笔就只能在离线时退回服务名，结果与发现时用的身份对不上、条目永远不置灰。
+     */
+    private val fingerprints = HashMap<String, String>()
 
     fun start() {
         if (discovery != null) return
@@ -84,14 +105,17 @@ class ServiceBrowser(
 
                     override fun onServiceResolved(info: NsdServiceInfo) {
                         val host = info.host?.hostAddress ?: return
-                        onFound(DiscoveredService(info.serviceName, host, info.port))
+                        // 没有 TXT 指纹的旧版本接收端退回服务名：仍是今天的行为，不会因为升级发送端就看不见
+                        val fingerprint = info.fingerprint() ?: info.serviceName
+                        fingerprints[info.serviceName] = fingerprint
+                        onFound(DiscoveredService(info.serviceName, host, info.port, fingerprint))
                     }
                 })
             }
 
             override fun onServiceLost(info: NsdServiceInfo) {
                 resolving.remove(info.serviceName)
-                onLost(info.serviceName)
+                onLost(fingerprints.remove(info.serviceName) ?: info.serviceName)
             }
 
             override fun onDiscoveryStopped(serviceType: String) = Unit
@@ -111,6 +135,13 @@ class ServiceBrowser(
             runCatching { nsdManager.stopServiceDiscovery(it) }
             discovery = null
         }
+    }
+
+    /** 读接收端写在 TXT 记录里的指纹；API 21 以下没有 TXT 记录，返回 null 让调用方退回服务名。 */
+    private fun NsdServiceInfo.fingerprint(): String? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) return null
+        val bytes = attributes[Nsd.FP_ATTRIBUTE] ?: return null
+        return String(bytes, Charsets.UTF_8).takeIf { it.isNotEmpty() }
     }
 }
 

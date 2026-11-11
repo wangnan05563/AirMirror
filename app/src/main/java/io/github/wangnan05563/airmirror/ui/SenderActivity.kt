@@ -19,6 +19,7 @@ import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
+import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -33,8 +34,10 @@ import io.github.wangnan05563.airmirror.crossnet.HttpSignalingTransport
 import io.github.wangnan05563.airmirror.crossnet.SignalingClient
 import io.github.wangnan05563.airmirror.crossnet.SignalingSettings
 import io.github.wangnan05563.airmirror.dlna.localIpv4
+import io.github.wangnan05563.airmirror.dlna.localIpv4s
 import io.github.wangnan05563.airmirror.error.ErrorNotice
 import io.github.wangnan05563.airmirror.net.DeviceRegistry
+import io.github.wangnan05563.airmirror.net.DiscoveryLadder
 import io.github.wangnan05563.airmirror.net.ProbeResponder
 import io.github.wangnan05563.airmirror.net.ProbeScanner
 import io.github.wangnan05563.airmirror.net.RecentTargets
@@ -76,9 +79,14 @@ class SenderActivity : Activity() {
     private lateinit var codeInput: EditText
     private lateinit var addressInput: EditText
     private lateinit var pauseButton: Button
+    private lateinit var stopButton: Button
     private lateinit var audioButton: Button
     private lateinit var takeoverBar: LinearLayout
     private lateinit var takeoverText: TextView
+    private lateinit var takeoverDeny: Button
+    private lateinit var takeoverYield: Button
+    /** 投屏中的目标设备名：停止按钮的可访问名要带上它（UI-03 §6）。 */
+    private var castingTargetName = ""
     private var browser: ServiceBrowser? = null
     private var pending: Target? = null
     private var pendingCredential: String = ""
@@ -96,8 +104,10 @@ class SenderActivity : Activity() {
     private lateinit var controlBar: LinearLayout
     private lateinit var listScroller: ScrollView
     private var scanner: ProbeScanner? = null
-    /** 三轮探测全空后由 DiscoveryLadder 给出的可执行原因；为空表示仍在搜或已经命中。 */
-    private var discoveryNotice = ""
+    /** UX-01 空列表自救卡：首行诊断 + 次行下一步 + 固定三按钮；cause 为 null 时整卡隐藏。 */
+    private lateinit var diagnosisCard: LinearLayout
+    private lateinit var diagnosisHeadline: TextView
+    private lateinit var diagnosisNextStep: TextView
 
     private val devices = DeviceRegistry(now = { System.currentTimeMillis() }, sameSubnet = ::sameSubnet)
     private val main = Handler(Looper.getMainLooper())
@@ -159,6 +169,9 @@ class SenderActivity : Activity() {
                 }
                 pauseButton.text = DeviceCardPolicy.pauseLabel(SenderControl.paused)
                 audioButton.text = audioLabel()
+                A11y.describe(pauseButton, A11yCopy.pause(SenderControl.paused))
+                A11y.describe(stopButton, A11yCopy.stop(castingTargetName))
+                A11y.describe(audioButton, A11yCopy.audio(SenderControl.audio))
             }
             refreshTakeover(casting)
             main.postDelayed(this, POLL_MS)
@@ -168,15 +181,17 @@ class SenderActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         store = DeviceStore(this)
+        // 同机双端时接收端的探测公告会回环到自己：本机指纹交给列表过滤掉
+        devices.selfFingerprint = store.deviceId()
         val pad = Theme.dp(this, 20)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Theme.BACKGROUND)
-            setPadding(pad, Theme.dp(this@SenderActivity, 32), pad, pad)
+            setPadding(pad, Theme.dp(this@SenderActivity, Theme.SPACE_XXL_DP), pad, pad)
         }
         root.addView(TextView(this).apply {
             text = "投到其他设备"
-            textSize = 28f
+            textSize = Theme.SENDER_TITLE_SP
             setTextColor(Theme.TEXT_PRIMARY)
             setTypeface(typeface, Typeface.BOLD)
         })
@@ -185,13 +200,14 @@ class SenderActivity : Activity() {
             text = "支持镜像到同网 AirMirror 设备；不支持 Miracast"
             textSize = Theme.PHONE_BODY_SP
             setTextColor(Theme.TEXT_SECONDARY)
-            setPadding(0, Theme.dp(this@SenderActivity, 4), 0, 0)
+            setPadding(0, Theme.dp(this@SenderActivity, Theme.SPACE_XS_DP), 0, 0)
         })
         status = TextView(this).apply {
             text = SEARCHING
             textSize = Theme.PHONE_BODY_SP
             setTextColor(StatusColors.textOf(CastStatus.State.IDLE))
             setPadding(0, Theme.dp(this@SenderActivity, 6), 0, Theme.dp(this@SenderActivity, 14))
+            A11y.liveStatus(this)
         }
         root.addView(status)
         // PRD 7.4「权限缺失：跳转设置」：真到了只能去设置的地步（系统不再询问），
@@ -215,14 +231,14 @@ class SenderActivity : Activity() {
             text = "电视待连接页上的 6 位数字"
             textSize = Theme.PHONE_BODY_SP
             setTextColor(Theme.TEXT_SECONDARY)
-            setPadding(Theme.dp(this@SenderActivity, 4), 0, 0, Theme.dp(this@SenderActivity, 4))
+            setPadding(Theme.dp(this@SenderActivity, Theme.SPACE_XS_DP), 0, 0, Theme.dp(this@SenderActivity, Theme.SPACE_XS_DP))
         }, matchWidth())
         // PRD FS-04：跨网入口与局域网并列，但只在「局域网没搜到设备」时才会尝试，
         // 填了端点才启用；不填就不向任何外部服务发请求。
         crossNetRow = TextView(this).apply {
             textSize = Theme.PHONE_BODY_SP
             setTextColor(Theme.TEXT_SECONDARY)
-            setPadding(Theme.dp(this@SenderActivity, 4), 0, 0, Theme.dp(this@SenderActivity, 12))
+            setPadding(Theme.dp(this@SenderActivity, Theme.SPACE_XS_DP), 0, 0, Theme.dp(this@SenderActivity, Theme.SPACE_MD_DP))
             setOnClickListener { editCrossNet() }
         }
         root.addView(crossNetRow, matchWidth())
@@ -231,20 +247,23 @@ class SenderActivity : Activity() {
             text = "检查更新"
             textSize = Theme.PHONE_BODY_SP
             setTextColor(Theme.TEXT_SECONDARY)
-            setPadding(Theme.dp(this@SenderActivity, 4), 0, 0, Theme.dp(this@SenderActivity, 12))
+            setPadding(Theme.dp(this@SenderActivity, Theme.SPACE_XS_DP), 0, 0, Theme.dp(this@SenderActivity, Theme.SPACE_MD_DP))
             setOnClickListener { checkUpdate() }
+            A11y.describe(this, A11yCopy.checkUpdate())
         }
         root.addView(updateRow, matchWidth())
 
         hint = TextView(this).apply {
             textSize = Theme.PHONE_BODY_SP
             setTextColor(Theme.TEXT_SECONDARY)
-            setPadding(Theme.dp(this@SenderActivity, 4), 0, 0, Theme.dp(this@SenderActivity, 8))
+            setPadding(Theme.dp(this@SenderActivity, Theme.SPACE_XS_DP), 0, 0, Theme.dp(this@SenderActivity, Theme.SPACE_SM_DP))
         }
         list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        diagnosisCard = buildDiagnosisCard()
         val column = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(hint, matchWidth())
+            addView(diagnosisCard, matchWidth())
             addView(list, matchWidth())
         }
         listScroller = ScrollView(this).apply { addView(column) }
@@ -268,16 +287,17 @@ class SenderActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
             visibility = View.GONE
             setBackgroundColor(Theme.SURFACE)
-            val inset = Theme.dp(this@SenderActivity, 8)
+            val inset = Theme.dp(this@SenderActivity, Theme.SPACE_SM_DP)
             setPadding(inset, inset, inset, inset)
         }
         pauseButton = Button(this).apply {
             text = DeviceCardPolicy.pauseLabel(false)
             setTextColor(Theme.ACCENT)
             setOnClickListener { SenderControl.paused = !SenderControl.paused }
+            A11y.describe(this, A11yCopy.pause(SenderControl.paused))
         }
         controlBar.addView(pauseButton, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        controlBar.addView(Button(this).apply {
+        stopButton = Button(this).apply {
             text = "停止"
             setTextColor(Theme.DANGER)
             setOnClickListener {
@@ -285,13 +305,16 @@ class SenderActivity : Activity() {
                 startService(Intent(this@SenderActivity, CaptureService::class.java).setAction(CaptureService.ACTION_STOP))
                 expandedFingerprint = null
             }
-        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            A11y.describe(this, A11yCopy.stop(castingTargetName))
+        }
+        controlBar.addView(stopButton, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         audioButton = Button(this).apply {
             text = audioLabel()
             setTextColor(Theme.ACCENT)
             setOnClickListener {
                 if (SenderControl.audio) setMirrorAudio(false) else enableMirrorAudio()
             }
+            A11y.describe(this, A11yCopy.audio(SenderControl.audio))
         }
         controlBar.addView(audioButton, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         root.addView(controlBar, matchWidth())
@@ -320,9 +343,9 @@ class SenderActivity : Activity() {
         takeoverBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(0xFF12314F.toInt())
+            setBackgroundColor(Theme.SURFACE)
             visibility = View.GONE
-            val gap = Theme.dp(this@SenderActivity, 8)
+            val gap = Theme.dp(this@SenderActivity, Theme.SPACE_SM_DP)
             setPadding(gap, gap, gap, gap)
         }
         takeoverText = TextView(this).apply {
@@ -331,16 +354,18 @@ class SenderActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         takeoverBar.addView(takeoverText)
-        takeoverBar.addView(Button(this).apply {
+        takeoverDeny = Button(this).apply {
             text = "拒绝"
             setTextColor(Theme.DANGER)
             setOnClickListener { SenderControl.answerTakeover(false) }
-        })
-        takeoverBar.addView(Button(this).apply {
+        }
+        takeoverBar.addView(takeoverDeny)
+        takeoverYield = Button(this).apply {
             text = "让出"
             setTextColor(Theme.ACCENT)
             setOnClickListener { SenderControl.answerTakeover(true) }
-        })
+        }
+        takeoverBar.addView(takeoverYield)
         return takeoverBar
     }
 
@@ -359,7 +384,11 @@ class SenderActivity : Activity() {
             return
         }
         takeoverBar.visibility = View.VISIBLE
-        takeoverText.text = "$from 请求接管投屏 · ${(leftMs + 999) / 1000} 秒后拒绝"
+        val seconds = ((leftMs + 999) / 1000).toInt()
+        takeoverText.text = "$from 请求接管投屏 · $seconds 秒后拒绝"
+        A11y.describe(takeoverDeny, A11yCopy.takeover(from, seconds, yield = false))
+        A11y.describe(takeoverYield, A11yCopy.takeover(from, seconds, yield = true))
+        A11y.announce(takeoverBar, "「$from」请求接管投屏，请在 $seconds 秒内选择", "takeover-$from")
     }
 
     private fun makeInput(label: String, inputType: Int) = EditText(this).apply {
@@ -369,7 +398,8 @@ class SenderActivity : Activity() {
         setTextColor(Theme.TEXT_PRIMARY)
         setHintTextColor(StatusColors.offlineText())
         setBackgroundColor(Theme.SURFACE)
-        setPadding(Theme.dp(this@SenderActivity, 12), Theme.dp(this@SenderActivity, 6), Theme.dp(this@SenderActivity, 12), Theme.dp(this@SenderActivity, 6))
+        setPadding(Theme.dp(this@SenderActivity, Theme.SPACE_MD_DP), Theme.dp(this@SenderActivity, 6), Theme.dp(this@SenderActivity, Theme.SPACE_MD_DP), Theme.dp(this@SenderActivity, 6))
+        A11y.describe(this, if (label == "投屏码") A11yCopy.codeInputLabel() else A11yCopy.addressInputLabel())
     }
 
     private fun rowWith(input: EditText, action: String, onClick: () -> Unit) = LinearLayout(this).apply {
@@ -379,6 +409,7 @@ class SenderActivity : Activity() {
         addView(Button(this@SenderActivity).apply {
             text = action
             setTextColor(Theme.ACCENT)
+            A11y.describe(this, if (action == "用码连接") A11yCopy.codeConnect() else A11yCopy.addressConnect())
             setOnClickListener { onClick() }
         })
     }
@@ -389,16 +420,31 @@ class SenderActivity : Activity() {
     )
 
     private fun startBrowsing() {
+        // 每次开搜都重取本机地址：Wi-Fi 切换后旧地址不该继续挡掉真邻居
+        val selfAddresses = localIpv4s()
         browser = ServiceBrowser(
             this,
             onFound = { service ->
-                scanner?.noteMulticastHit()
-                devices.report(service.name, service.name, PROTOCOL, "${service.host}:${service.port}")
-                runOnUiThread { renderList() }
+                // NSD 回调跑在系统线程，而 DeviceRegistry 与扫描阶梯都不是线程安全的：
+                // 整段回主线程，不能只把 renderList 包起来——否则 report 会在网络线程里
+                // 改 LinkedHashMap，和主线程的 rows()/markConnected() 撞出丢条目或并发异常。
+                runOnUiThread {
+                    scanner?.noteMulticastHit()
+                    // mDNS 的 TXT 记录在部分系统上拿不到，服务名只是展示名；解析出的地址落在本机
+                    // 那就是同机双端回环，直接跳过——这一条不依赖 TXT 是否可用
+                    if (service.host !in selfAddresses) {
+                        // 用指纹而不是服务名入表：同一台接收端还会从 UDP 探测那条路报一次，
+                        // 两条路用同一个身份才能合并成一条，也才能被 selfFingerprint 挡掉
+                        devices.report(service.fingerprint, service.name, PROTOCOL, "${service.host}:${service.port}")
+                        renderList()
+                    }
+                }
             },
-            onLost = { name ->
-                devices.markLost(name)
-                runOnUiThread { renderList() }
+            onLost = { fingerprint ->
+                runOnUiThread {
+                    devices.markLost(fingerprint)
+                    renderList()
+                }
             },
         ).also { it.start() }
     }
@@ -424,14 +470,11 @@ class SenderActivity : Activity() {
             }
 
             override fun onNotice(text: String) {
-                discoveryNotice = text
+                // 空态诊断改由结构化判决驱动（renderList 读 scanner.verdict()），不再存整句中文
             }
 
             override fun onChanged() {
-                runOnUiThread {
-                    renderList()
-                    if (discoveryNotice.isNotEmpty() && status.text == SEARCHING) status.text = discoveryNotice
-                }
+                runOnUiThread { renderList() }
             }
         }
         scanner = ProbeScanner(
@@ -456,28 +499,32 @@ class SenderActivity : Activity() {
                 lastConnectedAt = row.lastConnectedAt,
             )
             val actions = DeviceCardPolicy.actions(card)
+            val lastLabel = if (row.lastConnectedAt == null || row.lastConnectedAt <= 0L) {
+                "还没连过"
+            } else {
+                val minutes = ((System.currentTimeMillis() - row.lastConnectedAt) / 60_000L).coerceAtLeast(0L)
+                if (minutes < 1L) "刚刚连过" else "上次连接 $minutes 分钟前"
+            }
             list.addView(LinearLayout(this@SenderActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 setBackgroundColor(if (row.online) Theme.SURFACE else Theme.BACKGROUND)
-                val gap = Theme.dp(this@SenderActivity, 12)
+                val gap = Theme.dp(this@SenderActivity, Theme.SPACE_MD_DP)
                 setPadding(gap, gap, gap, gap)
                 addView(LinearLayout(this@SenderActivity).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
                     minimumHeight = Theme.dp(this@SenderActivity, DeviceCardPolicy.TOUCH_TARGET_DP)
+                    A11y.describe(this, A11yCopy.card(row.name, row.online, usable != null, row.fingerprint == expandedFingerprint, lastLabel))
                     addView(TextView(this@SenderActivity).apply {
                         text = row.name
-                        textSize = 18f
+                        textSize = Theme.DEVICE_NAME_SP
                         setTextColor(if (row.online) Theme.TEXT_PRIMARY else StatusColors.offlineText())
                         layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                        A11y.decorative(this)
                     })
-                    // PRD UI-05：协议角标统一成平台绘制的圆角标签，离线/不支持共用同一形状只换配色
-                    addView(
-                        DeviceCardTag.chip(
-                            this@SenderActivity,
-                            DeviceCardPolicy.tag(card, usable?.let { ProtocolBoundary.badgeFor(it) }.orEmpty()),
-                        ),
-                    )
+                    addView(DeviceCardTag.chip(this@SenderActivity, DeviceCardPolicy.tag(card, usable?.let { ProtocolBoundary.badgeFor(it) }.orEmpty())).apply {
+                        A11y.decorative(this)
+                    })
                     // PRD §11.3：点击先展开两个动作，不再「点一下就先连上再选」
                     setOnClickListener {
                         if (actions.isEmpty()) {
@@ -515,6 +562,7 @@ class SenderActivity : Activity() {
                                     DeviceCardPolicy.CardAction.PUSH_VIDEO -> "推送视频"
                                 }
                                 setTextColor(Theme.ACCENT)
+                                A11y.describe(this, A11yCopy.cardAction(row.name, action == DeviceCardPolicy.CardAction.MIRROR))
                                 setOnClickListener {
                                     expandedFingerprint = null
                                     renderList()
@@ -533,13 +581,96 @@ class SenderActivity : Activity() {
                 }
             }, matchWidth())
         }
-        val reason = when (devices.emptyReason()) {
-            DeviceRegistry.EmptyReason.NONE_FOUND -> discoveryNotice.ifEmpty { SEARCHING }
-            DeviceRegistry.EmptyReason.ALL_OFFLINE -> "这些设备当前离线，可用投屏码连接"
-            DeviceRegistry.EmptyReason.HAS_ONLINE -> "点设备名开始投屏"
+        val registry = devices.emptyReason()
+        val verdict = scanner?.verdict()
+            ?: DiscoveryLadder.Verdict.Nothing(DiscoveryLadder.Empty.SEARCHING, "")
+        val cause = EmptyDiagnosis.of(verdict, registry)
+        if (cause != null) {
+            val notice = ErrorNotice.noticeFor(cause)
+            diagnosisHeadline.text = notice.headline
+            diagnosisNextStep.text = notice.nextStep
+            diagnosisCard.visibility = View.VISIBLE
+            hint.text = ""
+            hint.visibility = View.GONE
+        } else {
+            diagnosisCard.visibility = View.GONE
+            hint.text = if (registry == DeviceRegistry.EmptyReason.HAS_ONLINE) "点设备名开始投屏" else ""
+            hint.visibility = if (hint.text.isEmpty()) View.GONE else View.VISIBLE
         }
-        hint.text = reason
-        if (status.text == SEARCHING || status.text == CastStatus.line(CastStatus.State.CONNECTING)) status.text = reason
+    }
+
+    /**
+     * UX-01 空列表自救卡（设计 §4）：首行诊断 + 次行下一步 + 固定三按钮。
+     * 三个动作都在当前页就地生效，不跳新页面；按钮高度 ≥48dp，等宽间距 8dp。
+     */
+    private fun buildDiagnosisCard(): LinearLayout {
+        val gap = Theme.dp(this, Theme.SPACE_SM_DP)
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Theme.SURFACE)
+            setPadding(gap, gap, gap, gap)
+            visibility = View.GONE
+        }
+        diagnosisHeadline = TextView(this).apply {
+            textSize = Theme.PHONE_BODY_SP
+            setTextColor(Theme.TEXT_PRIMARY)
+            setTypeface(typeface, Typeface.BOLD)
+        }
+        card.addView(diagnosisHeadline, matchWidth())
+        diagnosisNextStep = TextView(this).apply {
+            textSize = Theme.PHONE_BODY_SP
+            setTextColor(Theme.TEXT_SECONDARY)
+            setPadding(0, Theme.dp(this@SenderActivity, Theme.SPACE_XS_DP), 0, 0)
+        }
+        card.addView(diagnosisNextStep, matchWidth())
+        val buttons = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, gap, 0, 0)
+        }
+        for (action in EmptyDiagnosis.ACTIONS) {
+            buttons.addView(Button(this).apply {
+                text = ErrorNotice.actionLabel(action)
+                setTextColor(Theme.ACCENT)
+                minimumHeight = Theme.dp(this@SenderActivity, 48)
+                A11y.describe(this, when (action) {
+                    ErrorNotice.Action.RETRY_DISCOVERY -> A11yCopy.diagnosisRetry()
+                    ErrorNotice.Action.ENTER_CODE -> A11yCopy.diagnosisCode()
+                    ErrorNotice.Action.ENTER_IP -> A11yCopy.diagnosisIp()
+                    else -> ErrorNotice.actionLabel(action)
+                })
+                setOnClickListener { onDiagnosisAction(action) }
+            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        }
+        card.addView(buttons, matchWidth())
+        return card
+    }
+
+    /** PRD UI-04：状态文案与六态语义色一起落，避免同一条状态行在不同入口换出不同颜色。 */
+    private fun showStatus(state: CastStatus.State, line: CharSequence?) {
+        statusState = state
+        status.text = line
+        status.setTextColor(StatusColors.textOf(state))
+    }
+
+    /** UX-01 三动作就地生效（设计 §3.3）：不跳页、不清空已输入内容、不自动提交。 */
+    private fun onDiagnosisAction(action: ErrorNotice.Action) {
+        when (action) {
+            ErrorNotice.Action.RETRY_DISCOVERY -> {
+                // 重起一轮搜索窗口，保留最近设备缓存；不改轮次/通道/探测间隔
+                scanner?.begin()
+                showStatus(CastStatus.State.IDLE, SEARCHING)
+                renderList()
+            }
+            ErrorNotice.Action.ENTER_CODE -> focusInput(codeInput)
+            ErrorNotice.Action.ENTER_IP -> focusInput(addressInput)
+            else -> Unit
+        }
+    }
+
+    private fun focusInput(input: EditText) {
+        input.requestFocus()
+        (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager)
+            .showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
     }
 
     private fun targetOf(fingerprint: String, name: String): Target? {
@@ -592,13 +723,6 @@ class SenderActivity : Activity() {
             }
             else -> toast("发现多台设备，先点选要投的那台")
         }
-    }
-
-    /** PRD UI-04：状态文案与六态语义色一起落，避免同一条状态行在不同入口换出不同颜色。 */
-    private fun showStatus(state: CastStatus.State, line: CharSequence?) {
-        statusState = state
-        status.text = line
-        status.setTextColor(StatusColors.textOf(state))
     }
 
     /**
@@ -672,7 +796,10 @@ class SenderActivity : Activity() {
         showStatus(CastStatus.State.CONNECTING, CastStatus.line(CastStatus.State.CONNECTING))
         lastReport = ""
         codeInput.isEnabled = false
-        // 记进 10 分钟缓存：下次组播/广播全被挡住时，这个地址就是直连探测的唯一入口
+        // 记进 10 分钟缓存：下次组播/广播全被挡住时，这个地址就是直连探测的唯一入口。
+        // 直接连接时这台设备可能还没被任何一轮发现建出条目，先登记再记时间；
+        // 顺序反了的话会话结束后卡片会写「离线 · 还没连过」，与刚发生的事实相反。
+        devices.report(target.fingerprint, target.name, PROTOCOL, "${target.host}:${target.port}")
         devices.markConnected(target.fingerprint)
         scanner?.recordConnected(target.fingerprint, target.name, target.host, target.port)
         scanner?.let { store.saveRecentTargets(it.snapshot()) }
@@ -715,6 +842,7 @@ class SenderActivity : Activity() {
         }
         pending = target
         pendingCredential = credential
+        castingTargetName = target.name
         startActivityForResult(projectionManager().createScreenCaptureIntent(), REQUEST_CAPTURE)
     }
 
@@ -836,6 +964,7 @@ class SenderActivity : Activity() {
     private fun refreshFixEntry(granted: Set<String> = grantedKeys()) {
         val blocked = RuntimePermission.entries.filter { isSystemBlocked(it, granted) }
         permissionFix.visibility = if (blocked.isEmpty()) View.GONE else View.VISIBLE
+        if (blocked.isNotEmpty()) A11y.describe(permissionFix, A11yCopy.permissionFix(blocked.map { it.label }))
     }
 
     /**
@@ -858,7 +987,12 @@ class SenderActivity : Activity() {
     /**
      * 回到前台一律以系统当前授予态为准（用户可能刚在设置里改过）：
      * 1) 状态行重写、入口显隐；
-     * 2) 投屏中被收回的权限按 PRD 异常表口径降级，不终止会话。
+     * 2) 投屏中被收回的权限按 PRD 异常表口径降级。
+     *
+     * 边界（2026-11-06 真机实测）：标准 Android 上撤销运行期权限会把整个进程杀掉
+     * （模拟器 API 34 上 `pm revoke RECORD_AUDIO` 后 pid 从 5807 变成 7378），
+     * 这种情况下本方法没有机会执行，会话必然中断。它真正覆盖的是「权限在同一进程内消失、
+     * 进程没被杀」的路径（AppOps 静默拒绝、部分 OEM ROM 的权限开关）。
      */
     override fun onResume() {
         super.onResume()
@@ -877,9 +1011,12 @@ class SenderActivity : Activity() {
     }
 
     /**
-     * 投屏到一半权限被系统收回（PRD 异常表：权限缺失 → 画面继续，不中断会话）：
-     * 声音权限没了就自动回「关」，画面照投；通知权限没了只是通知栏不再有停止入口，提人用本页按钮停。
+     * 投屏到一半权限消失时的降级（PRD 异常表：权限缺失 → 画面继续，不中断会话）：
+     * 声音权限没了就自动回「关」，画面照投；通知权限没了只是通知栏不再有停止入口，停人用本页按钮。
      * 每次变化只提示一次，重新授予后清掉记录，下次再被收回还能提。
+     *
+     * 前提是进程还活着。真正的「用户在设置里撤销权限」在标准 Android 上会先杀进程
+     * （见 [onResume] 的实测说明），那种情况走到这里的概率极低；这里主要兜 AppOps 静默拒绝等不杀进程的路径。
      */
     private fun reconcileRevoked(granted: Set<String>) {
         if (!lastCasting) return
@@ -948,7 +1085,9 @@ class SenderActivity : Activity() {
             pendingCrossNetToken?.let { CrossNetLinkRegistry.discard(it) }
             pendingCrossNetToken = null
             showStatus(CastStatus.State.ERROR, if (lastReport.isEmpty()) hint.text else lastReport)
-            toast("未获得屏幕录制授权")
+            // 用统一口径而不是另写一句：接收端与服务侧同样的拒绝都走 ErrorNotice，
+            // 两套说法会让用户在「还能怎么投」上得到不同答案（PRD 7.3 自解释口径）
+            toast(ErrorNotice.textFor(ErrorNotice.Cause.PERMISSION_CAPTURE))
             return
         }
         val token = pendingCrossNetToken
@@ -979,6 +1118,7 @@ class SenderActivity : Activity() {
         val on = SignalingSettings.enabled(url)
         crossNetRow.text = if (on) "跨网信令：已配置（$url）" else "跨网信令：未配置（点此设置，仅跨网时使用）"
         crossNetRow.setTextColor(if (on) Theme.ACCENT else Theme.TEXT_SECONDARY)
+        A11y.describe(crossNetRow, A11yCopy.crossNetSender(on, url))
     }
 
     private fun editCrossNet() {
@@ -1076,7 +1216,9 @@ class SenderActivity : Activity() {
                         .setTitle("还需要一步授权")
                         .setMessage("系统要求你为本应用单独允许「安装未知应用」，之后才能完成更新。")
                         .setPositiveButton("去设置") { _, _ ->
+                            // 部分定制 ROM 没有这个设置页，静默失败会让用户以为按钮坏了
                             runCatching { startActivity(ApkInstaller.permissionSettings(this)) }
+                                .onFailure { toast("系统没有这个设置页，请到系统设置里手动允许安装") }
                         }
                         .setNegativeButton("取消", null)
                         .show()

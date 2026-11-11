@@ -106,4 +106,21 @@ class ProtocolBoundaryTest {
         assertEquals("不支持", ProtocolBoundary.badgeFor("Miracast"))
         assertEquals("不支持", ProtocolBoundary.badgeFor("AirPlay"))
     }
+
+    @Test
+    fun `casting overlay names the sender the channel and the quality`() {
+        // PRD §11.2：连接成功那 3 秒浮层要同时回答「谁在投、走哪条通道、什么画质」
+        val line = ProtocolBoundary.castingOverlayLine("客厅手机", 1080, 1920)
+        assertTrue(line, line.contains("客厅手机"))
+        assertTrue(line, line.contains("私有通道"))
+        assertTrue(line, line.contains("1080x1920"))
+    }
+
+    @Test
+    fun `casting overlay omits quality until the first frame reports it`() {
+        // 画质由首帧带回，浮层先弹；这时宁可不写画质，也不能显示 0x0 让人以为出故障
+        val line = ProtocolBoundary.castingOverlayLine("客厅手机", 0, 0)
+        assertEquals("客厅手机 · 私有通道", line)
+        assertFalse(line.contains("0x0"))
+    }
 }

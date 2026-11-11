@@ -104,4 +104,62 @@ class DeviceRegistryTest {
         subject.report("udn-1", "", "DLNA", "192.168.7.20")
         assertEquals("客厅电视", subject.rows()[0].name)
     }
+
+    @Test
+    fun ownAnnouncementNeverBecomesARow() {
+        val subject = registry()
+        subject.selfFingerprint = "self-udn"
+        // 同机双端：接收端的公告会回环到自己，列表里不该出现本机
+        subject.report("self-udn", "这台电视", "AMRC", "192.168.7.10")
+        assertTrue(subject.rows().isEmpty())
+        assertEquals(DeviceRegistry.EmptyReason.NONE_FOUND, subject.emptyReason())
+        // 邻居照常出现，过滤不能把整个网段一起挡掉
+        subject.report("udn-1", "客厅电视", "AMRC", "192.168.7.20")
+        assertEquals(1, subject.rows().size)
+    }
+
+    @Test
+    fun aDirectConnectKeepsTheLastConnectedTimeVisibleAfterwards() {
+        // 直接输 IP 时这台设备可能还没被任何一轮发现建出条目：
+        // 必须先 report 再 markConnected，否则会话结束后卡片写「离线 · 还没连过」，与刚发生的事实相反
+        val subject = registry()
+        subject.report("am-direct", "手机", "AMRC", "192.168.7.9:41523")
+        subject.markConnected("am-direct")
+        clock = 60_000
+        subject.markLost("am-direct")
+        val row = subject.rows().single()
+        assertEquals(0L, row.lastConnectedAt ?: -1L)
+        assertFalse(row.online)
+    }
+
+    @Test
+    fun fabricatedBroadcastsCannotGrowTheListWithoutBound() {
+        // 局域网里任何人都能伪造广播：条目数必须有上限，否则一台刷屏设备就能把列表和内存撑爆
+        val subject = registry()
+        repeat(500) { index ->
+            clock = index.toLong()
+            subject.report("udn-$index", "设备$index", "DLNA", "192.168.7.${index % 250}")
+        }
+        assertEquals(64, subject.rows().size)
+        // 淘汰的是最久没出现的那批，最后广播的设备仍在列表里
+        assertTrue(subject.rows().any { it.fingerprint == "udn-499" })
+        assertFalse(subject.rows().any { it.fingerprint == "udn-0" })
+    }
+
+    @Test
+    fun repeatedAddressesOfOneFingerprintAreCapped() {
+        // 同一指纹反复换源地址同样不能无限累加；连接时仍用最先到达的那个
+        val subject = registry()
+        repeat(100) { index -> subject.report("udn-1", "客厅电视", "DLNA", "192.168.7.$index") }
+        assertEquals(1, subject.rows().size)
+        assertEquals("192.168.7.0", subject.addressOf("udn-1"))
+    }
+
+    @Test
+    fun protocolsOfOneDeviceAreCappedToo() {
+        // 探测应答里的协议串来自任意 UDP 包：单个条目的协议集合也要封顶
+        val subject = registry()
+        repeat(20) { index -> subject.report("udn-1", "客厅电视", "P$index", "192.168.7.20") }
+        assertEquals(8, subject.rows().single().protocols.size)
+    }
 }

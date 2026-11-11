@@ -253,3 +253,29 @@ fun localIpv4(): String? {
         null
     }
 }
+
+/**
+ * 本机所有 IPv4。判断「这条局域网公告是不是本机发的」不能只看 [localIpv4] 那一张网卡：
+ * mDNS 可能从热点、Tailscale 或第二块网卡宣告，只比站点内网那一个会漏掉这些接口，自己又出现在列表里。
+ */
+fun localIpv4s(): Set<String> {
+    val result = HashSet<String>()
+    try {
+        val interfaces = NetworkInterface.getNetworkInterfaces() ?: return result
+        while (interfaces.hasMoreElements()) {
+            val networkInterface = interfaces.nextElement()
+            if (!networkInterface.isUp || networkInterface.isLoopback) continue
+            val addresses = networkInterface.inetAddresses ?: continue
+            while (addresses.hasMoreElements()) {
+                val address = addresses.nextElement()
+                if (address is java.net.Inet4Address && !address.isLoopbackAddress) {
+                    address.hostAddress?.let { result.add(it) }
+                }
+            }
+        }
+    } catch (e: Exception) {
+        // 枚举网卡失败就当没有本机地址：宁可多显示一条，也不要因为取不到地址把真邻居挡掉
+        return emptySet()
+    }
+    return result
+}

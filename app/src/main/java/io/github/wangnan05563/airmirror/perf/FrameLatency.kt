@@ -36,12 +36,15 @@ class FrameLatency(private val bucketMs: Int = DEFAULT_BUCKET_MS, private val bu
         samples++
         totalMs += latencyMs
         if (latencyMs > maxMs) maxMs = latencyMs
-        val index = (latencyMs / bucketMs).toInt()
+        // 下标必须先在 Long 上判断是否超出窗口再转 Int：两端时钟基准不同时，
+        // 样本可能是一个几十天量级的正数（如一台设备 uptime 30 天、另一台刚重启），
+        // 先 toInt 会截成负数，counts[负下标] 直接把解码线程崩掉。
+        val index = latencyMs / bucketMs
         if (index >= bucketCount) {
             overCount++
             counts[bucketCount - 1]++
         } else {
-            counts[index]++
+            counts[index.toInt()]++
         }
     }
 

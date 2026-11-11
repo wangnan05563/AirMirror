@@ -82,8 +82,8 @@ object TvFocus {
 
     /** 聚焦态：半透明深蓝底 + 2dp 青绿高对比描边；失焦时原样还原调用方设的背景。 */
     private fun outline(context: Context): GradientDrawable = GradientDrawable().apply {
-        setColor(0x660B1F3A.toInt())
+        setColor(Theme.BACKGROUND_ALPHA_40)
         setStroke(Theme.dp(context, FocusPolicy.OUTLINE_DP), Theme.ACCENT)
-        cornerRadius = Theme.dp(context, 6).toFloat()
+        cornerRadius = Theme.dp(context, Theme.RADIUS_FOCUS_DP).toFloat()
     }
 }

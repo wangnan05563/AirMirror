@@ -29,6 +29,19 @@ class FrameLatencyTest {
     }
 
     @Test
+    fun `超大正延迟只记成超窗口 不会把桶下标撑爆`() {
+        val latency = FrameLatency()
+        // 两端 uptime 差几十天时，pts 与渲染时刻相减就是这个量级；
+        // 先 toInt 截成负下标会在 counts[负] 处直接抛 ArrayIndexOutOfBoundsException
+        latency.record(3_000_000_000L)
+        latency.record(Long.MAX_VALUE)
+        assertEquals(2L, latency.samples)
+        assertEquals(2L, latency.overCount)
+        assertEquals(Long.MAX_VALUE, latency.maxMs())
+        assertEquals(0L, latency.clockSkewCount)
+    }
+
+    @Test
     fun `samples skewed by the clock make the window untrustworthy`() {
         val latency = FrameLatency()
         repeat(10) { latency.record(it + 1L) }

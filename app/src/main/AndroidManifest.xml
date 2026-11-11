@@ -8,6 +8,8 @@
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- 投屏会话期间锁住 CPU 与 Wi-Fi：锁屏后仍要收流解码（PRD FS-10「锁屏 30 秒画面连续」） -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
@@ -17,6 +19,12 @@
     <!-- 在线更新：只发 GitHub Release（Q-6），安装前由系统弹「未知来源」授权，App 不自批 -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!--
+        DLNA / 浏览器推送的媒体源几乎都是 http:// 的局域网地址（视频 App 推的临时链接、NAS、
+        热点里的直连地址）。targetSdk 28 起明文默认被禁，ImageFetcher 与 MediaPlayer 都会静默失败，
+        用户看到的是「片源地址失效」——实际是系统在拦截。源地址由推送方决定、无法预列域名，
+        所以整体放开；本产品的网络面只有局域网与用户自建信令，不涉及公网下载面。
+    -->
     <application
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -24,7 +32,8 @@
         android:icon="@mipmap/ic_launcher"
         android:label="AirMirror"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+        android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
+        android:usesCleartextTraffic="true">
 
         <activity
             android:name=".ui.MainActivity"

@@ -41,24 +41,28 @@ class CastCode(
     private var lockedUntil = NO_LOCK
     private val failures = ArrayList<Long>()
 
+    @Synchronized
     fun state(): State {
         advance(now())
         return if (now() < lockedUntil) State.LOCKED else State.SHOWING
     }
 
     /** 接收端待连接页展示的码；到期自动换码，倒计时不因输入而暂停。 */
+    @Synchronized
     fun code(): String {
         advance(now())
         return ensureEntry(now()).code
     }
 
     /** 二维码里的一次性令牌：与投屏码同生同灭，截图后不能长期复用。 */
+    @Synchronized
     fun token(): String {
         advance(now())
         return ensureEntry(now()).token
     }
 
     /** 扫码路径校验令牌而非码，一次性语义与码完全一致。 */
+    @Synchronized
     fun submitToken(value: String): Outcome {
         val t = now()
         advance(t)
@@ -72,6 +76,7 @@ class CastCode(
         return Outcome.Accepted
     }
 
+    @Synchronized
     fun secondsUntilRotation(): Int {
         val issued = current?.issuedAt ?: return 0
         return ceilSeconds(issued + ttlMillis - now())
@@ -85,6 +90,7 @@ class CastCode(
      * 界面还没刷过屏时按当前时刻生成条目（与 [submit] 同一个理由）：否则进程刚起来的第一条连接
      * 会因为没有 current 而悄悄走成「无锚」，把身份锚留了个只在启动瞬间存在的缺口。
      */
+    @Synchronized
     fun candidates(): List<String> {
         val t = now()
         advance(t)
@@ -92,6 +98,7 @@ class CastCode(
         return listOfNotNull(ensureEntry(t), previous).flatMap { listOf(it.code, it.token) }
     }
 
+    @Synchronized
     fun submit(input: String): Outcome {
         val t = now()
         advance(t)

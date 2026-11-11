@@ -25,11 +25,12 @@ object ErrorNotice {
 
     /** 可选动作（7.3 最后一列），界面据此决定给不给入口 */
     enum class Action {
-        SCAN_QR,
         ENTER_CODE,
         ENTER_IP,
         REGET_CODE,
         RETRY_REQUEST,
+        /** 空列表诊断：重新开始一轮发现搜索（UX-01），语义不同于配对重试 RETRY_REQUEST */
+        RETRY_DISCOVERY,
         OPEN_SETTINGS,
         USE_FALLBACK,
         DOWNGRADE,
@@ -53,6 +54,12 @@ object ErrorNotice {
     enum class Cause {
         UNREACHABLE,
         NO_DISCOVERY,
+        /** 搜索结束、已知设备全部离线（UX-01 空列表自救，优先于网络判决） */
+        DEVICE_OFFLINE,
+        /** 搜索结束且无任何命中：网络禁止设备互访（AP 隔离） */
+        DISCOVERY_AP_ISOLATED,
+        /** 搜索结束且无任何命中：手机与电视不在同一频段（双频分离） */
+        DISCOVERY_DUAL_BAND,
         CODE_EXPIRED,
         CODE_WRONG,
         CODE_LOCKED,
@@ -95,11 +102,23 @@ object ErrorNotice {
     private val table: Map<Cause, Notice> = mapOf(
         Cause.UNREACHABLE to Notice(
             Category.NETWORK, "连不上对方设备", "确认两台设备连同一个 Wi-Fi，或用投屏码连接。",
-            listOf(Action.ENTER_CODE, Action.SCAN_QR, Action.ENTER_IP),
+            listOf(Action.ENTER_CODE, Action.ENTER_IP),
         ),
         Cause.NO_DISCOVERY to Notice(
             Category.NETWORK, "列表里没有设备", "路由器可能屏蔽了设备发现，改用手机投屏码连接。",
-            listOf(Action.ENTER_CODE, Action.SCAN_QR, Action.ENTER_IP),
+            listOf(Action.ENTER_CODE, Action.ENTER_IP),
+        ),
+        Cause.DEVICE_OFFLINE to Notice(
+            Category.NETWORK, "设备已离线", "可能换网或关机；重试发现或用投屏码连接。",
+            listOf(Action.RETRY_DISCOVERY, Action.ENTER_CODE, Action.ENTER_IP),
+        ),
+        Cause.DISCOVERY_AP_ISOLATED to Notice(
+            Category.NETWORK, "网络禁止设备互访", "关闭路由器的 AP 隔离，或用投屏码连接。",
+            listOf(Action.RETRY_DISCOVERY, Action.ENTER_CODE, Action.ENTER_IP),
+        ),
+        Cause.DISCOVERY_DUAL_BAND to Notice(
+            Category.NETWORK, "手机和电视不在同一频段", "把两台设备连到同一个 Wi-Fi，或用投屏码连接。",
+            listOf(Action.RETRY_DISCOVERY, Action.ENTER_CODE, Action.ENTER_IP),
         ),
         Cause.DEVICE_UNSUPPORTED to Notice(
             Category.CAPABILITY, "这台设备不支持", "本机条件不足，改用电视自带投屏或换一台设备。",
@@ -146,20 +165,22 @@ object ErrorNotice {
             listOf(Action.REGET_CODE, Action.RETRY_REQUEST),
         ),
         Cause.CODE_LOCKED to Notice(
-            Category.PAIRING, "投屏码暂时锁定", "连续输错 5 次会锁 60 秒，等一分钟再试或改用扫码。",
-            listOf(Action.SCAN_QR, Action.RETRY_REQUEST),
+            Category.PAIRING, "投屏码暂时锁定", "连续输错 5 次会锁 60 秒，等一分钟再试。",
+            listOf(Action.RETRY_REQUEST),
         ),
         Cause.CODE_USED to Notice(
             Category.PAIRING, "投屏码已用过", "一个投屏码只能用一次，请改用大屏上正在显示的新码。",
-            listOf(Action.REGET_CODE, Action.SCAN_QR),
+            listOf(Action.REGET_CODE),
         ),
         Cause.REFUSED_BY_USER to Notice(
-            Category.PAIRING, "大屏拒绝了投屏", "需要对方在大屏上点允许；请让对方重新确认后再投。",
+            // 两个来源共用这一条：大屏当场点「拒绝」，以及拒绝后的静默期。
+            // 静默期内对方就算在大屏点允许也进不来，所以副文案要给出「等一会儿」这条路
+            Category.PAIRING, "大屏拒绝了投屏", "需要对方在大屏上点允许；刚被拒绝过的话，等一分钟再试。",
             listOf(Action.RETRY_REQUEST),
         ),
         Cause.NO_AUTH to Notice(
-            Category.PAIRING, "这台设备未授权", "先在投屏端输入大屏上的投屏码，或扫码完成配对。",
-            listOf(Action.ENTER_CODE, Action.SCAN_QR),
+            Category.PAIRING, "这台设备未授权", "先在投屏端输入大屏上的投屏码完成配对。",
+            listOf(Action.ENTER_CODE),
         ),
         Cause.SESSION_BUSY to Notice(
             Category.SESSION, "已有设备在投屏", "同一时间只允许一路投屏，等对方结束或向大屏申请接管。",
@@ -191,7 +212,7 @@ object ErrorNotice {
         ),
         Cause.PEER_RESTARTED to Notice(
             Category.SESSION, "电视已重启", "对方的会话已丢失，请重新连接同一台设备。",
-            listOf(Action.RECONNECT, Action.SCAN_QR),
+            listOf(Action.RECONNECT),
         ),
         Cause.SESSION_ENDED to Notice(
             Category.SESSION, "大屏已结束投屏", "对方主动结束了这次投屏，需要继续请重新发起。",
@@ -244,6 +265,24 @@ object ErrorNotice {
 
     /** 界面用的一行文案：先说什么事，再说下一步 */
     fun textFor(cause: Cause): String = noticeFor(cause).let { "${it.headline}，${it.nextStep}" }
+
+    /** 动作按钮文案（UX-01 空态三按钮固定口径）；界面据此渲染，不再各自拼中文。 */
+    fun actionLabel(action: Action): String = when (action) {
+        Action.ENTER_CODE -> "用投屏码连接"
+        Action.ENTER_IP -> "手动输 IP"
+        Action.REGET_CODE -> "重新获取投屏码"
+        Action.RETRY_REQUEST -> "重试"
+        Action.RETRY_DISCOVERY -> "重试发现"
+        Action.OPEN_SETTINGS -> "去设置"
+        Action.USE_FALLBACK -> "改用兼容方式"
+        Action.DOWNGRADE -> "降低画质"
+        Action.SWITCH_TO_PUSH -> "改用推送"
+        Action.SWITCH_TO_MIRROR -> "改用镜像"
+        Action.AUTO_RECOVER -> "自动恢复"
+        Action.RECONNECT -> "重新连接"
+        Action.CHANGE_SOURCE -> "换个片源"
+        Action.NONE -> ""
+    }
 
     /**
      * PRD FS-05「4K 播放卡顿」的原话，档位随实际那一档代入（4K 时与需求文档逐字一致）。

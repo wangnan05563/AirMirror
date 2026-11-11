@@ -62,6 +62,26 @@ class StunTest {
     }
 
     @Test
+    fun `XOR-MAPPED-ADDRESS 优先 不被同包里的裸 MAPPED 覆盖`() {
+        // RFC 5389：XOR 版本是权威值。若实现按「后出现者胜」，响应属性顺序就能决定候选地址，
+        // 打洞会打到一个无关地址上。
+        val transaction = StunCodec.newTransactionId()
+        val real = StunCodec.MappedAddress("203.0.113.7", 45678)
+        val fake = StunCodec.MappedAddress("198.51.100.9", 1234)
+        val response = StunCodec.bindingSuccess(transaction, real)
+        val extra = byteArrayOf(
+            0x00, 0x01, 0x00, 0x08, // type=MAPPED_ADDRESS, length=8
+            0x00, 0x01, // reserved + family IPv4
+            ((fake.port shr 8) and 0xFF).toByte(), (fake.port and 0xFF).toByte(),
+            198.toByte(), 51.toByte(), 100.toByte(), 9.toByte(),
+        )
+        val combined = response + extra
+        combined[2] = 0
+        combined[3] = (response.size - StunCodec.HEADER_SIZE + extra.size).toByte()
+        assertEquals("XOR 必须优先于裸 MAPPED", real, StunCodec.decode(combined, transaction))
+    }
+
+    @Test
     fun `NAT 分类 同一映射可打洞 端口相关且两端都对称才判不可打`() {
         val a = StunCodec.MappedAddress("203.0.113.7", 45678)
         val b = StunCodec.MappedAddress("203.0.113.7", 45679)

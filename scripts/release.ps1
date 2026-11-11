@@ -150,7 +150,11 @@ if ([string]::IsNullOrWhiteSpace($Tag)) {
 if ($Tag -notmatch '^v\d+\.\d+\.\d+') { Fail "tag 不符合约定（应以 v 开头并带语义版本）：$Tag" }
 Ok "tag = $Tag"
 
-$apkDir = Join-Path $root 'app\build\outputs\apk\release'
+# 优先取 build.ps1 汇总的 release\release\；Gradle 原始目录只作回退。
+$apkDir = Join-Path $root 'release\release'
+if (-not (Test-Path $apkDir)) {
+    $apkDir = Join-Path $root 'app\build\outputs\apk\release'
+}
 $apks = @()
 if (Test-Path $apkDir) {
     $apks = @(Get-ChildItem $apkDir -Filter '*.apk' | Sort-Object Name)

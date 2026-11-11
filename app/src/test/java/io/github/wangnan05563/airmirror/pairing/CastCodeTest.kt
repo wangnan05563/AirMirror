@@ -237,4 +237,23 @@ class CastCodeTest {
         repeat(5) { subject.submit("000000") }
         assertEquals(emptyList<String>(), subject.candidates())
     }
+
+    @Test
+    fun concurrentSubmitsOfTheSameCodeYieldOnlyOneAccept() {
+        // 一次性授权必须原子：多个连接线程同时提交同一个码时，只能有一个进 PAIRING。
+        // 「检查 used → 置位」是两步，没有同步时两边可以同时通过，等于一个码放行两台设备。
+        val subject = newCode(111_111, 222_222)
+        val value = subject.code()
+        val accepted = java.util.concurrent.atomic.AtomicInteger()
+        val start = java.util.concurrent.CountDownLatch(1)
+        val threads = (0 until 8).map {
+            Thread {
+                start.await()
+                if (subject.submit(value) == CastCode.Outcome.Accepted) accepted.incrementAndGet()
+            }.apply { start() }
+        }
+        start.countDown()
+        threads.forEach { it.join(5_000) }
+        assertEquals("同一个码只能被消费一次", 1, accepted.get())
+    }
 }

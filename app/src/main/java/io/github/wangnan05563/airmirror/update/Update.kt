@@ -2,6 +2,7 @@ package io.github.wangnan05563.airmirror.update
 
 import io.github.wangnan05563.airmirror.util.Json
 import io.github.wangnan05563.airmirror.util.JsonValue
+import io.github.wangnan05563.airmirror.util.readAtMost
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -117,7 +118,8 @@ class UrlHttpText : HttpText {
             connection.setRequestProperty("Accept", "application/vnd.github+json")
             val code = connection.responseCode
             if (code !in 200..299) throw IOException("http $code")
-            return connection.inputStream.use { it.readBytes() }.toString(Charsets.UTF_8)
+            // Release JSON 正常只有几十 KB：不封顶的话，异常或恶意响应能一直读到 OOM
+            return connection.inputStream.use { it.readAtMost(MAX_RESPONSE_BYTES) }.toString(Charsets.UTF_8)
         } finally {
             runCatching { connection.disconnect() }
         }
@@ -125,6 +127,9 @@ class UrlHttpText : HttpText {
 
     private companion object {
         const val USER_AGENT = "AirMirror-Android"
+
+        /** GitHub Release JSON 的上限：正常几十 KB，1MB 已足够容纳较长的 changelog */
+        const val MAX_RESPONSE_BYTES = 1024 * 1024
     }
 }
 

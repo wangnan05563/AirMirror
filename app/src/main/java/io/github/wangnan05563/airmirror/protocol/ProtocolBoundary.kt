@@ -75,4 +75,15 @@ object ProtocolBoundary {
         Protocol.BROWSER -> "浏览器上传"
         else -> "不支持"
     }
+
+    /**
+     * PRD §11.2「投屏中：发送端名称 + 协议 + 画质」——连接成功那 3 秒浮层的唯一文案出口。
+     * 画质读数由首帧带回，晚到时 [width]/[height] 仍为 0：这时只省略画质，
+     * 不拼出「0x0」这种既占地方又像故障的信息。
+     */
+    fun castingOverlayLine(deviceName: String, width: Int, height: Int): String {
+        val quality = if (width > 0 && height > 0) " · ${width}x$height" else ""
+        // 这里只取协议名，不套 badgeFor：角标是「镜像 · 私有通道」，放在浮层里会变成「私有通道 · 镜像 · 私有通道」
+        return "$deviceName · 私有通道$quality"
+    }
 }

@@ -27,7 +27,7 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
             setBackgroundColor(Theme.BACKGROUND)
-            val pad = Theme.dp(this@MainActivity, 24)
+            val pad = Theme.dp(this@MainActivity, Theme.SPACE_XL_DP)
             setPadding(pad, Theme.dp(this@MainActivity, 56), pad, pad)
         }
         root.addView(TextView(this).apply {
@@ -42,24 +42,26 @@ class MainActivity : Activity() {
             textSize = bodySp
             setTextColor(Theme.TEXT_SECONDARY)
             gravity = Gravity.CENTER
-            setPadding(0, Theme.dp(this@MainActivity, 6), 0, Theme.dp(this@MainActivity, 32))
+            setPadding(0, Theme.dp(this@MainActivity, 6), 0, Theme.dp(this@MainActivity, Theme.SPACE_XXL_DP))
         })
         root.addView(Button(this).apply {
             text = "投到其他设备"
             setTextColor(Theme.ACCENT)
             setOnClickListener { startActivity(Intent(this@MainActivity, SenderActivity::class.java)) }
+            A11y.describe(this, A11yCopy.mainSend())
         })
         root.addView(Button(this).apply {
             text = "接收别人投来的画面"
             setTextColor(Theme.TEXT_PRIMARY)
             setOnClickListener { startActivity(Intent(this@MainActivity, ReceiverActivity::class.java)) }
+            A11y.describe(this, A11yCopy.mainReceive())
         })
         root.addView(TextView(this).apply {
             text = "局域网直连 · 无广告 · 不需要账号"
             textSize = bodySp
             setTextColor(StatusColors.offlineText())
             gravity = Gravity.CENTER
-            setPadding(0, Theme.dp(this@MainActivity, 24), 0, 0)
+            setPadding(0, Theme.dp(this@MainActivity, Theme.SPACE_XL_DP), 0, 0)
         })
         // PRD FS-11 首次启动：一句话数据边界说明，不用长文弹窗；「查看完整说明」按需展开
         root.addView(TextView(this).apply {
@@ -67,14 +69,14 @@ class MainActivity : Activity() {
             textSize = bodySp
             setTextColor(StatusColors.offlineText())
             gravity = Gravity.CENTER
-            setPadding(0, Theme.dp(this@MainActivity, 8), 0, 0)
+            setPadding(0, Theme.dp(this@MainActivity, Theme.SPACE_SM_DP), 0, 0)
         })
         root.addView(TextView(this).apply {
             text = "查看完整说明"
             textSize = bodySp
             setTextColor(Theme.ACCENT)
             gravity = Gravity.CENTER
-            setPadding(0, Theme.dp(this@MainActivity, 12), 0, 0)
+            setPadding(0, Theme.dp(this@MainActivity, Theme.SPACE_MD_DP), 0, 0)
             setOnClickListener {
                 AlertDialog.Builder(this@MainActivity)
                     .setTitle("数据边界")
@@ -82,6 +84,7 @@ class MainActivity : Activity() {
                     .setPositiveButton("知道了", null)
                     .show()
             }
+            A11y.describe(this, A11yCopy.mainPrivacy())
         })
         setContentView(root)
         // 全站可点控件统一接遥控器焦点（含「查看完整说明」这类 TextView 入口）

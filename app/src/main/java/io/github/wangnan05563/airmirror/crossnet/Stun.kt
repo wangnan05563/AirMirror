@@ -73,20 +73,23 @@ object StunCodec {
         var offset = HEADER_SIZE
         val end = HEADER_SIZE + length
         var mapped: MappedAddress? = null
+        var xorMapped: MappedAddress? = null
         while (offset + 4 <= end) {
             val attributeType = readU16(payload, offset)
             val attributeLength = readU16(payload, offset + 2)
             val valueStart = offset + 4
             if (valueStart + attributeLength > end) return null
             if (attributeType == ATTR_XOR_MAPPED_ADDRESS) {
-                mapped = decodeAddress(payload, valueStart, attributeLength, xor = true)
-            } else if (attributeType == ATTR_MAPPED_ADDRESS) {
+                xorMapped = decodeAddress(payload, valueStart, attributeLength, xor = true)
+            } else if (attributeType == ATTR_MAPPED_ADDRESS && mapped == null) {
                 mapped = decodeAddress(payload, valueStart, attributeLength, xor = false)
             }
             // 属性按 4 字节对齐，末尾补齐字节不参与语义
             offset = valueStart + attributeLength + ((4 - attributeLength % 4) % 4)
         }
-        return mapped
+        // RFC 5389：XOR-MAPPED-ADDRESS 是权威值。同一包里再附一个裸 MAPPED 不能把它覆盖掉，
+        // 否则响应的属性顺序就能决定候选地址（打洞会打到一个无关地址上）。
+        return xorMapped ?: mapped
     }
 
     private fun decodeAddress(payload: ByteArray, start: Int, length: Int, xor: Boolean): MappedAddress? {

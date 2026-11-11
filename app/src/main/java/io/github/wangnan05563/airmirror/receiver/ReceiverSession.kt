@@ -55,6 +55,8 @@ class ReceiverSession(
     private val pairing: Pairing,
     private val onStatus: (String) -> Unit,
     private val onPrompt: (Prompt) -> Unit,
+    /** 确认请求已失效（超时无人表态）：界面要把提示收起来，否则会一直问一个早已断开的设备 */
+    private val onPromptDismissed: () -> Unit = {},
     private val onCasting: (Boolean, String) -> Unit,
     /** 投屏中待连接页不可见：暂停、接管这类一次性事件单独走浮层，周期性统计不进来。 */
     private val onNotice: (String) -> Unit = onStatus,
@@ -222,26 +224,41 @@ class ReceiverSession(
     fun start(advertisedName: String) {
         if (running) return
         running = true
-        advertiser = ServiceAdvertiser(context, advertisedName, port).also { it.start() }
+        // 服务名给用户看，指纹给发送端认人：同机双端时靠它把回环到自己那条广播丢掉
+        advertiser = ServiceAdvertiser(context, advertisedName, port, pairing.deviceId).also { it.start() }
         onStatus("等待连接 · $advertisedName")
         worker = thread(name = "airmirror-receiver") {
-            try {
-                while (running) {
-                    val socket = server.accept()
-                    clients.add(socket)
-                    thread(name = "airmirror-conn") {
-                        val served = runCatching { handle(socket) }
-                            .onFailure { if (running) Log.w(TAG, "connection failed: ${Redactor.throwable(it)}") }
-                            .getOrNull()
-                        clients.remove(socket)
-                        // 保留窗口内不提示「连接结束」，大屏该显示「正在恢复」
-                        if (served != null && !handoverInProgress && recovery.active() == null) {
-                            onStatus("$served 连接结束，继续等待")
-                        }
+            while (running) {
+                val socket = try {
+                    server.accept()
+                } catch (e: Exception) {
+                    // 一次 accept 失败不该把整个监听线程带走：界面还停在「等待连接」，
+                    // 但从此再也收不到任何投屏请求，用户只能杀进程重启。退避后继续听。
+                    if (!running) return@thread
+                    Log.w(TAG, "accept failed: ${Redactor.throwable(e)}")
+                    // 真正被关掉（stop 或系统回收）就没法再 accept，交给宿主重启
+                    if (server.isClosed) return@thread
+                    runCatching { Thread.sleep(ACCEPT_RETRY_MS) }
+                    continue
+                }
+                // 每个连接一条线程：不设上限就等于把「开几千个空连接」当成合法的拒绝服务手法。
+                // 正常家里/会议室同时投屏的设备远少于这个数，超出的直接关掉，连线程都不起。
+                if (clients.size >= MAX_CLIENTS) {
+                    Log.w(TAG, "connection shed: ${clients.size} connections already active")
+                    runCatching { socket.close() }
+                    continue
+                }
+                clients.add(socket)
+                thread(name = "airmirror-conn") {
+                    val served = runCatching { handle(socket) }
+                        .onFailure { if (running) Log.w(TAG, "connection failed: ${Redactor.throwable(it)}") }
+                        .getOrNull()
+                    clients.remove(socket)
+                    // 保留窗口内不提示「连接结束」，大屏该显示「正在恢复」
+                    if (served != null && !handoverInProgress && recovery.active() == null) {
+                        onStatus("$served 连接结束，继续等待")
                     }
                 }
-            } catch (e: Exception) {
-                if (running) onStatus("服务异常：${e.message}")
             }
         }
     }
@@ -266,6 +283,12 @@ class ReceiverSession(
         thread(name = "airmirror-end") {
             runCatching { conn.send(Protocol.Frame(Protocol.Type.BYE)) }
                 .onFailure { Log.w(TAG, "bye not delivered: ${Redactor.throwable(it)}") }
+            // 接收缓冲里还有对端正在推的帧时直接 close 会发 RST，RST 会把刚写的 BYE 一并丢掉，
+            // 对端于是把「大屏结束投屏」误判成断线、白等 30 秒。先半关发 FIN，等对端读到 BYE
+            // 自己关（本端读到 EOF）再回收；等不到就超时强关，不为此拖住一条坏连接。
+            conn.shutdownOutput()
+            conn.setReadTimeout(END_GRACE_MS)
+            runCatching { while (conn.receive() != null) Unit }
             conn.close()
         }
     }
@@ -326,7 +349,13 @@ class ReceiverSession(
     /** @return 真正被放行并服务的发送端名称；未授权的连接返回 null，不打扰界面上的推流状态。 */
     private fun handle(socket: Socket): String? {
         val peer = peerAddress(socket)
+        // 握手也要有读超时：连上却不发 HELLO 是最省事的占线程方式，
+        // 不给超时这条线程就永远卡在 Protocol.read 上。鉴权阶段会另设 AUTH_TIMEOUT_MS，
+        // 收流阶段由 readAuth 的 finally 恢复成 0（无限），所以这里的超时不会误杀正常投屏。
+        socket.soTimeout = HANDSHAKE_TIMEOUT_MS
         pairing.throttle.prune()
+        // 拒绝静默期表也要按连接节拍剪枝：它的过期条目没有别处会清，长期开机 + 反复被拒会一直涨
+        pairing.trust.prune()
         // PRD 8.9 防滥用：这个来源还在静默期里，连握手都不做，直接关门
         if (pairing.throttle.blockedFor(peer) > 0L) {
             Log.i(TAG, "connection shed: peer in silent window ${pairing.throttle.secondsLeft(peer)}s left")
@@ -342,11 +371,11 @@ class ReceiverSession(
      * 与局域网唯一的差别是记账键固定为 [CROSS_NET_PEER]：
      * 公网映射地址会随 NAT 变，拿它做防滥用键既拦不住刷子，还可能把无关用户捆在一起。
      */
-    fun offerTunnel(tunnel: io.github.wangnan05563.airmirror.crossnet.UdpTunnel) {
+    fun offerTunnel(tunnel: io.github.wangnan05563.airmirror.crossnet.UdpTunnel, credential: String? = null) {
         tunnels += tunnel
         thread(name = "airmirror-crossnet-rx") {
             try {
-                StreamConnection.overTunnel(tunnel).use { conn -> handleConnection(conn, CROSS_NET_PEER) }
+                StreamConnection.overTunnel(tunnel).use { conn -> handleConnection(conn, CROSS_NET_PEER, credential) }
             } catch (e: Exception) {
                 Log.w(TAG, "cross-net session ended: ${Redactor.throwable(e)}")
             } finally {
@@ -356,14 +385,16 @@ class ReceiverSession(
         }
     }
 
-    private fun handleConnection(conn: StreamConnection, peer: String): String? {
+    private fun handleConnection(conn: StreamConnection, peer: String, tunnelCredential: String? = null): String? {
             // 能力位带音频：老发送端不带时协商结果自动只剩画面，不会硬起一条播不出声的流水线
             val hello = try {
                 conn.acceptAsServer(
                     Build.MODEL,
                     Handshake.Capability.VIDEO_H264 or Handshake.Capability.AUDIO_AAC,
-                    // 当前码/令牌 + 宽限期内的上一组：发送端的握手签名要能对上任一受理中的凭据（T04493）
-                    credentials = pairing.code.candidates(),
+                    // 当前码/令牌 + 宽限期内的上一组：发送端的握手签名要能对上任一受理中的凭据（T04493）。
+                    // 跨网还要额外带上「这条隧道建连时用的码」：打洞过去后还隔着录屏授权，
+                    // 用户点完可能已跨过 10 秒宽限，只按屏幕上的当前码判就会把刚建好的链路误拒。
+                    credentials = (pairing.code.candidates() + listOfNotNull(tunnelCredential)).distinct(),
                 )
             } catch (e: Exception) {
                 // 握手没走完就断（半帧、乱码、版本谈不拢、写完就撤）也算一次被拒：
@@ -695,6 +726,9 @@ class ReceiverSession(
                     grant(conn, confirmed.deviceName, confirmed.permanent, verdict.deviceId, peer)
                     verdict.deviceId
                 } else {
+                    // 用户点「拒绝」时界面已自行收起；超时无人表态时界面还挂着这条请求，
+                    // 不通知它收起，大屏就会一直问一个已经断开的设备
+                    onPromptDismissed()
                     pairing.gate.decline(verdict.deviceId)
                     refuse(conn, "已拒绝")
                     onStatus("已拒绝 $senderName 的投屏请求")
@@ -708,6 +742,9 @@ class ReceiverSession(
                     AuthGate.Refused.TOO_MANY_ATTEMPTS -> "投屏码错误次数过多"
                     AuthGate.Refused.ALREADY_USED -> "投屏码已用过"
                     AuthGate.Refused.SESSION_BUSY -> "已有设备在投屏"
+                    // 静默期内连输码的机会都没有（authorize 判码之前就返回了），
+                    // 说「投屏码不正确」会让用户白跑一轮重新读码
+                    AuthGate.Refused.NOT_TRUSTED -> "大屏已拒绝"
                     else -> "投屏码不正确"
                 }
                 if (verdict.reason == AuthGate.Refused.TOO_MANY_ATTEMPTS) {
@@ -867,7 +904,10 @@ class ReceiverSession(
         latencyPolicy.locked = lock != null
         Log.i(TAG, "quality lock -> ${lock?.label ?: "auto"}")
         val conn = activeConn ?: return
-        sendCeiling(conn)
+        // 设置页在主线程调用：枚举解码器与写 socket 都不能留在这里。主线程写 socket 会被系统
+        // 拦成 NetworkOnMainThreadException，而 sendCeiling 内的 runCatching 会把它当成一次
+        // 「上限没送到」吞掉——用户改了锁定档位，发送端却一直按旧档位推流。
+        thread(name = "airmirror-quality-lock") { sendCeiling(conn) }
     }
 
     /**
@@ -1237,11 +1277,26 @@ class ReceiverSession(
          */
         const val CROSS_NET_PEER = "crossnet"
         const val AUTH_TIMEOUT_MS = 10_000
+
+        /** 握手读超时：连上不发 HELLO 的连接最多占这条线程这么久 */
+        const val HANDSHAKE_TIMEOUT_MS = 10_000
+
+        /**
+         * 同时在处理的 TCP 连接上限。每个连接一条线程，不设上限的话
+         * 「开几千个空连接」就是最省事的拒绝服务手法；正常场景远达不到这个数。
+         */
+        const val MAX_CLIENTS = 16
         const val PROMPT_MAX_WAIT_MS = 60_000L
         const val TAKEOVER_TIMEOUT_MS = 60_000L
         const val TAKEOVER_STOP_WAIT_MS = 3_000L
         const val TAKEOVER_POLL_MS = 200L
         const val RECOVERY_POLL_MS = 200L
+
+        /** accept 失败后的退避：太短会在坏状态下空转刷日志，太长会让用户重连时多等一拍 */
+        const val ACCEPT_RETRY_MS = 200L
+
+        /** 说完 BYE 后等对端先关连接的上限：足够局域网一个来回，又不至于让收尾线程挂太久 */
+        const val END_GRACE_MS = 1_000
         /** 带宽判决的最短间隔：判决本身只看两个已关闭窗口，1 秒一轮足够跟上，又不至于每帧算一遍 */
         const val BANDWIDTH_POLL_MS = 1_000L
         const val PREFERRED_PORT = 41523

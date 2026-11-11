@@ -46,6 +46,12 @@ class DlnaServer(
     private var responder: SsdpResponder? = null
     private var worker: Thread? = null
 
+    /**
+     * 活动连接：既用于限制并发（每个请求一条线程，不设上限就是给局域网内任何人一个线程耗尽入口），
+     * 也让 stop 能当场关掉正在拉媒体流的连接，而不是任它把整个文件推完。
+     */
+    private val clients: MutableSet<Socket> = java.util.Collections.synchronizedSet(HashSet())
+
     @Volatile
     private var running = false
 
@@ -76,6 +82,12 @@ class DlnaServer(
     var onImageShow: ((Bitmap, String) -> Unit)? = null
     var onImageClear: (() -> Unit)? = null
 
+    /**
+     * 推送的媒体原始画幅（纯音频不上报）。接收端按显示模式等比摆放，
+     * 不报的话 MediaPlayer 会把画面直接拉满 Surface，竖屏视频就被横向扯扁。
+     */
+    var onVideoSize: ((Int, Int) -> Unit)? = null
+
     /** 已经提示过「画面未就绪」，等 Surface 回来收口；只在 SOAP 线程与主线程读改写，故 Volatile */
     @Volatile
     private var awaitingSurface = false
@@ -105,6 +117,10 @@ class DlnaServer(
         player.onPreparedCallback = {
             machine.onLoaded()
             onStatus("DLNA 已载入 ${machine.media?.title.orEmpty()}")
+            // 纯音频不上报：界面收到 0 会把上一部视频的画幅当成本片尺寸
+            if (player.videoWidth > 0 && player.videoHeight > 0) {
+                onVideoSize?.invoke(player.videoWidth, player.videoHeight)
+            }
             // Play 早于就绪时提示是在 Play 那一刻打的，那时还没有画面可言；
             // 真正 start 之后再说一次，才能区分「还在取流」和「在放但没面」
             warnIfNoSurface()
@@ -197,16 +213,27 @@ class DlnaServer(
                 if (running) Log.w(TAG, "accept failed: ${Redactor.throwable(e)}") else return
                 continue
             }
+            // 超限直接关掉、不起线程：控制点正常只会开描述/SOAP/媒体流三四个连接，16 足够
+            if (clients.size >= MAX_CLIENTS) {
+                Log.w(TAG, "request shed: ${clients.size} in flight")
+                runCatching { client.close() }
+                continue
+            }
+            clients.add(client)
             thread(name = "airmirror-dlna-conn", isDaemon = true) {
                 runCatching { serve(client, friendlyName, ip) }
                     .onFailure { Log.w(TAG, "request failed: ${Redactor.throwable(it)}") }
                     .also { runCatching { client.close() } }
+                clients.remove(client)
             }
         }
     }
 
     private fun serve(client: Socket, friendlyName: String, ip: String) {
         onActivity?.invoke()
+        // 读请求头要有超时：连上不发字节的客户端否则会永久占住这条线程。
+        // 只影响 read，不影响后续写媒体流，所以长传输不会被这个值打断。
+        client.soTimeout = REQUEST_TIMEOUT_MS
         // 逐字节读头：BufferedReader 会预读，把 UTF-8 正文吃进缓冲区后就没法按原编码解了
         val input = client.getInputStream()
         val requestLine = input.readAsciiLine() ?: return
@@ -215,9 +242,12 @@ class DlnaServer(
         val method = parts[0].uppercase(Locale.US)
         val path = parts[1]
         val headers = LinkedHashMap<String, String>()
+        var headerLines = 0
         while (true) {
             val line = input.readAsciiLine() ?: break
             if (line.isEmpty()) break
+            // 单行封顶后，海量短行仍能把 headers 表撑大；正常控制点最多十来个头
+            if (++headerLines > MAX_HEADER_LINES) return
             val colon = line.indexOf(':')
             if (colon > 0) headers[line.substring(0, colon).trim().lowercase(Locale.US)] = line.substring(colon + 1).trim()
         }
@@ -621,6 +651,10 @@ class DlnaServer(
         responder = null
         runCatching { server?.close() }
         server = null
+        // 先断活动连接再释放播放器：媒体流线程会在写 socket 失败时退出，
+        // 否则「协议已释放」之后还会继续把整个文件推完
+        clients.toList().forEach { runCatching { it.close() } }
+        clients.clear()
         stopImageRotation()
         clearImage()
         player.release()
@@ -657,6 +691,12 @@ class DlnaServer(
     private companion object {
         const val TAG = "AirMirrorDlna"
         const val MAX_BODY = 64 * 1024
+
+        /** 请求头读超时：正常控制点几十毫秒就发完 */
+        const val REQUEST_TIMEOUT_MS = 10_000
+
+        /** 同时处理的 HTTP 请求上限（描述 / SOAP / 媒体流合计） */
+        const val MAX_CLIENTS = 16
         const val PREFS = "airmirror-dlna"
         const val PREF_UUID = "uuid"
 
@@ -670,17 +710,28 @@ class DlnaServer(
 }
 
 /** 逐字节读一行（HTTP 请求行与头是 ASCII）；换行符本身不返回，行尾 \r 一并去掉。 */
-private fun InputStream.readAsciiLine(): String? {
+internal fun InputStream.readAsciiLine(): String? {
     val line = ByteArrayOutputStream(96)
     while (true) {
         when (val b = read()) {
             -1 -> return if (line.size() == 0) null else line.toString("US-ASCII")
             10 -> return line.toString("US-ASCII")
             13 -> Unit
-            else -> line.write(b)
+            else -> {
+                // 单行长度必须封顶：客户端只要一直发字节不换行，10 秒读超时永远不会触发
+                // （每次 read 都拿得到数据），这个缓冲会一路涨到 OOM。
+                if (line.size() >= MAX_LINE_BYTES) return null
+                line.write(b)
+            }
         }
     }
 }
+
+/** 请求行的上限。HTTP 方法 + URI + 版本远不到这个长度，超出的只可能是畸形或恶意流量。 */
+private const val MAX_LINE_BYTES = 8 * 1024
+
+/** 请求头行数上限：正常控制点最多十来个头，超出按坏请求处理。 */
+private const val MAX_HEADER_LINES = 64
 
 /** 读满 count 个字节再按正文编码解码（HTTP body 长度已知，避免 readText() 卡在 keep-alive 上）。 */
 private fun InputStream.readBody(count: Int, charset: Charset): String {

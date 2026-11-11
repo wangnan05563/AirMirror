@@ -90,10 +90,17 @@ def new_session_id():
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "AirMirrorSignal/1"
+    # ThreadingHTTPServer 每个请求一条线程：连上不发字节的客户端会永久占住一条线程。
+    # 信令请求体只有几百字节，15 秒足够；超时由 BaseHTTPRequestHandler 自行收口并关连接。
+    timeout = 15
 
     def log_message(self, fmt, *args):
-        # 只记路径与方法，不记请求体；码哈希与候选地址也不进日志
-        print("[%s] %s" % (self.command, self.path), flush=True)
+        # 只记方法/路径与错误原因，不记请求体；码哈希与候选地址也不进日志。
+        # 读请求行就超时的连接没有 command/path，直接取值会抛 AttributeError 把日志本身弄挂。
+        command = getattr(self, "command", None) or "-"
+        path = getattr(self, "path", None) or "-"
+        detail = (fmt % args) if args else fmt
+        print("[%s] %s | %s" % (command, path, detail), flush=True)
 
     def reply(self, code, body=b""):
         self.send_response(code)

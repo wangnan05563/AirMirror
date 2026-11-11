@@ -154,6 +154,33 @@ class ProbeScannerTest {
     }
 
     @Test
+    fun `伪造海量指纹不会让跟踪表无限增长`() {
+        val rig = Rig().build()
+        rig.scanner.begin(t0)
+        // HELLO 不需要 nonce：局域网里任何人都能按自己的速率伪造出无限多个设备指纹
+        repeat(200) { round ->
+            repeat(8) { i ->
+                rig.transport.inbox.add(
+                    ProbeDatagram(
+                        ProbeProtocol.hello("am-forged-${round * 8 + i}", "伪造设备", 41523, listOf("AMRC")),
+                        "192.168.1.9",
+                        41525,
+                    ),
+                )
+            }
+            rig.scanner.poll(t0)
+        }
+        assertEquals("跟踪表必须封顶", 128, rig.sink.found.size)
+
+        // 已经在表里的指纹仍要能刷新，否则封顶会把正常设备的在线状态一起冻掉
+        rig.transport.inbox.add(
+            ProbeDatagram(ProbeProtocol.hello("am-forged-0", "伪造设备", 41523, listOf("AMRC")), "192.168.1.9", 41525),
+        )
+        rig.scanner.poll(t0)
+        assertEquals(129, rig.sink.found.size)
+    }
+
+    @Test
     fun `端口被占时整路退场 不反复抛异常`() {
         val broken = object : ProbeTransport {
             override fun send(bytes: ByteArray, host: String, port: Int) {}

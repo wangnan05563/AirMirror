@@ -30,6 +30,7 @@ class ConnectThrottle(
     private val states = LinkedHashMap<String, State>()
 
     /** 还剩多少毫秒才放行，0 表示当前没被限。查询本身算一次「见过」，否则正被限住的来源会被 prune 剪掉。 */
+    @Synchronized
     fun blockedFor(key: String): Long {
         // 地址缺失时不记账：宁可不拦，也不要把拿不到来源的连接跟别人捆在一起拦掉
         if (key.isBlank()) return 0L
@@ -40,6 +41,7 @@ class ConnectThrottle(
     }
 
     /** 向上取整到秒：界面显示「还剩 0 秒」时静默其实还没到期，宁可多说一秒。 */
+    @Synchronized
     fun secondsLeft(key: String): Int = ((blockedFor(key) + 999L) / 1000L).toInt()
 
     /**
@@ -47,6 +49,7 @@ class ConnectThrottle(
      * 静默期内的再次撞击只回「还剩多久」，不叠加也不翻倍——否则一个不停敲门的客户端会把等待一路
      * 顶到上限，连机主要重连都要等 15 分钟。翻倍只发生在**上一轮静默结束后还继续犯**的来源上。
      */
+    @Synchronized
     fun refuse(key: String): Long {
         if (key.isBlank()) return 0L
         val t = now()
@@ -69,6 +72,7 @@ class ConnectThrottle(
     }
 
     /** 授权成功：这个来源的账全清，正常用户不该为之前几次打错码继续背锅。 */
+    @Synchronized
     fun allow(key: String) {
         states.remove(key)
     }
@@ -77,6 +81,7 @@ class ConnectThrottle(
      * 剪掉静默已到期且一个窗口都没再出现的来源。条目仍超出上限时按最久未出现继续剪 ——
      * 记账对象是「同一来源被拒次数」，来源是刷子的 IP，不设上限就等于给攻击者开了一个内存增长点。
      */
+    @Synchronized
     fun prune() {
         val t = now()
         states.entries.removeAll { (_, state) -> t >= state.blockedUntil && t - state.lastSeenAt >= windowMillis }
