@@ -10,6 +10,8 @@
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+# Windows 保留设备名 nul 会被某些命令误写成文件，且无法被回收站删除，忽略之
+nul
 $RECYCLE.BIN/
 
 # ---- IDE / 编辑器 ----
