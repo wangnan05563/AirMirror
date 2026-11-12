@@ -40,6 +40,7 @@ import io.github.wangnan05563.airmirror.receiver.ReceiverHost
 import io.github.wangnan05563.airmirror.util.Onboarding
 import io.github.wangnan05563.airmirror.receiver.ReceiverService
 import io.github.wangnan05563.airmirror.receiver.ReceiverSession
+import kotlin.concurrent.thread
 
 /**
  * 接收端待连接页（PRD §11.2）：设备名居中最上方，二维码与 6 位投屏码并列，下方两行引导文案；
@@ -178,8 +179,11 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         portraitLabel = store.portraitLabel()
         qualityLock = store.qualityLock()
         diagnostics = Diagnostics(this)
-        diagnostics.install()
-        diagnostics.purge()
+        // T05669：诊断接管已由 ReceiverHost.init（开机自启路径）与 MainActivity 单点安装，
+        // install 幂等但没必要在每次 Receiver 冷启再走一遍同步块。
+        // 7 天过期清理是磁盘遍历 + 删除，首屏并不等它的返回值——移出 onCreate 主线程，
+        // 避免慢速软件渲染设备叠加文件 I/O 后越过 ANR 阈值（PRD §13.2 老设备基线）。
+        thread(name = "airmirror-diag-purge", isDaemon = true) { diagnostics.purge() }
         root = FrameLayout(this).apply { setBackgroundColor(Theme.BACKGROUND) }
 
         surfaceView = SurfaceView(this)
