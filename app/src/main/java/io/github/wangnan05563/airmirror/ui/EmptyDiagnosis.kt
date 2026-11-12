@@ -5,7 +5,7 @@ import io.github.wangnan05563.airmirror.net.DeviceRegistry
 import io.github.wangnan05563.airmirror.net.DiscoveryLadder
 
 /**
- * UX-01 空列表自救的判决映射（设计：AirMirror-空列表诊断映射设计-20261109.md）。
+ * UX-01 空列表自救的判决映射（设计：docs/AirMirror-空列表诊断映射设计-20261109.md）。
  *
  * 纯逻辑、不依赖 android.*：输入「发现判决 + 注册表空因」，输出唯一 [ErrorNotice.Cause] 或 null。
  * 文案、下一步、动作集合全部由 [ErrorNotice.noticeFor] 提供，界面不再拼字符串。

@@ -16,7 +16,7 @@ class CodeInputGuardTest {
     private fun projectRoot(): File {
         var dir = File(System.getProperty("user.dir") ?: ".")
         repeat(8) {
-            if (File(dir, "AirMirror-PRD-v1.1.md").isFile) return dir
+            if (File(dir, "settings.gradle.kts").isFile) return dir
             val parent = dir.parentFile ?: return@repeat
             dir = parent
         }

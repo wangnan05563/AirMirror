@@ -10,7 +10,8 @@
 
 ## 现状
 
-- 主文档：[AirMirror 产品需求文档 v1.6](AirMirror-PRD-v1.1.md) —— 注意文件名仍是 `v1.1`，内部版本号已到 v1.6，改名会在 §15 与评审文档里留下断链，故保留。
+- 主文档：[AirMirror 产品需求文档 v1.6](docs/AirMirror-PRD-v1.1.md) —— 注意文件名仍是 `v1.1`，内部版本号已到 v1.6，改名会在 §15 与评审文档里留下断链，故保留。
+- 文档布局：PRD、评审、设计、验收与分诊文档统一放在 [`docs/`](docs/README.md)，仓库根只保留本文件与构建入口。
 - 里程碑路线：M0 协议验证 → M1 最小可用 → M2 P0 完整 → M3 P1 → M4 P2（见 PRD §15）。
 - 目标设备：接收端为 Android 5.1（API 22）及以上的电视与盒子。Q-5 原裁 Android 4.4（API 19），2026-11-12 经 T04908 裁决 1 重签为 API 22，以启用无障碍遍历顺序 API；Android 4.4–5.0 设备不再受支持。
 
@@ -99,15 +100,17 @@ scripts\push-apk.cmd emulator-5554 clean   :: 清 App 数据，复验首启引�
 
 ## 仓库里的评审与规划文档
 
+完整索引（含设计、验收与分诊文档）见 [`docs/README.md`](docs/README.md)。常用入口：
+
 | 文件 | 内容 |
 | --- | --- |
-| `AirMirror-PRD-v1.1.md` | 产品需求文档（当前 v1.6） |
-| `AirMirror-需求详细评审-T03781.md` | P0 边界、协议支持与验收标准的逐行评审，含 12 条裁决 |
-| `AirMirror-PRD修订草案-T03781.md` | 上述评审落到 PRD 的修订清单（已写入 v1.3/v1.4） |
-| `AirMirror-代表设备选型-T03931.md` | A/B/C 三级代表设备（当贝 MAX1、腾讯极光 5S 2GB、EC6108V9、创维 T2） |
-| `AirMirror-WBS收敛dry-run表.md` | 工作分解结构收敛方案与执行记录 |
-| `AirMirror-待办分诊报告.md` | 待办批量导入后的分诊结论 |
-| `AirMirror-通用需求10单归属判定.md` | 跨项目搬运需求的归属与执行时点判定 |
+| [`docs/AirMirror-PRD-v1.1.md`](docs/AirMirror-PRD-v1.1.md) | 产品需求文档（当前 v1.6） |
+| [`docs/AirMirror-需求详细评审-T03781.md`](docs/AirMirror-需求详细评审-T03781.md) | P0 边界、协议支持与验收标准的逐行评审，含 12 条裁决 |
+| [`docs/AirMirror-PRD修订草案-T03781.md`](docs/AirMirror-PRD修订草案-T03781.md) | 上述评审落到 PRD 的修订清单（已写入 v1.3/v1.4） |
+| [`docs/AirMirror-代表设备选型-T03931.md`](docs/AirMirror-代表设备选型-T03931.md) | A/B/C 三级代表设备（C 级已于 2026-11-12 重新选型，见该文档第九节） |
+| [`docs/AirMirror-WBS收敛dry-run表.md`](docs/AirMirror-WBS收敛dry-run表.md) | 工作分解结构收敛方案与执行记录 |
+| [`docs/AirMirror-待办分诊报告.md`](docs/AirMirror-待办分诊报告.md) | 待办批量导入后的分诊结论 |
+| [`docs/AirMirror-通用需求10单归属判定.md`](docs/AirMirror-通用需求10单归属判定.md) | 跨项目搬运需求的归属与执行时点判定 |
 
 ## 许可与复用边界
 

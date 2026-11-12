@@ -18,7 +18,7 @@ class StartupMainThreadGuardTest {
     private fun projectRoot(): File {
         var dir = File(System.getProperty("user.dir") ?: ".")
         repeat(8) {
-            if (File(dir, "AirMirror-PRD-v1.1.md").isFile) return dir
+            if (File(dir, "settings.gradle.kts").isFile) return dir
             dir = dir.parentFile ?: return@repeat
         }
         throw AssertionError("未定位到项目根，cwd=" + System.getProperty("user.dir"))

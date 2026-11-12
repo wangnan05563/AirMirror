@@ -16,11 +16,11 @@ class PositionComplianceTest {
     private fun projectRoot(): File {
         var dir = File(System.getProperty("user.dir") ?: ".")
         repeat(8) {
-            if (File(dir, "AirMirror-PRD-v1.1.md").isFile) return dir
+            if (File(dir, "settings.gradle.kts").isFile) return dir
             val parent = dir.parentFile ?: return@repeat
             dir = parent
         }
-        throw AssertionError("未定位到项目根（找不到 AirMirror-PRD-v1.1.md），cwd=" + System.getProperty("user.dir"))
+        throw AssertionError("未定位到项目根（找不到 settings.gradle.kts），cwd=" + System.getProperty("user.dir"))
     }
 
     private fun gradleFiles(): List<File> {
