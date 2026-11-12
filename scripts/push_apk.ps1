@@ -18,6 +18,19 @@ function Stop-WithError([string]$message) {
     exit 1
 }
 
+# adb writes informational/diagnostic lines to stderr (e.g. "* daemon not running;
+# starting now at tcp:5037"). With $ErrorActionPreference = 'Stop', PowerShell 5.1
+# turns any native stderr into a terminating NativeCommandError and aborts. This
+# wrapper temporarily relaxes the preference for the adb call only, while leaving
+# $LASTEXITCODE intact so callers can still gate on it.
+function Invoke-Adb {
+    param([Parameter(ValueFromRemainingArguments = $true)] [string[]]$Arguments)
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & $adb @Arguments 2>&1 }
+    finally { $ErrorActionPreference = $prev }
+}
+
 if ($Help) {
     Write-Host 'Push test launcher: installs the debug APK and launches the receiver page.'
     Write-Host 'Usage: <launcher>.bat [serial] [-Clean] [-DryRun]'
@@ -54,10 +67,10 @@ function Resolve-Adb {
 $adb = Resolve-Adb
 if (-not $adb) { Stop-WithError 'adb not found. Set ANDROID_HOME/ANDROID_SDK_ROOT or add platform-tools to PATH.' }
 Write-Host "[INFO] adb: $adb"
-& $adb start-server 2>&1 | Out-Null
+Invoke-Adb start-server | Out-Null
 
 $devices = @()
-$lines = & $adb devices 2>&1
+$lines = Invoke-Adb devices
 foreach ($line in ($lines | Select-Object -Skip 1)) {
     if ($line -match '^(\S+)\s+device\s*$') { $devices += $Matches[1] }
 }
@@ -96,15 +109,15 @@ if ($DryRun) {
     exit 0
 }
 
-& $adb -s $Serial install -r $apk
+Invoke-Adb -s $Serial install -r $apk
 if ($LASTEXITCODE -ne 0) { Stop-WithError 'install failed.' }
 
 if ($Clean) {
     Write-Host '[INFO] clearing app data for a cold first-run check'
-    & $adb -s $Serial shell pm clear $push.package | Out-Null
+    Invoke-Adb -s $Serial shell pm clear $push.package | Out-Null
 }
 
-& $adb -s $Serial shell am start -f $push.startFlags -n ($push.package + '/' + $push.activity)
+Invoke-Adb -s $Serial shell am start -f $push.startFlags -n ($push.package + '/' + $push.activity)
 if ($LASTEXITCODE -ne 0) { Stop-WithError 'launch failed.' }
 Write-Host "[DONE] installed and launched on $Serial" -ForegroundColor Green
 exit 0
