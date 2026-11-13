@@ -65,9 +65,11 @@ if (-not $git) { Fail '未找到 git。' }
 Ok "git $((& git --version) -replace 'git version ', '')"
 
 if (-not $SkipBuild) {
-    $buildScript = Join-Path $root 'scripts\build.ps1'
+    # 走 build_launcher.ps1：它会按 android-tools.config.json 自动挑选 17-22 区间的 JDK，
+    # 避免直接调用 build.ps1 时受机器默认 JAVA_HOME（可能是 25）影响而构建失败。
+    $buildScript = Join-Path $root 'scripts\build_launcher.ps1'
     if (-not (Test-Path $buildScript)) { Fail "缺少构建脚本：$buildScript" }
-    Ok "构建脚本存在"
+    Ok "构建脚本存在（经 build_launcher.ps1 自动选 JDK）"
 }
 
 $signingRequested = $KeystoreFile -or $KeystorePassword -or $KeyAlias -or $KeyPassword
@@ -123,7 +125,7 @@ Step '构建'
 if ($SkipBuild) {
     Ok '按 -SkipBuild 跳过构建'
 } elseif ($DryRun) {
-    $plan = '将执行：scripts\build.ps1 -Release -Patch'
+    $plan = '将执行：scripts\build_launcher.ps1 -Release -Patch（自动选 17-22 JDK）'
     if ($signingRequested) { $plan += '（含 release 签名）' }
     Ok $plan
 } else {
@@ -132,7 +134,7 @@ if ($SkipBuild) {
         $buildArgs += @('-KeystoreFile', $KeystoreFile, '-KeystorePassword', $KeystorePassword, '-KeyAlias', $KeyAlias)
         if ($KeyPassword) { $buildArgs += @('-KeyPassword', $KeyPassword) }
     }
-    & (Join-Path $root 'scripts\build.ps1') @buildArgs
+    & (Join-Path $root 'scripts\build_launcher.ps1') @buildArgs
     if ($LASTEXITCODE -ne 0) { Fail "构建失败（exit=$LASTEXITCODE）。" }
     Ok '构建完成'
 }

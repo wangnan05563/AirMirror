@@ -1,48 +1,47 @@
 @echo off
 setlocal enabledelayedexpansion
 rem ============================================================
-rem  AirMirror 一键发布（构建打包 + GitHub Release 全流程）
+rem  AirMirror 一键发布（构建打包 + GitHub Release，无需手动输入）
 rem ------------------------------------------------------------
 rem  本文件是「启动器」：真正的流水线在 scripts/release.ps1
-rem  （构建 -> 校验产物 -> 打 tag -> 推送 -> 发 GitHub Release）。
-rem  这样避免在 .bat 里重写一遍 GitHub 发布逻辑，复用既有的、
-rem  带 rollback / 凭据安全设计的 PowerShell 实现。
+rem  （构建 -> 校验产物 -> 自动生成 tag -> 推送 -> 发 GitHub Release）。
+rem  复用既有带 rollback / 凭据安全设计的 PowerShell 实现，不在批处理里重写。
 rem
-rem  编码：GBK（无 BOM）。cmd.exe 在中文 Windows 默认 GBK 代码页下读取
-rem  批处理最稳；UTF-8（含 BOM）会被按 GBK 误读，3 字节汉字错位，触发
-rem  > < & 等符号把批处理行拆断，故本文件用 GBK（需求里写的 UTF-8 BOM
-rem  在 cmd 里实际不可用，已按可运行性改为 GBK）。
+rem  编码：GBK（无 BOM）。cmd.exe 在中文 Windows 默认 GBK 代码页下读取批处理
+rem  最稳；UTF-8（含 BOM）会被按 GBK 误读，3 字节汉字错位触发 > < & 把行拆断。
 rem
-rem  设计要点（相对通用需求模板的偏差，已对齐项目既有 release.ps1）：
-rem   1) 不自动 git commit。release.ps1 要求「干净工作树」才发布，
-rem      保证 tag 指向的 HEAD 能重建出同一个 APK；自动 commit 会把
-rem      未提交/误改代码打进包里，故此处仅打 tag + 推送 + 发版。
-rem   2) 仅在「版本号（tag）」这一步交互；其余全自动。
-rem   3) 不硬编码任何 GitHub Token：优先 gh（gh auth login），
-rem      其次 GITHUB_TOKEN / GH_TOKEN 环境变量（release.ps1 走 REST）。
-rem   4) 命令行其余参数原样透传给 release.ps1，例如：
-rem        -DryRun            只打印计划、不写入（推荐先跑一次验证）
-rem        -SkipBuild         复用已有产物、不重新构建
-rem        -KeystoreFile/...  传签名参数以产出可安装（signed）包
+rem  v2 优化（T05716）：
+rem   1) 无需输入 tag：release.ps1 自动用 build\patch.txt 生成 tag，全程无交互。
+rem   2) 自动从仓库根 .env 载入 GH_TOKEN（若存在且环境未设置），用于 GitHub REST
+rem      发布；不硬编码、不回显任何 Token。
+rem   3) 不自动 git commit（沿用 release.ps1「干净工作树」安全约束）。
+rem   4) 命令行参数原样透传（如 -DryRun / -SkipBuild / -Tag xxx）。
 rem
 rem  用法：
-rem    双击 一键发布.bat                          （交互输入 tag；留空=自动生成）
-rem    一键发布.bat -DryRun                       （安全验证流程，不发布）
-rem    一键发布.bat -Tag v0.1.0-m0.20261113-001
+rem    双击 一键发布.bat                （自动打包 + 自动 tag + 发布）
+rem    一键发布.bat -DryRun             （安全验证，不发布）
 rem
-rem  前置：git、PowerShell、Android SDK（构建需要）；
-rem        gh 或 GITHUB_TOKEN（发布需要）。
+rem  前置：git、PowerShell、Android SDK（构建需要）；.env 里的 GH_TOKEN（发布需要）。
 rem ============================================================
 
 set "ROOT=%~dp0.."
 set "RELEASE_PS=%~dp0release.ps1"
-set "CONFIG=%~dp0release.version.txt"
-set "TAG="
-set "EXTRA=%*"
+set "ENV_FILE=%ROOT%\.env"
 
-echo ============================================================
-echo   AirMirror 一键发布
-echo ============================================================
+rem --- 0. 从 .env 载入 GH_TOKEN / GITHUB_TOKEN（环境已设置则优先）---
+if not defined GH_TOKEN (
+    for /f "tokens=1,* delims==" %%a in ('findstr /i "^GH_TOKEN=" "%ENV_FILE%" 2^>nul') do set "GH_TOKEN=%%b"
+)
+if not defined GITHUB_TOKEN (
+    for /f "tokens=1,* delims==" %%a in ('findstr /i "^GITHUB_TOKEN=" "%ENV_FILE%" 2^>nul') do set "GITHUB_TOKEN=%%b"
+)
+if defined GH_TOKEN set "GH_TOKEN=!GH_TOKEN:"=!"
+if defined GITHUB_TOKEN set "GITHUB_TOKEN=!GITHUB_TOKEN:"=!"
+if defined GH_TOKEN (echo [OK]   已从 .env 载入 GitHub Token) else (
+    if defined GITHUB_TOKEN (echo [OK]   已从 .env 载入 GitHub Token) else (
+        echo [WARN] 环境未设置 GH_TOKEN/GITHUB_TOKEN，且 .env 未找到；发布会失败。
+    )
+)
 
 rem --- 1. 环境检测 ---
 where git >nul 2>nul
@@ -63,40 +62,16 @@ where gh >nul 2>nul
 if not errorlevel 1 (
     echo [OK]   gh CLI 可用（优先用于发布）
 ) else (
-    echo [WARN] 未检测到 gh；release.ps1 会尝试用 GITHUB_TOKEN 走 REST 发布。
+    echo [OK]   将以 .env 的 GH_TOKEN 走 GitHub REST 发布。
 )
 
-rem --- 2. 版本号（tag）：命令行 -Tag > 配置文件 > 交互输入 ---
-echo %EXTRA% | findstr /i "\-Tag" >nul 2>nul
-if not errorlevel 1 (
-    echo [OK]   命令行已带 -Tag，跳过交互。
-    goto :run
-)
-
-if exist "%CONFIG%" (
-    set /p TAG=<"%CONFIG%"
-    set "TAG=!TAG: =!"
-    if defined TAG if not "!TAG!"=="" (
-        echo [OK]   从配置文件读到 tag：!TAG!
-        goto :run
-    )
-)
+set "EXTRA=%*"
 
 echo.
-echo 请输入发布 tag（格式 v0.1.0-m0.YYYYMMDD-NNN，留空则用 build\patch.txt 自动生成）：
-set /p TAG="tag> "
-set "TAG=!TAG: =!"
-
-:run
-set "ARGS="
-if defined TAG if not "!TAG!"=="" set "ARGS=-Tag !TAG!"
-if defined EXTRA set "ARGS=!ARGS! !EXTRA!"
-
-echo.
-echo [INFO] 调用：powershell -NoProfile -ExecutionPolicy Bypass -File "%RELEASE_PS%" !ARGS!
+echo [INFO] 调用：powershell -NoProfile -ExecutionPolicy Bypass -File "%RELEASE_PS%" !EXTRA!
 echo.
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%RELEASE_PS%" !ARGS!
+powershell -NoProfile -ExecutionPolicy Bypass -File "%RELEASE_PS%" !EXTRA!
 set "CODE=%ERRORLEVEL%"
 
 if not "%CODE%"=="0" (
