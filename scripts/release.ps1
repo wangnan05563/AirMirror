@@ -129,12 +129,16 @@ if ($SkipBuild) {
     if ($signingRequested) { $plan += '（含 release 签名）' }
     Ok $plan
 } else {
-    $buildArgs = @('-Release', '-Patch')
+    # 用哈希表展开（而非数组展开）：PowerShell 5.1 对 [switch] 参数的数组展开不会绑定，
+    # 会把 '-Release -Patch' 整体塞进第一个 [string] 参数，导致构建误判为签名+debug。
+    $buildParams = @{ Release = $true; Patch = $true }
     if ($signingRequested) {
-        $buildArgs += @('-KeystoreFile', $KeystoreFile, '-KeystorePassword', $KeystorePassword, '-KeyAlias', $KeyAlias)
-        if ($KeyPassword) { $buildArgs += @('-KeyPassword', $KeyPassword) }
+        $buildParams['KeystoreFile'] = $KeystoreFile
+        $buildParams['KeystorePassword'] = $KeystorePassword
+        $buildParams['KeyAlias'] = $KeyAlias
+        if ($KeyPassword) { $buildParams['KeyPassword'] = $KeyPassword }
     }
-    & (Join-Path $root 'scripts\build_launcher.ps1') @buildArgs
+    & (Join-Path $root 'scripts\build_launcher.ps1') @buildParams
     if ($LASTEXITCODE -ne 0) { Fail "构建失败（exit=$LASTEXITCODE）。" }
     Ok '构建完成'
 }
