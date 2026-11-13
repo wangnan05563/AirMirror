@@ -79,6 +79,36 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    // T05734 重命名逻辑见下方 Project 作用域的 afterEvaluate 块（android 扩展接收者内无法调用 afterEvaluate）。
+}
+
+// T05734：构建产物 APK 文件名加 AirMirror 前缀（PRD 命名规范）。
+// abi splits 下每个 ABI 一个输出，默认名为 app-<abi>-<variant>.apk（universal 为 app-universal-<variant>.apk），
+// 统一替换为 AirMirror- 前缀；已带前缀则跳过，避免重复前缀。
+// 实现：在每个 variant 的 package* 任务收尾时，对 build/outputs/apk/<variant>/ 下的 app-*.apk
+// 做纯文件重命名。这样绕开 variant.outputs 集合在 Kotlin DSL 下的 all/forEach 重载歧义，
+// 且 push-apk.cmd / 配置里的 AirMirror-*.apk 命名能直接命中。
+afterEvaluate {
+    // T05734：在 assemble 生命周期任务收尾时，把 build/outputs/apk/<variant>/ 下的
+    // app-<abi>-<variant>.apk 重命名为 AirMirror-<abi>-<variant>.apk（universal 同理）。
+    // 挂在 assemble* 上而非具体 package* 任务，可覆盖 abi splits + universal 的全部产出，
+    // 且一定在所有打包动作结束、APK 落盘之后执行。
+    fun renameAirMirrorApks(variantName: String) {
+        val outDir = layout.buildDirectory.dir("outputs/apk/$variantName").get().asFile
+        val renamed = mutableListOf<String>()
+        outDir.listFiles()?.filter { it.isFile && it.name.startsWith("app-") && it.extension == "apk" }?.forEach { f ->
+            val newFile = f.parentFile.resolve("AirMirror-" + f.name.removePrefix("app-"))
+            if (!newFile.exists() && f.renameTo(newFile)) {
+                renamed.add(newFile.name)
+            }
+        }
+        if (renamed.isNotEmpty()) {
+            println("[T05734] renamed APKs -> ${renamed.joinToString()}")
+        }
+    }
+    tasks.named("assembleDebug") { doLast { renameAirMirrorApks("debug") } }
+    tasks.named("assembleRelease") { doLast { renameAirMirrorApks("release") } }
 }
 
 dependencies {

@@ -74,9 +74,9 @@ echo [INFO] target device: !SERIAL!
 
 rem --- pick APK: universal first, then per-ABI, then any ---
 set "APKDIR=%ROOT%\app\build\outputs\apk\debug"
-set "APK=%APKDIR%\app-universal-debug.apk"
-if not exist "!APK!" set "APK=%APKDIR%\app-arm64-v8a-debug.apk"
-if not exist "!APK!" set "APK=%APKDIR%\app-armeabi-v7a-debug.apk"
+set "APK=%APKDIR%\AirMirror-universal-debug.apk"
+if not exist "!APK!" set "APK=%APKDIR%\AirMirror-arm64-v8a-debug.apk"
+if not exist "!APK!" set "APK=%APKDIR%\AirMirror-armeabi-v7a-debug.apk"
 if not exist "!APK!" (
     for %%f in ("%APKDIR%\*.apk") do set "APK=%%~ff"
 )

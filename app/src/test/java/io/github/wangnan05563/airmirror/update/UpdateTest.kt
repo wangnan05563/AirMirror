@@ -52,8 +52,8 @@ class ReleaseParserTest {
           "name": "AirMirror 0.1.0-m0.20261106-001",
           "body": "修复若干问题\n\n- 跨网直连",
           "assets": [
-            {"name": "app-armeabi-v7a-release.apk", "browser_download_url": "https://x/v7a.apk"},
-            {"name": "app-universal-release.apk", "browser_download_url": "https://x/universal.apk"},
+            {"name": "AirMirror-armeabi-v7a-release.apk", "browser_download_url": "https://x/v7a.apk"},
+            {"name": "AirMirror-universal-release.apk", "browser_download_url": "https://x/universal.apk"},
             {"name": "checksums.txt", "browser_download_url": "https://x/sums.txt"}
           ]
         }
@@ -64,7 +64,7 @@ class ReleaseParserTest {
         val release = ReleaseParser.parse(feed)!!
         assertEquals("v0.1.0-m0.20261106-001", release.tag)
         assertEquals("https://x/universal.apk", release.apkUrl)
-        assertEquals("app-universal-release.apk", release.apkName)
+        assertEquals("AirMirror-universal-release.apk", release.apkName)
         assertTrue(release.notes.contains("跨网直连"))
     }
 
@@ -102,7 +102,7 @@ class UpdateCheckerTest {
     @Test
     fun `远端版本更新时给出下载地址`() {
         val result = checker {
-            """{"tag_name":"v0.1.0-m0.20261106-001","assets":[{"name":"app-universal-release.apk","browser_download_url":"https://x/u.apk"}]}"""
+            """{"tag_name":"v0.1.0-m0.20261106-001","assets":[{"name":"AirMirror-universal-release.apk","browser_download_url":"https://x/u.apk"}]}"""
         }.check()
         assertTrue(result is UpdateResult.Available)
         assertEquals("https://x/u.apk", (result as UpdateResult.Available).release.apkUrl)
@@ -113,7 +113,7 @@ class UpdateCheckerTest {
         assertEquals(
             UpdateResult.UpToDate,
             checker {
-                """{"tag_name":"v0.1.0-m0","assets":[{"name":"app-universal-release.apk","browser_download_url":"https://x/u.apk"}]}"""
+                """{"tag_name":"v0.1.0-m0","assets":[{"name":"AirMirror-universal-release.apk","browser_download_url":"https://x/u.apk"}]}"""
             }.check(),
         )
     }

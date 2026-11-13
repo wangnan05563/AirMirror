@@ -25,7 +25,7 @@ class ApkDownloadTest {
 
     @Test
     fun `文件名只保留本身 防路径穿越`() {
-        assertEquals("app-universal-release.apk", ApkDownload.safeName("app-universal-release.apk"))
+        assertEquals("AirMirror-universal-release.apk", ApkDownload.safeName("AirMirror-universal-release.apk"))
         assertEquals("a.apk", ApkDownload.safeName("../../a.apk"))
         assertEquals("a.apk", ApkDownload.safeName("dir\\sub\\a.apk"))
         assertEquals("airmirror-update.apk", ApkDownload.safeName(""))

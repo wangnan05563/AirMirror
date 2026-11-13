@@ -15,9 +15,9 @@
     "startFlags": "0x10020000",
     "variant": "debug",
     "apkCandidates": [
-      "app-universal-{variant}.apk",
-      "app-arm64-v8a-{variant}.apk",
-      "app-armeabi-v7a-{variant}.apk"
+      "AirMirror-universal-{variant}.apk",
+      "AirMirror-arm64-v8a-{variant}.apk",
+      "AirMirror-armeabi-v7a-{variant}.apk"
     ],
     "adbCandidates": [
       "%ANDROID_HOME%\\platform-tools\\adb.exe",

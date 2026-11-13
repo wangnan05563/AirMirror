@@ -25,7 +25,7 @@
   export JAVA_HOME='/d/code/Java/zulu17.52.17-ca-jdk17.0.12-win_x64'
   ./gradlew testDebugUnitTest assembleDebug --console=plain --offline
   ```
-- **ABI splits**：armeabi-v7a / arm64-v8a 独立包 + universal（含 x86_64）。**模拟器只能装 universal 包**（`.mtask_tmp` 历史冒烟脚本已统一改指 `app-universal-debug.apk`）。
+- **ABI splits**：armeabi-v7a / arm64-v8a 独立包 + universal（含 x86_64）。**模拟器只能装 universal 包**（产物名为 `AirMirror-universal-debug.apk`）。
 - **模拟器**：`emulator-5554`（x86_64 / API 37）。取证拓扑：模拟器内双端 + `adb forward tcp:14523 tcp:41523` + `adb reverse` + Node 中间代理抓包（详见 README「开发取证」）。
 - **磁盘**（⚠️ 今天 D 盘曾 100% 满阻塞构建，现恢复 15G 可用）：构建前先 `df -h /d /c /e`；C 盘也仅 3.1G。`/d/code/gradle_cache`（1.9G，单版本 8.9 在用）与 `/d/android`（SDK 2.2G）**不可删**。
 
