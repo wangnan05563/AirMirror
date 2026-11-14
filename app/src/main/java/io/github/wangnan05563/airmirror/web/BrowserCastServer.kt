@@ -8,7 +8,6 @@ import java.net.Socket
 import java.net.URLDecoder
 import java.security.MessageDigest
 import java.security.SecureRandom
-import java.util.Locale
 import kotlin.concurrent.thread
 
 /**
@@ -111,11 +110,11 @@ class BrowserCastServer(
         if (parts.size < 2) return
         val method = parts[0]
         val path = parts[1].substringBefore('?')
-        if (!tokenMatches(path)) return respond(client, 404, "text/plain; charset=utf-8", "not found")
+        if (!tokenMatches(path)) return respond(client, 404, MIME_TEXT_PLAIN, "not found")
         when {
             method == "GET" && path == pagePath -> respond(client, 200, "text/html; charset=utf-8", page())
             method == "POST" && path == uploadPath -> handleUpload(client, input, lines)
-            else -> respond(client, 404, "text/plain; charset=utf-8", "not found")
+            else -> respond(client, 404, MIME_TEXT_PLAIN, "not found")
         }
     }
 
@@ -126,10 +125,10 @@ class BrowserCastServer(
             .firstOrNull { it.startsWith("Content-Length:", ignoreCase = true) }
             ?.substringAfter(':')?.trim()?.toLongOrNull()
         if (length == null || length <= 0) {
-            return respond(client, 411, "text/plain; charset=utf-8", "missing content length")
+            return respond(client, 411, MIME_TEXT_PLAIN, "missing content length")
         }
         if (length > maxBytes) {
-            return respond(client, 413, "text/plain; charset=utf-8", "file too large")
+            return respond(client, 413, MIME_TEXT_PLAIN, "file too large")
         }
         val rawName = lines.drop(1)
             .firstOrNull { it.startsWith("X-File-Name:", ignoreCase = true) }
@@ -159,7 +158,7 @@ class BrowserCastServer(
             respond(client, 200, "application/json; charset=utf-8", "{\"ok\":true}")
         } catch (e: Exception) {
             runCatching { file.delete() }
-            respond(client, 400, "text/plain; charset=utf-8", "upload failed")
+            respond(client, 400, MIME_TEXT_PLAIN, "upload failed")
         }
     }
 
@@ -207,6 +206,9 @@ class BrowserCastServer(
     private val uploadPath: String get() = "/w/$token/upload"
 
     companion object {
+        /** 纯文本应答的 Content-Type：错误路径与 404 都走同一份，避免编码声明写错。 */
+        private const val MIME_TEXT_PLAIN = "text/plain; charset=utf-8"
+
         const val DEFAULT_MAX_BYTES = 200L * 1024 * 1024
         private const val MAX_HEAD_BYTES = 16 * 1024
 

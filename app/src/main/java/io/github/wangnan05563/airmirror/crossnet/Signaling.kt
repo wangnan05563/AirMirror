@@ -3,7 +3,7 @@ package io.github.wangnan05563.airmirror.crossnet
 import io.github.wangnan05563.airmirror.util.readAtMost
 import java.io.IOException
 import java.net.HttpURLConnection
-import java.net.URL
+import java.net.URI
 
 /**
  * 信令通道（PRD FS-04 第 3 步）。
@@ -50,7 +50,7 @@ class HttpSignalingTransport(
         timeoutMs: Int,
         configure: (HttpURLConnection) -> Unit,
     ): SignalingTransport.Response {
-        val connection = (URL(baseUrl.trimEnd('/') + path).openConnection() as HttpURLConnection)
+        val connection = (URI(baseUrl.trimEnd('/') + path).toURL().openConnection() as HttpURLConnection)
         try {
             connection.connectTimeout = timeoutMs
             connection.readTimeout = timeoutMs

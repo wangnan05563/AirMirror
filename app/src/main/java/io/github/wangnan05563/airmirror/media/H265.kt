@@ -42,8 +42,8 @@ object H265 {
         for (unit in H264.splitAnnexB(H264.normalize(annexB))) {
             val type = typeOf(unit)
             // API 19-23 的 HashMap 没有 putIfAbsent（Java 8 方法在旧 Android 上 NoSuchMethodError）
-            if (type == NAL_VPS || type == NAL_SPS || type == NAL_PPS) {
-                if (!byType.containsKey(type)) byType[type] = unit
+            if ((type == NAL_VPS || type == NAL_SPS || type == NAL_PPS) && !byType.containsKey(type)) {
+                byType[type] = unit
             }
         }
         val ordered = listOfNotNull(byType[NAL_VPS], byType[NAL_SPS], byType[NAL_PPS])

@@ -66,6 +66,8 @@ temp/
 logs/
 hs_err_pid*.log
 replay_pid*.log
+# SonarQube Scanner 的项目级临时工作目录
+.scannerwork/
 
 # ---- Kotlin 编译守护进程缓存（Kotlin 2.x 在项目根生成的错误日志） ----
 .kotlin/

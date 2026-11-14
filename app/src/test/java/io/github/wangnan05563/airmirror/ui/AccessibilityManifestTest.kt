@@ -143,19 +143,23 @@ class AccessibilityManifestTest {
     @Test
     fun `码描述只在换码或锁定翻转时改写并播报`() {
         val src = source("ReceiverActivity.kt")
-        val body = src.substring(src.indexOf("private fun refreshWaitingPage"))
-            .substringBefore("private fun showPrompt")
-        assertTrue(body.contains("if (a11yKey != lastCodeA11yKey)"))
-        assertTrue(body.contains("A11yCopy.codeRotated("))
-        assertTrue(body.contains("A11yCopy.codeLocked()"))
-        assertTrue("首帧不播报", body.contains("val first = lastCodeA11yKey == null"))
-        val guarded = body.indexOf("if (a11yKey != lastCodeA11yKey)")
-        val tick = body.indexOf("countdownText.text =")
-        assertTrue("倒计时刷新必须在码描述判定之后", tick > guarded)
-        val rotated = body.indexOf("A11y.announce(codeSlot, A11yCopy.codeRotated(")
-        val locked = body.indexOf("A11y.announce(codeSlot, A11yCopy.codeLocked()")
-        assertTrue("换码播报必须落在变更判定内", rotated > guarded && rotated < tick)
-        assertTrue("锁定播报必须落在变更判定内", locked > guarded && locked < tick)
+        // 面板先判描述、再改倒计时文本：每秒 tick 不再重写读屏描述（R8）
+        val panel = src.substring(src.indexOf("private fun refreshCodePanel"))
+            .substringBefore("private fun updateCodeA11y")
+        val a11yCall = panel.indexOf("updateCodeA11y(")
+        assertTrue("面板必须先判定码描述", a11yCall >= 0)
+        val tick = panel.indexOf("countdownText.text =")
+        assertTrue("倒计时刷新必须在码描述判定之后", tick > a11yCall)
+
+        val a11y = src.substring(src.indexOf("private fun updateCodeA11y"))
+            .substringBefore("private fun refreshBrowserRow")
+        assertTrue(a11y.contains("if (a11yKey == lastCodeA11yKey) return"))
+        assertTrue(a11y.contains("A11yCopy.codeRotated("))
+        assertTrue(a11y.contains("A11yCopy.codeLocked()"))
+        assertTrue("首帧不播报", a11y.contains("val first = lastCodeA11yKey == null"))
+        val guarded = a11y.indexOf("if (a11yKey == lastCodeA11yKey) return")
+        assertTrue("换码播报必须落在变更判定内", a11y.indexOf("A11y.announce(codeSlot, A11yCopy.codeRotated(") > guarded)
+        assertTrue("锁定播报必须落在变更判定内", a11y.indexOf("A11y.announce(codeSlot, A11yCopy.codeLocked()") > guarded)
     }
 
     @Test

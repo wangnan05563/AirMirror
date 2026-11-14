@@ -9,7 +9,7 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.InputStream
 import java.net.HttpURLConnection
-import java.net.URL
+import java.net.URI
 
 /**
  * 图片推送用的取图器（PRD FS-02 媒体类型 image）。
@@ -38,7 +38,7 @@ object ImageFetcher {
     private fun fetchHttp(uri: String, maxEdge: Int): Bitmap? {
         var connection: HttpURLConnection? = null
         return try {
-            connection = (URL(uri).openConnection() as HttpURLConnection).apply {
+            connection = (URI(uri).toURL().openConnection() as HttpURLConnection).apply {
                 connectTimeout = CONNECT_TIMEOUT_MS
                 readTimeout = READ_TIMEOUT_MS
                 instanceFollowRedirects = true

@@ -2,7 +2,6 @@ package io.github.wangnan05563.airmirror.dlna
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -275,7 +274,7 @@ class DlnaServer(
         return when {
             method == "GET" && (clean == "/description.xml" || clean == "/root.xml" || clean == "/device.xml") ->
                 Triple(
-                    200, "text/xml",
+                    200, MIME_XML,
                     Upnp.deviceXml(Upnp.Device(uuid, friendlyName, "http://$ip:$httpPort/")),
                 )
 
@@ -287,19 +286,19 @@ class DlnaServer(
                     else -> ""
                 }
                 val xml = Upnp.scpdXml(serviceId)
-                if (xml == null) null else Triple(200, "text/xml", xml)
+                if (xml == null) null else Triple(200, MIME_XML, xml)
             }
 
             method == "GET" && clean == "/" -> Triple(200, "text/html", page(friendlyName))
 
             method == "POST" && clean == "/ctl/AVTransport" ->
-                Triple(200, "text/xml", handleSoap(Upnp.AVTRANSPORT, body))
+                Triple(200, MIME_XML, handleSoap(Upnp.AVTRANSPORT, body))
 
             method == "POST" && clean == "/ctl/RenderingControl" ->
-                Triple(200, "text/xml", handleSoap(Upnp.RENDERING_CONTROL, body))
+                Triple(200, MIME_XML, handleSoap(Upnp.RENDERING_CONTROL, body))
 
             method == "POST" && clean == "/ctl/ConnectionManager" ->
-                Triple(200, "text/xml", handleSoap(Upnp.CONNECTION_MANAGER, body))
+                Triple(200, MIME_XML, handleSoap(Upnp.CONNECTION_MANAGER, body))
 
             else -> null
         }
@@ -326,149 +325,171 @@ class DlnaServer(
     }
 
     /** 动作处理返回「应答参数」；不可执行时抛 SoapError，由 handleSoap 统一封装成 Fault。 */
-    private fun avTransport(action: String, args: Map<String, String>): List<Pair<String, String>> = when (action) {
-        "SetAVTransportURI" -> {
-            val uri = args["CurrentURI"].orEmpty()
-            if (uri.isEmpty()) throw SoapError(Upnp.FAULT_INVALID_ARGS, "empty CurrentURI")
-            val items = Upnp.parseDidlItems(args["CurrentURIMetaData"].orEmpty())
-            val meta = items.firstOrNull() ?: Upnp.MediaMeta(uri, titleFromUri(uri), "", -1L, "")
-            if (MediaKinds.of(meta) == MediaKind.IMAGE) {
-                // 图片可能一次推多张：只保留图片项，混进来的其它类型会破坏 15 秒轮播的计数
-                val images = items.filter { MediaKinds.of(it) == MediaKind.IMAGE }
-                prepareImages(if (images.isEmpty()) listOf(meta) else images)
-            } else {
-                machine.setUri(meta)
-                if (!player.load(uri)) throw SoapError(Upnp.FAULT_ACTION_FAILED, player.lastError ?: "load failed")
-                onStatus("DLNA 载入 ${meta.title}")
-            }
-            emptyList()
+    private fun avTransport(action: String, args: Map<String, String>): List<Pair<String, String>> =
+        when (action) {
+            "SetAVTransportURI", "Play", "Pause", "Stop", "Seek" -> transportCommand(action, args)
+            "Next", "Previous" -> switchTrack(action)
+            else -> transportQuery(action, args)
         }
 
-        "Play" -> {
-            machine.canPlay()?.let { throw SoapError(it, "no media present") }
-            if (isImage()) {
-                machine.onPlayInvoked()
-                val bitmap = imageBitmap
-                if (bitmap == null) {
-                    // 图还没到手：状态留在 TRANSITIONING（onPlayInvoked 只记意图），
-                    // 只有确实没有在途请求时才重发一次取图
-                    if (!imageLoading) {
-                        machine.reloadCurrent()
-                        fetchImage(machine.tracks, machine.index)
-                    }
-                } else {
-                    onImageShow?.invoke(bitmap, imageTitle)
-                    onPlayingChanged?.invoke(true)
-                    startImageRotation()
+    /** 传输控制类动作：换源、播放、暂停、停止、跳转。 */
+    private fun transportCommand(action: String, args: Map<String, String>): List<Pair<String, String>> = when (action) {
+        "SetAVTransportURI" -> setTransportUri(args)
+        "Play" -> playTransport()
+        "Pause" -> pauseTransport()
+        "Stop" -> stopTransport()
+        "Seek" -> seekTransport(args)
+        else -> throw SoapError(Upnp.FAULT_INVALID_ACTION, "unknown action $action")
+    }
+
+    /** 换源：图片走轮播队列，音视频交给 MediaPlayer；空 URI 是参数错误，不是「停止」。 */
+    private fun setTransportUri(args: Map<String, String>): List<Pair<String, String>> {
+        val uri = args["CurrentURI"].orEmpty()
+        if (uri.isEmpty()) throw SoapError(Upnp.FAULT_INVALID_ARGS, "empty CurrentURI")
+        val items = Upnp.parseDidlItems(args["CurrentURIMetaData"].orEmpty())
+        val meta = items.firstOrNull() ?: Upnp.MediaMeta(uri, titleFromUri(uri), "", -1L, "")
+        if (MediaKinds.of(meta) == MediaKind.IMAGE) {
+            // 图片可能一次推多张：只保留图片项，混进来的其它类型会破坏 15 秒轮播的计数
+            val images = items.filter { MediaKinds.of(it) == MediaKind.IMAGE }
+            prepareImages(if (images.isEmpty()) listOf(meta) else images)
+        } else {
+            machine.setUri(meta)
+            if (!player.load(uri)) throw SoapError(Upnp.FAULT_ACTION_FAILED, player.lastError ?: "load failed")
+            onStatus("DLNA 载入 ${meta.title}")
+        }
+        return emptyList()
+    }
+
+    private fun playTransport(): List<Pair<String, String>> {
+        machine.canPlay()?.let { throw SoapError(it, "no media present") }
+        if (isImage()) {
+            machine.onPlayInvoked()
+            val bitmap = imageBitmap
+            if (bitmap == null) {
+                // 图还没到手：状态留在 TRANSITIONING（onPlayInvoked 只记意图），
+                // 只有确实没有在途请求时才重发一次取图
+                if (!imageLoading) {
+                    machine.reloadCurrent()
+                    fetchImage(machine.tracks, machine.index)
                 }
             } else {
-                player.play()
-                machine.onPlayInvoked()
+                onImageShow?.invoke(bitmap, imageTitle)
                 onPlayingChanged?.invoke(true)
-                Log.i(TAG, "play: surfaceReady=${player.surfaceReady} prepared=${player.prepared}")
-                warnIfNoSurface()
+                startImageRotation()
             }
-            emptyList()
+        } else {
+            player.play()
+            machine.onPlayInvoked()
+            onPlayingChanged?.invoke(true)
+            Log.i(TAG, "play: surfaceReady=${player.surfaceReady} prepared=${player.prepared}")
+            warnIfNoSurface()
         }
+        return emptyList()
+    }
 
-        "Pause" -> {
-            machine.canPauseOrSeek()?.let { throw SoapError(it, "not playing") }
-            if (isImage()) {
-                // 暂停只是停住轮播，画面留在屏上：收回待连接页会让人以为推送已经结束
-                stopImageRotation()
-                machine.onPauseInvoked()
-            } else {
-                player.pause()
-                machine.onPauseInvoked()
-                awaitingSurface = false
-                onPlayingChanged?.invoke(false)
-            }
-            emptyList()
-        }
-
-        "Stop" -> {
+    private fun pauseTransport(): List<Pair<String, String>> {
+        machine.canPauseOrSeek()?.let { throw SoapError(it, "not playing") }
+        if (isImage()) {
+            // 暂停只是停住轮播，画面留在屏上：收回待连接页会让人以为推送已经结束
             stopImageRotation()
-            val image = isImage()
-            player.stop()
-            machine.onStopInvoked()
-            if (image) clearImage()
+            machine.onPauseInvoked()
+        } else {
+            player.pause()
+            machine.onPauseInvoked()
             awaitingSurface = false
             onPlayingChanged?.invoke(false)
-            emptyList()
         }
+        return emptyList()
+    }
 
-        "Seek" -> {
-            machine.canPauseOrSeek()?.let { throw SoapError(it, "not seekable") }
-            val mode = args["SeekMode"].orEmpty()
-            val target = args["Target"].orEmpty()
-            val ms = when (mode) {
-                "ABS_TIME", "REL_TIME" -> Upnp.parseClock(target)
-                else -> throw SoapError(Upnp.FAULT_SEEK_MODE_NOT_SUPPORTED, "seek mode $mode unsupported")
-            }
-            if (ms < 0) throw SoapError(Upnp.FAULT_INVALID_ARGS, "bad seek target")
-            player.seekTo(ms)
-            emptyList()
+    private fun stopTransport(): List<Pair<String, String>> {
+        stopImageRotation()
+        val image = isImage()
+        player.stop()
+        machine.onStopInvoked()
+        if (image) clearImage()
+        awaitingSurface = false
+        onPlayingChanged?.invoke(false)
+        return emptyList()
+    }
+
+    private fun seekTransport(args: Map<String, String>): List<Pair<String, String>> {
+        machine.canPauseOrSeek()?.let { throw SoapError(it, "not seekable") }
+        val mode = args["SeekMode"].orEmpty()
+        val target = args["Target"].orEmpty()
+        val ms = when (mode) {
+            "ABS_TIME", "REL_TIME" -> Upnp.parseClock(target)
+            else -> throw SoapError(Upnp.FAULT_SEEK_MODE_NOT_SUPPORTED, "seek mode $mode unsupported")
         }
+        if (ms < 0) throw SoapError(Upnp.FAULT_INVALID_ARGS, "bad seek target")
+        player.seekTo(ms)
+        return emptyList()
+    }
 
+    /** 上一条 / 下一条：只有多图队列才有「相邻」可言，单文件直接回失败。 */
+    private fun switchTrack(action: String): List<Pair<String, String>> {
+        // 单文件（视频/音频/单张图）没有上一条下一条；多图队列才有
+        if (!isImage() || machine.trackCount <= 1) {
+            throw SoapError(Upnp.FAULT_ACTION_FAILED, "single item only")
+        }
+        val target = if (action == "Next") machine.index + 1 else machine.index - 1
+        if (!machine.select(target)) throw SoapError(Upnp.FAULT_ACTION_FAILED, "no more items")
+        stopImageRotation()
+        fetchImage(machine.tracks, target)
+        return emptyList()
+    }
+
+    /** 只读查询类动作；未知动作在这里收口成标准 SOAP 失败。 */
+    private fun transportQuery(action: String, args: Map<String, String>): List<Pair<String, String>> = when (action) {
         "GetTransportInfo" -> listOf(
             "CurrentTransportState" to machine.transportState(),
             "CurrentTransportStatus" to machine.transportStatus(),
             "CurrentSpeed" to machine.currentSpeed(),
         )
-
-        "GetPositionInfo" -> {
-            // 图片没有播放进度：报 0 而不是把上一段视频的毫秒数带过去
-            val duration = if (isImage()) -1L
-            else player.durationMs().let { if (it > 0) it else machine.media?.durationMs ?: -1L }
-            val position = if (isImage()) 0L else player.positionMs()
-            listOf(
-                "Track" to (machine.index + 1).toString(),
-                "TrackDuration" to clock(duration),
-                "TrackMetaData" to machine.media?.let { Upnp.didlLite(it) }.orEmpty(),
-                "TrackURI" to machine.media?.uri.orEmpty(),
-                "RelTime" to clock(position),
-                "RelCount" to "-1",
-                "AbsTime" to clock(position),
-                "AbsCount" to "-1",
-            )
-        }
-
-        "GetMediaInfo" -> listOf(
-            "NrTracks" to machine.trackCount.toString(),
-            "MediaDuration" to clock(machine.media?.durationMs ?: -1L),
-            "CurrentURI" to (machine.media?.uri ?: "NULL"),
-            "NextURI" to (machine.tracks.getOrNull(machine.index + 1)?.uri ?: "NULL"),
-            "TrackMetaData" to machine.media?.let { Upnp.didlLite(it) }.orEmpty(),
-        )
-
+        "GetPositionInfo" -> positionInfo()
+        "GetMediaInfo" -> mediaInfo()
         "GetTransportSettings" -> listOf("PlayMode" to machine.playMode, "RecQualityMode" to "NOT_IMPLEMENTED")
-        "SetPlayMode" -> {
-            machine.setPlayMode(args["NewPlayMode"].orEmpty())?.let { throw SoapError(it, "bad play mode") }
-            // 循环开关要立刻作用到正在放的媒体，不能等下一次 SetAVTransportURI
-            player.setLooping(machine.loopEnabled)
-            emptyList()
-        }
-
+        "SetPlayMode" -> setPlayMode(args)
         "GetPlayMode" -> listOf("PlayMode" to machine.playMode)
         "GetDeviceCapabilities" -> listOf(
             "PrintSink" to "",
             "InputSources" to "",
             "OutputPorts" to "",
         )
-
         "GetCurrentTransportActions" -> listOf("Actions" to machine.currentActions())
-        "Next", "Previous" -> {
-            // 单文件（视频/音频/单张图）没有上一条下一条；多图队列才有
-            if (!isImage() || machine.trackCount <= 1) {
-                throw SoapError(Upnp.FAULT_ACTION_FAILED, "single item only")
-            }
-            val target = if (action == "Next") machine.index + 1 else machine.index - 1
-            if (!machine.select(target)) throw SoapError(Upnp.FAULT_ACTION_FAILED, "no more items")
-            stopImageRotation()
-            fetchImage(machine.tracks, target)
-            emptyList()
-        }
         else -> throw SoapError(Upnp.FAULT_INVALID_ACTION, "unknown action $action")
+    }
+
+    private fun positionInfo(): List<Pair<String, String>> {
+        // 图片没有播放进度：报 0 而不是把上一段视频的毫秒数带过去
+        val duration = if (isImage()) -1L
+        else player.durationMs().let { if (it > 0) it else machine.media?.durationMs ?: -1L }
+        val position = if (isImage()) 0L else player.positionMs()
+        return listOf(
+            "Track" to (machine.index + 1).toString(),
+            "TrackDuration" to clock(duration),
+            "TrackMetaData" to machine.media?.let { Upnp.didlLite(it) }.orEmpty(),
+            "TrackURI" to machine.media?.uri.orEmpty(),
+            "RelTime" to clock(position),
+            "RelCount" to "-1",
+            "AbsTime" to clock(position),
+            "AbsCount" to "-1",
+        )
+    }
+
+    private fun mediaInfo(): List<Pair<String, String>> = listOf(
+        "NrTracks" to machine.trackCount.toString(),
+        "MediaDuration" to clock(machine.media?.durationMs ?: -1L),
+        "CurrentURI" to (machine.media?.uri ?: "NULL"),
+        "NextURI" to (machine.tracks.getOrNull(machine.index + 1)?.uri ?: "NULL"),
+        "TrackMetaData" to machine.media?.let { Upnp.didlLite(it) }.orEmpty(),
+    )
+
+    private fun setPlayMode(args: Map<String, String>): List<Pair<String, String>> {
+        machine.setPlayMode(args["NewPlayMode"].orEmpty())?.let { throw SoapError(it, "bad play mode") }
+        // 循环开关要立刻作用到正在放的媒体，不能等下一次 SetAVTransportURI
+        player.setLooping(machine.loopEnabled)
+        return emptyList()
     }
 
     private fun renderingControl(action: String, args: Map<String, String>): List<Pair<String, String>> = when (action) {
@@ -555,28 +576,30 @@ class DlnaServer(
         imageLoading = true
         thread(name = "airmirror-dlna-image") {
             val bitmap = ImageFetcher.fetch(meta.uri)
-            main.post {
-                // 已经被换源 / 切图 / Stop 取代的请求到此为止
-                if (token != imageToken) return@post
-                imageLoading = false
-                if (bitmap == null) {
-                    failImage()
-                } else {
-                    imageBitmap = bitmap
-                    imageTitle = meta.title
-                    machine.onLoaded()
-                    // 首次推图还没 Play 时留在待连接页；手动切换或已在播时立刻换画面
-                    if (machine.wantsPlayback || machine.state == TransportMachine.State.PAUSED) {
-                        onImageShow?.invoke(bitmap, meta.title)
-                        if (machine.state == TransportMachine.State.PLAYING) {
-                            onPlayingChanged?.invoke(true)
-                            startImageRotation()
-                        }
-                    }
-                    onStatus("DLNA 图片 ${meta.title}")
-                }
+            main.post { showFetchedImage(token, meta, bitmap) }
+        }
+    }
+
+    /** 主线程收图：被换源 / 切图 / Stop 取代的请求到此为止，其余按首图与换图两种路径落地。 */
+    private fun showFetchedImage(token: Int, meta: Upnp.MediaMeta, bitmap: Bitmap?) {
+        if (token != imageToken) return
+        imageLoading = false
+        if (bitmap == null) {
+            failImage()
+            return
+        }
+        imageBitmap = bitmap
+        imageTitle = meta.title
+        machine.onLoaded()
+        // 首次推图还没 Play 时留在待连接页；手动切换或已在播时立刻换画面
+        if (machine.wantsPlayback || machine.state == TransportMachine.State.PAUSED) {
+            onImageShow?.invoke(bitmap, meta.title)
+            if (machine.state == TransportMachine.State.PLAYING) {
+                onPlayingChanged?.invoke(true)
+                startImageRotation()
             }
         }
+        onStatus("DLNA 图片 ${meta.title}")
     }
 
     private fun failImage() {
@@ -599,19 +622,21 @@ class DlnaServer(
         onImageClear?.invoke()
     }
 
+    /** 图片轮播定时器：单实例复用，stop 时按同一对象 removeCallbacks。 */
+    private val imageRotationTick = Runnable { rotateImagesOnce() }
+
     private fun startImageRotation() {
         stopImageRotation()
         if (!ImageRotation.shouldRotate(MediaKind.IMAGE, machine.trackCount, machine.state == TransportMachine.State.PLAYING)) return
-        val ticker = object : Runnable {
-            override fun run() {
-                val next = ImageRotation.nextIndex(machine.index, machine.trackCount) ?: return
-                if (!machine.select(next)) return
-                fetchImage(machine.tracks, next)
-                main.postDelayed(this, ImageRotation.INTERVAL_MS)
-            }
-        }
-        imageRotation = ticker
-        main.postDelayed(ticker, ImageRotation.INTERVAL_MS)
+        imageRotation = imageRotationTick
+        main.postDelayed(imageRotationTick, ImageRotation.INTERVAL_MS)
+    }
+
+    private fun rotateImagesOnce() {
+        val next = ImageRotation.nextIndex(machine.index, machine.trackCount) ?: return
+        if (!machine.select(next)) return
+        fetchImage(machine.tracks, next)
+        main.postDelayed(imageRotationTick, ImageRotation.INTERVAL_MS)
     }
 
     private fun stopImageRotation() {
@@ -691,6 +716,9 @@ class DlnaServer(
     private companion object {
         const val TAG = "AirMirrorDlna"
         const val MAX_BODY = 64 * 1024
+
+        /** 描述/SCPD/SOAP 应答的 Content-Type：三处路由共用同一份，避免大小写或参数写岔。 */
+        const val MIME_XML = "text/xml"
 
         /** 请求头读超时：正常控制点几十毫秒就发完 */
         const val REQUEST_TIMEOUT_MS = 10_000

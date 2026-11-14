@@ -43,6 +43,14 @@
 | [AirMirror-体验指标验证方案-20261109.md](AirMirror-体验指标验证方案-20261109.md) | 体验指标的度量与验证方案 |
 | [AirMirror-竞品调研数据清洗-20261109.md](AirMirror-竞品调研数据清洗-20261109.md) | 竞品调研数据的清洗口径与可复核性说明 |
 
+## 代码质量
+
+| 文件 | 内容 |
+| --- | --- |
+| [sonar-reports/AirMirror-SonarQube-修复前报告-20261114.md](sonar-reports/AirMirror-SonarQube-修复前报告-20261114.md) | 2026-11-14 首轮 SonarQube 扫描：70 条问题的级别/规则/文件分布、修复策略与误报判定 |
+| [sonar-reports/AirMirror-SonarQube-修复后报告-20261114.md](sonar-reports/AirMirror-SonarQube-修复后报告-20261114.md) | 复扫 0 问题、质量门禁状态、测试与生产构建结果 |
+| [sonar-reports/AirMirror-SonarQube-问题修复记录-20261114.md](sonar-reports/AirMirror-SonarQube-问题修复记录-20261114.md) | 逐规则修复方式与代码落点、8 处 NOSONAR 理由、编译与测试过程 |
+
 ## 维护约定
 
 - 新增文档一律放本目录，并在上表登记；不要放在仓库根。

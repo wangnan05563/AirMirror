@@ -276,8 +276,7 @@ class CaptureService : Service() {
             runSession(
                 host = host.orEmpty(),
                 port = port,
-                resultCode = resultCode,
-                resultData = resultData,
+                grant = CaptureGrant(resultCode, resultData),
                 deviceId = deviceId,
                 credential = credential,
                 serviceName = serviceName,
@@ -322,11 +321,13 @@ class CaptureService : Service() {
         return result.accepted
     }
 
+    /** 录屏授权句柄：resultCode 与 data 必须成对使用，绑定成一个参数，调用方没法只传一半。 */
+    private data class CaptureGrant(val resultCode: Int, val data: Intent)
+
     private fun runSession(
         host: String,
         port: Int,
-        resultCode: Int,
-        resultData: Intent,
+        grant: CaptureGrant,
         deviceId: String,
         credential: String,
         serviceName: String,
@@ -343,14 +344,12 @@ class CaptureService : Service() {
             recoveryQuality.stop()
             this.serviceName = serviceName
             // 先握手、先授权，通过后才开始采集屏幕：被拒时不该已经在录屏（PRD 14.4 最小采集）
-            var conn = openConnection(host, port, deviceId, credential, tunnel)
+            val conn = openConnection(host, port, deviceId, credential, tunnel)
             connection = conn
             sessionLocalIp = localIpv4().orEmpty()
-            var currentHost = host
-            var currentPort = port
 
             val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-            val mediaProjection = manager.getMediaProjection(resultCode, resultData)
+            val mediaProjection = manager.getMediaProjection(grant.resultCode, grant.data)
                 ?: throw IllegalStateException("MediaProjection denied")
             projection = mediaProjection
             mediaProjection.registerCallback(
@@ -387,131 +386,21 @@ class CaptureService : Service() {
             openEncoder(mediaProjection, currentProfile())
             startAudio(mediaProjection, conn)
 
-            var sentFrames = 0
-            var lastOutputAt = System.currentTimeMillis()
-            var pauseApplied = SenderControl.paused
-            var audioWanted = SenderControl.audio
+            val live = LiveSession(conn, host, port, mediaProjection, tunnel, deviceId)
             while (running) {
                 // 断链后先续会再继续送帧；续不上已经把结论文案写好，直接收尾
                 if (peerGone) {
-                    if (tunnel != null) {
-                        // 跨网链路断开后旧 NAT 映射已失效，重新打洞需要新会话；让用户重新扫码，
-                        // 不用局域网那套「解析服务名」的续会逻辑，避免假装在恢复
-                        SenderReport.last = "跨网连接已断开，请重新扫码"
-                        break
-                    }
-                    val resumed = recover(conn, currentHost, currentPort, deviceId) ?: break
-                    conn = resumed.conn
-                    connection = conn
-                    currentHost = resumed.host
-                    currentPort = resumed.port
-                    watchPeer(conn)
-                    // 声音线程绑的是上一条连接，重连后不换过来就只剩哑巴画面
-                    restartAudio(mediaProjection, conn)
-                    pauseApplied = SenderControl.paused
-                    if (pauseApplied) {
-                        sendOrGone(conn, Protocol.Frame(Protocol.Type.CONTROL, payload = SessionControl.pause()))
-                    }
+                    if (!resumeAfterGone(live)) break
                     continue
                 }
                 // 用户在大屏外的手机界面上选择了让出/拒绝（PRD FS-09 步骤 4）
-                SenderControl.takeTakeoverAnswer()?.let { allow ->
-                    Log.i(TAG, "takeover answer allow=$allow")
-                    sendOrGone(conn, Protocol.Frame(Protocol.Type.CONTROL, payload = SessionControl.takeoverResult(allow)))
-                    if (allow) {
-                        yielded = true
-                        SenderReport.quality = "已让出投屏"
-                    } else {
-                        SenderReport.quality = qualityText()
-                    }
-                }
-                if (SenderControl.paused != pauseApplied) {
-                    pauseApplied = SenderControl.paused
-                    val payload = if (pauseApplied) SessionControl.pause() else SessionControl.resume()
-                    sendOrGone(conn, Protocol.Frame(Protocol.Type.CONTROL, payload = payload))
-                    SenderReport.quality = if (pauseApplied) {
-                        "已暂停投屏 · 大屏保留最后一帧"
-                    } else {
-                        qualityText()
-                    }
-                    // 恢复后解码器需要关键帧才能继续出画，否则会等下一个自然 IDR
-                    if (!pauseApplied) runCatching { encoder?.requestKeyFrame() }
-                }
-                if (SenderControl.audio != audioWanted) {
-                    // 投屏中拨声音开关（PRD FS-01 参数「音频」）：要真的收放采集通道并告知大屏，
-                    // 只停发送会让大屏在 1 秒后误报「声音被占用」
-                    audioWanted = SenderControl.audio
-                    Log.i(TAG, "audio switch -> $audioWanted")
-                    sendOrGone(conn, Protocol.Frame(Protocol.Type.CONTROL, payload = SessionControl.audio(audioWanted)))
-                    if (audioWanted) {
-                        startAudio(mediaProjection, conn)
-                    } else {
-                        stopAudio()
-                        audioNote = "已按要求关闭声音投屏"
-                    }
-                    SenderReport.quality = qualityText()
-                }
-                if (recoveryQuality.tick()) {
-                    Log.i(TAG, "recovery quality restored to ${recoveryQuality.fullTier().label}")
-                    SenderReport.quality = qualityText()
-                    reconfigure.set(true)
-                }
-                if (syncRequested.getAndSet(false)) {
-                    // 只记「收到了」还不够：真正的证据是随后这一帧 IDR 有没有出去
-                    val encoderHere = encoder
-                    Log.i(TAG, "sync requested, encoder=${if (encoderHere == null) "null" else "alive"}")
-                    runCatching { encoderHere?.requestKeyFrame() }
-                        .onFailure { Log.w(TAG, "sync frame request failed: ${Redactor.throwable(it)}") }
-                }
+                handleTakeoverAnswer(live.conn)
+                handlePauseChange(live)
+                handleAudioSwitch(live)
+                handleRecoveryQuality()
+                handleSyncRequest()
                 if (reconfigure.getAndSet(false)) restartEncoder()
-                val videoEncoder = encoder
-                if (videoEncoder == null) {
-                    Thread.sleep(20)
-                    continue
-                }
-                val frames = videoEncoder.drain()
-                if (frames.isEmpty()) {
-                    val now = System.currentTimeMillis()
-                    if (now - lastOutputAt >= 5_000) {
-                        Log.w(TAG, "no encoder output for ${now - lastOutputAt}ms (sent=$sentFrames)")
-                        lastOutputAt = now
-                    }
-                    Thread.sleep(4)
-                    continue
-                }
-                lastOutputAt = System.currentTimeMillis()
-                // 暂停期间继续取帧但丢弃，避免编码器缓冲堆满、恢复时一次性涌出
-                if (pauseApplied) continue
-                var delivered = true
-                for (frame in frames) {
-                    val flags = when {
-                        frame.config -> Protocol.Flags.CONFIG or hevcFlag(videoEncoder.codec)
-                        frame.keyFrame -> Protocol.Flags.KEY_FRAME
-                        else -> 0
-                    }
-                    val type = Protocol.Type.VIDEO
-                    if (!sendOrGone(conn, Protocol.Frame(type, flags = flags, ptsUs = frame.ptsUs, payload = frame.data))) {
-                        delivered = false
-                        break
-                    }
-                    sentFrames++
-                    if (sentFrames == 1 || sentFrames % 60 == 0) {
-                        // 帧时间戳即采集时刻（nanoTime 基准），这里的差值就是「采集→编码出帧」。
-                        // 编码配置帧的 pts 是 0，不参与计算，否则报出一个假的上亿毫秒
-                        val lagText = if (frame.ptsUs > 0L) {
-                            " encode+${(System.nanoTime() / 1_000 - frame.ptsUs) / 1_000}ms"
-                        } else {
-                            ""
-                        }
-                        Log.i(
-                            TAG,
-                            "sent $sentFrames frames, last=${frame.data.size}B key=${frame.keyFrame} " +
-                                "config=${frame.config}$lagText",
-                        )
-                    }
-                }
-                if (!running) break
-                if (!delivered) continue
+                sendFrames(live)
             }
         } catch (e: Exception) {
             Log.w(TAG, "capture session ended: ${Redactor.throwable(e)}")
@@ -520,6 +409,162 @@ class CaptureService : Service() {
             cleanup()
             stopSelf()
         }
+    }
+
+    /** 会话中会换的连接、地址与计数：拆出去后每段逻辑只碰需要的那几项。 */
+    private class LiveSession(
+        var conn: StreamConnection,
+        var host: String,
+        var port: Int,
+        val mediaProjection: MediaProjection,
+        val tunnel: io.github.wangnan05563.airmirror.crossnet.UdpTunnel?,
+        val deviceId: String,
+    ) {
+        var sentFrames = 0
+        var lastOutputAt = System.currentTimeMillis()
+        var pauseApplied = SenderControl.paused
+        var audioWanted = SenderControl.audio
+        var delivered = true
+    }
+
+    /** 断链后的续会；返回 false 表示续不上，调用方收尾退出。 */
+    private fun resumeAfterGone(live: LiveSession): Boolean {
+        if (live.tunnel != null) {
+            // 跨网链路断开后旧 NAT 映射已失效，重新打洞需要新会话；让用户重新扫码，
+            // 不用局域网那套「解析服务名」的续会逻辑，避免假装在恢复
+            SenderReport.last = "跨网连接已断开，请重新扫码"
+            return false
+        }
+        val resumed = recover(live.conn, live.host, live.port, live.deviceId) ?: return false
+        live.conn = resumed.conn
+        connection = resumed.conn
+        live.host = resumed.host
+        live.port = resumed.port
+        watchPeer(live.conn)
+        // 声音线程绑的是上一条连接，重连后不换过来就只剩哑巴画面
+        restartAudio(live.mediaProjection, live.conn)
+        live.pauseApplied = SenderControl.paused
+        if (live.pauseApplied) {
+            sendOrGone(live.conn, Protocol.Frame(Protocol.Type.CONTROL, payload = SessionControl.pause()))
+        }
+        return true
+    }
+
+    /** 用户在大屏外的手机界面上选择了让出/拒绝（PRD FS-09 步骤 4）。 */
+    private fun handleTakeoverAnswer(conn: StreamConnection) {
+        SenderControl.takeTakeoverAnswer()?.let { allow ->
+            Log.i(TAG, "takeover answer allow=$allow")
+            sendOrGone(conn, Protocol.Frame(Protocol.Type.CONTROL, payload = SessionControl.takeoverResult(allow)))
+            if (allow) {
+                yielded = true
+                SenderReport.quality = "已让出投屏"
+            } else {
+                SenderReport.quality = qualityText()
+            }
+        }
+    }
+
+    /** 暂停开关变化：告知大屏并换文案；恢复后补一个关键帧，解码器才继续出画。 */
+    private fun handlePauseChange(live: LiveSession) {
+        if (SenderControl.paused == live.pauseApplied) return
+        live.pauseApplied = SenderControl.paused
+        val payload = if (live.pauseApplied) SessionControl.pause() else SessionControl.resume()
+        sendOrGone(live.conn, Protocol.Frame(Protocol.Type.CONTROL, payload = payload))
+        SenderReport.quality = if (live.pauseApplied) {
+            "已暂停投屏 · 大屏保留最后一帧"
+        } else {
+            qualityText()
+        }
+        // 恢复后解码器需要关键帧才能继续出画，否则会等下一个自然 IDR
+        if (!live.pauseApplied) runCatching { encoder?.requestKeyFrame() }
+    }
+
+    /** 投屏中拨声音开关（PRD FS-01 参数「音频」）：真的收放采集通道并告知大屏。 */
+    private fun handleAudioSwitch(live: LiveSession) {
+        if (SenderControl.audio == live.audioWanted) return
+        // 只停发送会让大屏在 1 秒后误报「声音被占用」
+        live.audioWanted = SenderControl.audio
+        Log.i(TAG, "audio switch -> ${live.audioWanted}")
+        sendOrGone(live.conn, Protocol.Frame(Protocol.Type.CONTROL, payload = SessionControl.audio(live.audioWanted)))
+        if (live.audioWanted) {
+            startAudio(live.mediaProjection, live.conn)
+        } else {
+            stopAudio()
+            audioNote = "已按要求关闭声音投屏"
+        }
+        SenderReport.quality = qualityText()
+    }
+
+    /** 降档保底到期：恢复原档位并重开编码器。 */
+    private fun handleRecoveryQuality() {
+        if (!recoveryQuality.tick()) return
+        Log.i(TAG, "recovery quality restored to ${recoveryQuality.fullTier().label}")
+        SenderReport.quality = qualityText()
+        reconfigure.set(true)
+    }
+
+    /** 对端要求补关键帧：只记「收到了」不够，真正的证据是随后这一帧 IDR 有没有出去。 */
+    private fun handleSyncRequest() {
+        if (!syncRequested.getAndSet(false)) return
+        val encoderHere = encoder
+        Log.i(TAG, "sync requested, encoder=${if (encoderHere == null) "null" else "alive"}")
+        runCatching { encoderHere?.requestKeyFrame() }
+            .onFailure { Log.w(TAG, "sync frame request failed: ${Redactor.throwable(it)}") }
+    }
+
+    /** 取一帧就发一帧；没有输出时空转等待，暂停期间取而不发，避免缓冲堆满。 */
+    private fun sendFrames(live: LiveSession) {
+        val videoEncoder = encoder
+        if (videoEncoder == null) {
+            Thread.sleep(20)
+            return
+        }
+        val frames = videoEncoder.drain()
+        if (frames.isEmpty()) {
+            val now = System.currentTimeMillis()
+            if (now - live.lastOutputAt >= 5_000) {
+                Log.w(TAG, "no encoder output for ${now - live.lastOutputAt}ms (sent=${live.sentFrames})")
+                live.lastOutputAt = now
+            }
+            Thread.sleep(4)
+            return
+        }
+        live.lastOutputAt = System.currentTimeMillis()
+        // 暂停期间继续取帧但丢弃，避免编码器缓冲堆满、恢复时一次性涌出
+        if (live.pauseApplied) return
+        live.delivered = true
+        for (frame in frames) {
+            if (!sendVideoFrame(live, videoEncoder, frame)) break
+        }
+    }
+
+    private fun sendVideoFrame(live: LiveSession, videoEncoder: VideoEncoder, frame: VideoEncoder.Encoded): Boolean {
+        val flags = when {
+            frame.config -> Protocol.Flags.CONFIG or hevcFlag(videoEncoder.codec)
+            frame.keyFrame -> Protocol.Flags.KEY_FRAME
+            else -> 0
+        }
+        if (!sendOrGone(live.conn, Protocol.Frame(Protocol.Type.VIDEO, flags = flags, ptsUs = frame.ptsUs, payload = frame.data))) {
+            live.delivered = false
+            return false
+        }
+        live.sentFrames++
+        if (live.sentFrames == 1 || live.sentFrames % 60 == 0) logSent(live, frame)
+        return true
+    }
+
+    private fun logSent(live: LiveSession, frame: VideoEncoder.Encoded) {
+        // 帧时间戳即采集时刻（nanoTime 基准），这里的差值就是「采集→编码出帧」。
+        // 编码配置帧的 pts 是 0，不参与计算，否则报出一个假的上亿毫秒
+        val lagText = if (frame.ptsUs > 0L) {
+            " encode+${(System.nanoTime() / 1_000 - frame.ptsUs) / 1_000}ms"
+        } else {
+            ""
+        }
+        Log.i(
+            TAG,
+            "sent ${live.sentFrames} frames, last=${frame.data.size}B key=${frame.keyFrame} config=${frame.config}$lagText",
+        )
     }
 
     /**
@@ -592,60 +637,95 @@ class CaptureService : Service() {
      * 采集 → AAC 编码 → AUDIO 帧。时间戳起点取当前 nanoTime，与画面编码器同一基准，
      * 大屏才可能拿音频主时钟给画面对表（PRD FR-09）。
      */
+    /** 音频循环的可变状态：编码器可能被重新对表替换，sent 与静默判定也随之推进。 */
+    private class AudioLoop(
+        var encoder: AudioEncoder,
+        var sent: Int,
+        var lastSampleAt: Long,
+        var interrupted: Boolean,
+    )
+
     private fun runAudio(record: AudioRecord, spec: AudioFormat.Spec, via: String, conn: StreamConnection) {
-        var encoder = AudioEncoder(spec, System.nanoTime() / 1_000)
+        val loop = AudioLoop(AudioEncoder(spec, System.nanoTime() / 1_000), 0, System.currentTimeMillis(), false)
         if (!sendAudioConfig(conn, spec)) {
-            runCatching { encoder.release() }
+            runCatching { loop.encoder.release() }
             return
         }
         Log.i(TAG, "audio capture started via $via ${spec.sampleRate}Hz/${spec.channels}ch")
         val buffer = ByteArray(SystemAudio.READ_BYTES)
-        var sent = 0
-        var lastSampleAt = System.currentTimeMillis()
-        var interrupted = false
         while (running && !audioStop) {
             val read = runCatching { record.read(buffer, 0, buffer.size) }.getOrDefault(0)
             if (read <= 0) {
-                // 采不到样本超过 1 秒：按「声音被占用」写结论，画面照投（PRD FS-06 异常表）
-                if (!interrupted && System.currentTimeMillis() - lastSampleAt > AUDIO_GAP_MS) {
-                    interrupted = true
-                    audioNote = ErrorNotice.textFor(ErrorNotice.Cause.AUDIO_INTERRUPTED)
-                    SenderReport.quality = qualityText()
-                    Log.w(TAG, "audio stalled for ${AUDIO_GAP_MS}ms, keeping video only")
-                }
-                sleepQuietly(AUDIO_IDLE_MS)
+                noteSilence(loop)
                 continue
             }
-            lastSampleAt = System.currentTimeMillis()
-            if (interrupted) {
+            loop.lastSampleAt = System.currentTimeMillis()
+            if (loop.interrupted) {
                 // 声音回来了要重新对表：旧基准已经把缺口算进样本数里，继续用会一路追帧
-                interrupted = false
-                audioNote = ""
-                SenderReport.quality = qualityText()
-                runCatching { encoder.release() }
-                encoder = AudioEncoder(spec, System.nanoTime() / 1_000)
-                if (!sendAudioConfig(conn, spec)) return
-                Log.i(TAG, "audio resumed, clock re-anchored")
+                loop.interrupted = false
+                loop.encoder = reanchorAudio(loop.encoder, spec, conn) ?: return
             }
             // 关掉声音开关或被暂停时继续把采集读干净，只是不发，免得缓冲区堆满
             if (!SenderControl.audio || SenderControl.paused) continue
-            for (frame in encoder.feed(buffer.copyOf(read))) {
-                val ok = sendOrGone(
-                    conn,
-                    Protocol.Frame(Protocol.Type.AUDIO, ptsUs = frame.ptsUs, payload = frame.data),
-                )
-                if (!ok) {
-                    runCatching { encoder.release() }
-                    return
-                }
-                sent++
-                if (sent == 1 || sent % 150 == 0) {
-                    Log.i(TAG, "sent $sent audio frames, pts=${frame.ptsUs}")
-                }
+            val next = sendAudioChunk(loop.encoder, conn, buffer, read, loop.sent)
+            if (next < 0) {
+                runCatching { loop.encoder.release() }
+                return
+            }
+            loop.sent = next
+        }
+        runCatching { loop.encoder.release() }
+        Log.i(TAG, "audio capture stopped after ${loop.sent} frames")
+    }
+
+    /** 采不到样本：超过 1 秒按「声音被占用」写结论（PRD FS-06 异常表），并歇一拍避免空转。 */
+    private fun noteSilence(loop: AudioLoop) {
+        if (!loop.interrupted && System.currentTimeMillis() - loop.lastSampleAt > AUDIO_GAP_MS) {
+            loop.interrupted = true
+            noteAudioGap()
+        }
+        sleepQuietly(AUDIO_IDLE_MS)
+    }
+
+    /** 采不到样本超过 1 秒：写一句可执行的结论，不把「声音被占用」误报成链路坏了。 */
+    private fun noteAudioGap() {
+        audioNote = ErrorNotice.textFor(ErrorNotice.Cause.AUDIO_INTERRUPTED)
+        SenderReport.quality = qualityText()
+        Log.w(TAG, "audio stalled for ${AUDIO_GAP_MS}ms, keeping video only")
+    }
+
+    /** 声音恢复：换一个新时间基准的编码器并补发配置；配置发不出去就返回 null 让调用方收尾。 */
+    private fun reanchorAudio(old: AudioEncoder, spec: AudioFormat.Spec, conn: StreamConnection): AudioEncoder? {
+        audioNote = ""
+        SenderReport.quality = qualityText()
+        runCatching { old.release() }
+        val fresh = AudioEncoder(spec, System.nanoTime() / 1_000)
+        if (!sendAudioConfig(conn, spec)) return null
+        Log.i(TAG, "audio resumed, clock re-anchored")
+        return fresh
+    }
+
+    /** 发完这一批编码帧；返回累计发送数，-1 表示链路已断。 */
+    private fun sendAudioChunk(
+        encoder: AudioEncoder,
+        conn: StreamConnection,
+        buffer: ByteArray,
+        read: Int,
+        sentBefore: Int,
+    ): Int {
+        var count = sentBefore
+        for (frame in encoder.feed(buffer.copyOf(read))) {
+            val ok = sendOrGone(
+                conn,
+                Protocol.Frame(Protocol.Type.AUDIO, ptsUs = frame.ptsUs, payload = frame.data),
+            )
+            if (!ok) return -1
+            count++
+            if (count == 1 || count % 150 == 0) {
+                Log.i(TAG, "sent $count audio frames, pts=${frame.ptsUs}")
             }
         }
-        runCatching { encoder.release() }
-        Log.i(TAG, "audio capture stopped after $sent frames")
+        return count
     }
 
     /** 音频描述帧：接收端靠它建解码器与声卡，重新锚定时间戳时要再发一次。 */
@@ -708,6 +788,22 @@ class CaptureService : Service() {
 
     private class ResumedLink(val conn: StreamConnection, val host: String, val port: Int)
 
+    private data class Address(val host: String, val port: Int)
+
+    /**
+     * 切 Wi-Fi 后旧地址不可达：按设备标识所在的服务名重新解析（PRD FS-10 场景「切换 Wi-Fi」）。
+     * 本地 IP 没变就返回 null，沿用原地址——否则每次续会都要多播一次发现，纯属拖慢恢复。
+     */
+    private fun relocatedAddress(): Address? {
+        val currentIp = localIpv4().orEmpty()
+        if (sessionLocalIp.isEmpty() || currentIp.isEmpty() || currentIp == sessionLocalIp) return null
+        Log.i(TAG, "local ip $sessionLocalIp -> $currentIp, relocating $serviceName")
+        SenderReport.quality = "网络已切换，正在重新连接"
+        updateNotification("网络已切换，正在重新连接")
+        val located = ServiceLocator(this).locate(serviceName) ?: return null
+        return Address(located.host, located.port)
+    }
+
     private sealed interface ResumeAttempt {
         class Ok(val conn: StreamConnection) : ResumeAttempt
         object Failed : ResumeAttempt
@@ -738,16 +834,10 @@ class CaptureService : Service() {
 
         var targetHost = host
         var targetPort = port
-        val currentIp = localIpv4().orEmpty()
-        if (sessionLocalIp.isNotEmpty() && currentIp.isNotEmpty() && currentIp != sessionLocalIp) {
-            // IP 变了旧地址不可达：按设备标识所在的服务名重新解析（PRD FS-10 场景「切换 Wi-Fi」）
-            Log.i(TAG, "local ip $sessionLocalIp -> $currentIp, relocating $serviceName")
-            SenderReport.quality = "网络已切换，正在重新连接"
-            updateNotification("网络已切换，正在重新连接")
-            ServiceLocator(this).locate(serviceName)?.let {
-                targetHost = it.host
-                targetPort = it.port
-            }
+        val relocated = relocatedAddress()
+        if (relocated != null) {
+            targetHost = relocated.host
+            targetPort = relocated.port
         }
 
         var attempt = 0
@@ -759,26 +849,7 @@ class CaptureService : Service() {
             SenderReport.quality = "正在恢复连接（$attempt/${RecoverySchedule.ATTEMPTS}）"
             updateNotification("正在恢复连接（$attempt/${RecoverySchedule.ATTEMPTS}）")
             when (val result = tryResume(targetHost, targetPort, deviceId)) {
-                is ResumeAttempt.Ok -> {
-                    sessionLocalIp = localIpv4().orEmpty()
-                    recoveryQuality.start(negotiatedTier())
-                    Log.i(
-                        TAG,
-                        "resumed at $targetHost:$targetPort, quality ${recoveryQuality.tier().label} until ${recoveryQuality.fullTier().label}",
-                    )
-                    SenderReport.quality = recoveryQuality.text()
-                    updateNotification("已恢复投屏")
-                    // 通知栏不该长期挂着一次早已过去的事件：3 秒后回常态文案。
-                    // 期间若有新状态（再次断线等），其 epoch 已变，这次重置自动作废。
-                    val epoch = noticeEpoch.get()
-                    main.postDelayed(
-                        { if (running && noticeEpoch.get() == epoch) updateNotification() },
-                        3_000,
-                    )
-                    // 恢复后按低一档重开编码器，关键帧让大屏立刻续上而不是等自然 IDR
-                    restartEncoder()
-                    return ResumedLink(result.conn, targetHost, targetPort)
-                }
+                is ResumeAttempt.Ok -> return onResumed(result, targetHost, targetPort)
                 ResumeAttempt.Restarted -> {
                     Log.i(TAG, "receiver session lost, resume refused")
                     SenderReport.quality = ""
@@ -795,6 +866,24 @@ class CaptureService : Service() {
             Log.i(TAG, "recovery gave up after $attempt attempts (elapsed=${elapsed}ms)")
         }
         return null
+    }
+
+    /** 续会成功后收尾：重置画质窗口、通知栏回常态（3 秒后由 epoch 校验防脏）、按低一档重开编码器。 */
+    private fun onResumed(result: ResumeAttempt.Ok, host: String, port: Int): ResumedLink {
+        sessionLocalIp = localIpv4().orEmpty()
+        recoveryQuality.start(negotiatedTier())
+        Log.i(
+            TAG,
+            "resumed at $host:$port, quality ${recoveryQuality.tier().label} until ${recoveryQuality.fullTier().label}",
+        )
+        SenderReport.quality = recoveryQuality.text()
+        updateNotification("已恢复投屏")
+        // 通知栏不该长期挂着一次早已过去的事件：3 秒后回常态文案。
+        // 期间若有新状态（再次断线等），其 epoch 已变，这次重置自动作废。
+        val epoch = noticeEpoch.get()
+        main.postDelayed({ if (running && noticeEpoch.get() == epoch) updateNotification() }, 3_000)
+        restartEncoder()
+        return ResumedLink(result.conn, host, port)
     }
 
     /** 续会握手：HELLO → AUTH(resume=1)，接收端认保留窗口里的设备标识，不再弹授权。 */
@@ -890,48 +979,7 @@ class CaptureService : Service() {
     private fun watchPeer(conn: StreamConnection) {
         peerReader = thread(name = "airmirror-sender-rx") {
             try {
-                while (running) {
-                    val frame = conn.receive() ?: break
-                    when (frame.type) {
-                        Protocol.Type.CONTROL -> {
-                            val signal = SessionControl.decode(frame.payload)
-                            when (signal.op) {
-                                SessionControl.OP_TAKEOVER -> {
-                                    Log.i(TAG, "takeover requested by ${signal.from}")
-                                    SenderControl.requestTakeover(
-                                        signal.from,
-                                        System.currentTimeMillis() + TAKEOVER_WINDOW_MS,
-                                    )
-                                    SenderReport.quality = "${signal.from} 请求接管投屏"
-                                }
-                                SessionControl.OP_SYNC -> {
-                                    Log.i(TAG, "peer restarted its decoder, sending a key frame")
-                                    syncRequested.set(true)
-                                }
-                                // 没有 op 的 CONTROL 仍是本机画质上限（PRD 8.4）
-                                "" -> applyCeiling(Limit.decode(frame.payload))
-                                else -> Unit
-                            }
-                        }
-
-                        Protocol.Type.BYE -> {
-                            // 大屏按了「结束投屏」：这是有序收尾，不进恢复窗口
-                            Log.i(TAG, "peer ended session (bye), yielded=$yielded")
-                            // 对端先结束并会在读完 BYE 后关连接，本端锚着同一条连接再发一次
-                            // 只会得到 Broken pipe；标记成已发，让 cleanup 跳过这一步
-                            byeSent.set(true)
-                            SenderReport.last = if (yielded) {
-                                "已让出投屏"
-                            } else {
-                                ErrorNotice.textFor(ErrorNotice.Cause.SESSION_ENDED)
-                            }
-                            running = false
-                            break
-                        }
-
-                        else -> Unit
-                    }
-                }
+                readPeerLoop(conn)
                 // 读不出来且没有收过 BYE：属于意外断链，交给主循环进入恢复流程
                 if (running && connection === conn) peerGone = true
             } catch (e: Exception) {
@@ -941,6 +989,56 @@ class CaptureService : Service() {
                 }
             }
         }
+    }
+
+    /** 逐帧读对端消息，直到断链或对端 BYE；是否算意外断链由调用方判定。 */
+    private fun readPeerLoop(conn: StreamConnection) {
+        while (running) {
+            val frame = conn.receive() ?: break
+            when (frame.type) {
+                Protocol.Type.CONTROL -> handlePeerControl(frame)
+                Protocol.Type.BYE -> {
+                    handlePeerBye()
+                    break
+                }
+                else -> Unit
+            }
+        }
+    }
+
+    /** 对端 CONTROL：接管请求、要求补关键帧、画质上限（没有 op 的 CONTROL 仍是本机上限，PRD 8.4）。 */
+    private fun handlePeerControl(frame: Protocol.Frame) {
+        val signal = SessionControl.decode(frame.payload)
+        when (signal.op) {
+            SessionControl.OP_TAKEOVER -> {
+                Log.i(TAG, "takeover requested by ${signal.from}")
+                SenderControl.requestTakeover(
+                    signal.from,
+                    System.currentTimeMillis() + TAKEOVER_WINDOW_MS,
+                )
+                SenderReport.quality = "${signal.from} 请求接管投屏"
+            }
+            SessionControl.OP_SYNC -> {
+                Log.i(TAG, "peer restarted its decoder, sending a key frame")
+                syncRequested.set(true)
+            }
+            "" -> applyCeiling(Limit.decode(frame.payload))
+            else -> Unit
+        }
+    }
+
+    /** 大屏按了「结束投屏」：有序收尾，不进恢复窗口。 */
+    private fun handlePeerBye() {
+        Log.i(TAG, "peer ended session (bye), yielded=$yielded")
+        // 对端先结束并会在读完 BYE 后关连接，本端锚着同一条连接再发一次
+        // 只会得到 Broken pipe；标记成已发，让 cleanup 跳过这一步
+        byeSent.set(true)
+        SenderReport.last = if (yielded) {
+            "已让出投屏"
+        } else {
+            ErrorNotice.textFor(ErrorNotice.Cause.SESSION_ENDED)
+        }
+        running = false
     }
 
     private fun applyCeiling(newCeiling: Limit.Ceiling) {

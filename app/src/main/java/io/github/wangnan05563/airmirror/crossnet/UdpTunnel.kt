@@ -167,8 +167,10 @@ class UdpTunnel(
         lock.lock()
         try {
             while (!closed && pending.size >= WINDOW) {
-                // 发送窗口满时阻塞写：不限制的话，一台不确认的对端会把内存吃光
-                canSend.await(RTO_MS, TimeUnit.MILLISECONDS)
+                // 发送窗口满时阻塞写：不限制的话，一台不确认的对端会把内存吃光。
+                // 到期(false)表示本轮等待结束，回到循环头重查窗口与关闭标志。
+                val signaled = canSend.await(RTO_MS, TimeUnit.MILLISECONDS)
+                if (!signaled && closed) throw IOException("tunnel closed")
             }
             if (closed) throw IOException("tunnel closed")
             val seq = nextSeq++
@@ -198,9 +200,9 @@ class UdpTunnel(
                 return // socket 被关闭或不可读：交给上层按断链处理
             }
             // 只认打洞时确定的那个对端，避免同一端口上的无关 UDP 包污染流。
-            // InetAddress 必须用 equals 比地址：`!=` 比的是实例身份，同一个 IP 换一个实例
-            // （socket 层新建、缓存失效）就会被当成无关包丢掉，表现为「隧道通了但一个字节也收不到」。
-            if (!packet.address.equals(peer.address) || packet.port != peer.port) continue
+            // InetAddress 的 `==` 走 equals（按地址比较，不是实例身份）：同一个 IP 换一个实例
+            // （socket 层新建、缓存失效）仍要命中，否则会出现「隧道通了但一个字节也收不到」。
+            if (packet.address != peer.address || packet.port != peer.port) continue
             val frame = decode(packet.data, packet.length) ?: continue
             handle(frame)
         }
@@ -219,11 +221,9 @@ class UdpTunnel(
                 lock.unlock()
             }
         }
-        if ((frame.flags and FLAG_DATA) != 0) {
-            if (deliver(frame.seq, frame.payload)) {
-                // 每个数据帧都回累积 ACK：丢 ACK 只会多一次重传，不会让窗口卡死
-                sendFrame(FLAG_ACK, -1, highestDelivered(), ByteArray(0))
-            }
+        if ((frame.flags and FLAG_DATA) != 0 && deliver(frame.seq, frame.payload)) {
+            // 每个数据帧都回累积 ACK：丢 ACK 只会多一次重传，不会让窗口卡死
+            sendFrame(FLAG_ACK, -1, highestDelivered(), ByteArray(0))
         }
         if ((frame.flags and FLAG_FIN) != 0) {
             finSeq = frame.seq
@@ -258,29 +258,32 @@ class UdpTunnel(
     private fun deliver(seq: Long, payload: ByteArray): Boolean {
         lock.lock()
         try {
-            when {
-                seq < expectedSeq -> return true // 重传的旧帧，ACK 已经覆盖
+            return when {
+                seq < expectedSeq -> true // 重传的旧帧，ACK 已经覆盖
                 seq == expectedSeq -> {
-                    if (!chunks.offer(payload)) return false
-                    expectedSeq++
-                    while (true) {
-                        val next = outOfOrder.remove(expectedSeq) ?: break
-                        if (!chunks.offer(next)) {
-                            // 队列满：把这一片放回乱序区，序号不推进，等下轮重传
-                            outOfOrder[expectedSeq] = next
-                            break
-                        }
+                    if (!chunks.offer(payload)) {
+                        false
+                    } else {
                         expectedSeq++
+                        while (true) {
+                            val next = outOfOrder.remove(expectedSeq) ?: break
+                            if (!chunks.offer(next)) {
+                                // 队列满：把这一片放回乱序区，序号不推进，等下轮重传
+                                outOfOrder[expectedSeq] = next
+                                break
+                            }
+                            expectedSeq++
+                        }
+                        maybeFinish()
+                        true
                     }
-                    maybeFinish()
-                    return true
                 }
                 else -> {
                     outOfOrder[seq] = payload
                     while (outOfOrder.size > MAX_OUT_OF_ORDER) {
                         outOfOrder.pollLastEntry()
                     }
-                    return true
+                    true
                 }
             }
         } finally {

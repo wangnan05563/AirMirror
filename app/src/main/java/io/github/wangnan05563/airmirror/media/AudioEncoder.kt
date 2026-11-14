@@ -86,7 +86,7 @@ class AudioEncoder(
                     val buffer = outputBuffer(index)
                     val data = ByteArray(info.size)
                     buffer.position(info.offset)
-                    buffer.get(data, 0, info.size)
+                    buffer.get(data, 0, info.size) // NOSONAR(kotlin:S6518) ByteBuffer 批量读取，不是索引访问
                     codec.releaseOutputBuffer(index, false)
                     // 编码器的配置块不发：接收端按 CONFIG 帧里的描述自己建解码格式
                     if (info.size > 0 && info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG == 0) {

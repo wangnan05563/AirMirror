@@ -3,7 +3,7 @@ package io.github.wangnan05563.airmirror.update
 import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
-import java.net.URL
+import java.net.URI
 
 /**
  * APK 下载（PRD 通用需求「在线更新」的第二步）。
@@ -28,7 +28,7 @@ object ApkDownload {
     ): File {
         target.parentFile?.mkdirs()
         val temp = File(target.parentFile, target.name + ".part")
-        val connection = (URL(url).openConnection() as HttpURLConnection)
+        val connection = (URI(url).toURL().openConnection() as HttpURLConnection)
         try {
             connection.connectTimeout = timeoutMs
             connection.readTimeout = timeoutMs
@@ -54,7 +54,8 @@ object ApkDownload {
             }
             if (copied <= 0) throw IOException("empty body")
             if (total > 0 && copied != total) throw IOException("truncated: $copied/$total")
-            if (target.exists()) target.delete()
+            // 旧包删不掉就当场失败：renameTo 也会失败，早一步给出同样可解释的错误
+            if (target.exists() && !target.delete()) throw IOException("cannot replace existing download")
             if (!temp.renameTo(target)) throw IOException("cannot rename download")
             return target
         } finally {

@@ -2,7 +2,6 @@ package io.github.wangnan05563.airmirror.ui
 
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.view.View

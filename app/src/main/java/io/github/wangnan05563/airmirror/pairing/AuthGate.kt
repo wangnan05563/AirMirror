@@ -55,39 +55,8 @@ class AuthGate(
         if (decision.verdict == TrustRegistry.Verdict.SUPPRESSED) {
             return Verdict.Rejected(Refused.NOT_TRUSTED, 0)
         }
-        if (cred.isNotEmpty()) {
-            val outcome = when {
-                cred.matches(SIX_DIGITS) -> code.submit(cred)
-                cred.matches(HEX_TOKEN) -> code.submitToken(cred)
-                // 既不是 6 位码也不是 16 位令牌：属输入不合法，按「没输完」处理，不烧校验次数
-                else -> return Verdict.Rejected(Refused.INVALID_CODE, 0)
-            }
-            when (outcome) {
-                CastCode.Outcome.Expired -> return Verdict.Rejected(Refused.ALREADY_USED, 0)
-                is CastCode.Outcome.Locked -> return Verdict.Rejected(Refused.TOO_MANY_ATTEMPTS, outcome.secondsLeft)
-                is CastCode.Outcome.Rejected -> return if (outcome.remainingAttempts == 0) {
-                    Verdict.Rejected(Refused.TOO_MANY_ATTEMPTS, 60)
-                } else {
-                    Verdict.Rejected(Refused.INVALID_CODE, 0)
-                }
-                CastCode.Outcome.Accepted -> {
-                    // 扫码/投屏码属一次性授权：不入可信列表，除非用户随后选「记住这台设备」
-                    trust.allow(id, deviceName, permanent = false)
-                    return if (trust.acquireSession(id)) {
-                        Verdict.Authorized(deviceName, permanent = false)
-                    } else {
-                        Verdict.TakeoverRequired(id, deviceName, permanent = false)
-                    }
-                }
-            }
-        }
-        if (decision.verdict == TrustRegistry.Verdict.TRUSTED) {
-            return if (trust.acquireSession(id)) {
-                Verdict.Authorized(deviceName, permanent = true)
-            } else {
-                Verdict.TakeoverRequired(id, deviceName, permanent = true)
-            }
-        }
+        if (cred.isNotEmpty()) return authorizeByCode(id, deviceName, cred)
+        if (decision.verdict == TrustRegistry.Verdict.TRUSTED) return admit(id, deviceName, permanent = true)
         val held = trust.active()
         if (held != null && held != id) return Verdict.Rejected(Refused.SESSION_BUSY, 0)
         // 走到这里的会话都没有递过有效凭据（有效凭据已在上方 CastCode 分支即时放行）：
@@ -95,6 +64,38 @@ class AuthGate(
         // 由 ReceiverSession.awaitDecision 退回拒绝（decline），不再把匿名同网设备永久写入可信列表。
         return Verdict.PendingPrompt(id, deviceName, Long.MAX_VALUE)
     }
+
+    /** 一次性凭据：6 位码或 16 位令牌，命中即放行但只记本次会话，不写可信列表。 */
+    private fun authorizeByCode(id: String, deviceName: String, cred: String): Verdict {
+        val outcome = when {
+            cred.matches(SIX_DIGITS) -> code.submit(cred)
+            cred.matches(HEX_TOKEN) -> code.submitToken(cred)
+            // 既不是 6 位码也不是 16 位令牌：属输入不合法，按「没输完」处理，不烧校验次数
+            else -> return Verdict.Rejected(Refused.INVALID_CODE, 0)
+        }
+        return when (outcome) {
+            CastCode.Outcome.Expired -> Verdict.Rejected(Refused.ALREADY_USED, 0)
+            is CastCode.Outcome.Locked -> Verdict.Rejected(Refused.TOO_MANY_ATTEMPTS, outcome.secondsLeft)
+            is CastCode.Outcome.Rejected -> if (outcome.remainingAttempts == 0) {
+                Verdict.Rejected(Refused.TOO_MANY_ATTEMPTS, 60)
+            } else {
+                Verdict.Rejected(Refused.INVALID_CODE, 0)
+            }
+            CastCode.Outcome.Accepted -> {
+                // 扫码/投屏码属一次性授权：不入可信列表，除非用户随后选「记住这台设备」
+                trust.allow(id, deviceName, permanent = false)
+                admit(id, deviceName, permanent = false)
+            }
+        }
+    }
+
+    /** 占会话成功就授权，被别的设备占着就要求用户在大屏上确认接管。 */
+    private fun admit(id: String, deviceName: String, permanent: Boolean): Verdict =
+        if (trust.acquireSession(id)) {
+            Verdict.Authorized(deviceName, permanent)
+        } else {
+            Verdict.TakeoverRequired(id, deviceName, permanent)
+        }
 
     private companion object {
         val SIX_DIGITS = Regex("^\\d{6}$")

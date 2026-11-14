@@ -80,44 +80,44 @@ class VideoEncoder(
             val index = codecInstance.dequeueOutputBuffer(info, 0)
             when {
                 index == MediaCodec.INFO_TRY_AGAIN_LATER -> return result
-
-                index == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
-                    if (!configSent) {
-                        val annexB = configFromFormat(codecInstance.outputFormat)
-                        if (annexB != null) {
-                            result.add(Encoded(H264.packConfig(width, height, annexB), 0L, keyFrame = true, config = true))
-                            configSent = true
-                        }
-                    }
-                }
-
-                index >= 0 -> {
-                    val buffer = outputBuffer(index)
-                    val data = ByteArray(info.size)
-                    buffer.position(info.offset)
-                    buffer.get(data, 0, info.size)
-                    codecInstance.releaseOutputBuffer(index, false)
-                    if (info.size > 0) {
-                        if (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0) {
-                            if (!configSent) {
-                                result.add(
-                                    Encoded(
-                                        H264.packConfig(width, height, H264.normalize(data)),
-                                        info.presentationTimeUs,
-                                        keyFrame = true,
-                                        config = true,
-                                    ),
-                                )
-                                configSent = true
-                            }
-                        } else {
-                            val key = info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME != 0
-                            result.add(Encoded(H264.normalize(data), info.presentationTimeUs, key, config = false))
-                        }
-                    }
-                }
+                index == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> emitConfig(result)
+                index >= 0 -> emitSample(result, index, info)
             }
         }
+    }
+
+    /** 编码器换了输出格式：补发一次 SPS/PPS 配置块，发过就忽略。 */
+    private fun emitConfig(result: MutableList<Encoded>) {
+        if (configSent) return
+        val annexB = configFromFormat(codecInstance.outputFormat) ?: return
+        result.add(Encoded(H264.packConfig(width, height, annexB), 0L, keyFrame = true, config = true))
+        configSent = true
+    }
+
+    /** 取出一帧输出：CSD 块走配置，普通帧原样交出去，缓冲无论大小都要先还给编码器。 */
+    private fun emitSample(result: MutableList<Encoded>, index: Int, info: MediaCodec.BufferInfo) {
+        val buffer = outputBuffer(index)
+        val data = ByteArray(info.size)
+        buffer.position(info.offset)
+        buffer.get(data, 0, info.size) // NOSONAR(kotlin:S6518) ByteBuffer 批量读取，不是索引访问
+        codecInstance.releaseOutputBuffer(index, false)
+        if (info.size <= 0) return
+        if (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0) {
+            if (!configSent) {
+                result.add(
+                    Encoded(
+                        H264.packConfig(width, height, H264.normalize(data)),
+                        info.presentationTimeUs,
+                        keyFrame = true,
+                        config = true,
+                    ),
+                )
+                configSent = true
+            }
+            return
+        }
+        val key = info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME != 0
+        result.add(Encoded(H264.normalize(data), info.presentationTimeUs, key, config = false))
     }
 
     /**
@@ -148,6 +148,6 @@ class VideoEncoder(
 internal fun ByteBuffer.toByteArray(): ByteArray {
     val duplicate = duplicate()
     val data = ByteArray(duplicate.remaining())
-    duplicate.get(data)
+    duplicate.get(data) // NOSONAR(kotlin:S6518) ByteBuffer 批量读取，不是索引访问
     return data
 }

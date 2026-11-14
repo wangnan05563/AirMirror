@@ -160,12 +160,12 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     private var lastSenderName = ""
     private var endConfirmUntil = 0L
     private val main = Handler(Looper.getMainLooper())
-    private val ticker = object : Runnable {
-        override fun run() {
-            refreshWaitingPage()
-            tickEndConfirm()
-            main.postDelayed(this, TICK_MS)
-        }
+    private val ticker = Runnable { tickWaitingPage() }
+
+    private fun tickWaitingPage() {
+        refreshWaitingPage()
+        tickEndConfirm()
+        main.postDelayed(ticker, TICK_MS)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -851,52 +851,85 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     }
 
     private fun refreshSettings() {
+        refreshModeRows()
+        refreshToggleRows()
+        refreshSignalingRow()
+        refreshQualityRows()
+        refreshMaintenanceRows()
+        // 画质档位行是探完能力后动态 addView 的，刷新时再扫一次树；不抢当前焦点
+        TvFocus.applyTree(settingsPanel, requestInitialFocus = false)
+    }
+
+    /** 显示模式：选中项用实心点与强调色，同时把无障碍选中态切过去。 */
+    private fun refreshModeRows() {
         for ((mode, row) in modeRows) {
             row.text = "${if (mode == displayMode) "●" else "○"} ${mode.label}\n${mode.hint}"
             row.setTextColor(if (mode == displayMode) Theme.ACCENT else Theme.TEXT_SECONDARY)
             A11y.describe(row, A11yCopy.mode(mode.label, mode.hint, mode == displayMode))
             A11y.switchRow(row, mode == displayMode)
         }
+    }
+
+    /** 三个开关行：开关值一次读出来，文案与无障碍描述都用同一个值。 */
+    private fun refreshToggleRows() {
         rotationRow.text = "旋转跟随：${if (followRotation) "开" else "关"}"
         A11y.describe(rotationRow, A11yCopy.toggle("旋转跟随", followRotation))
         A11y.switchRow(rotationRow, followRotation)
         labelRow.text = "竖屏标签：${if (portraitLabel) "开" else "关"}"
         A11y.describe(labelRow, A11yCopy.toggle("竖屏标签", portraitLabel))
         A11y.switchRow(labelRow, portraitLabel)
-        autoStartRow.text = "开机自启：${if (store.autoStartEnabled()) "开" else "关"}"
-        A11y.describe(autoStartRow, A11yCopy.toggle("开机自启", store.autoStartEnabled()))
-        A11y.switchRow(autoStartRow, store.autoStartEnabled())
+        val autoStart = store.autoStartEnabled()
+        autoStartRow.text = "开机自启：${if (autoStart) "开" else "关"}"
+        A11y.describe(autoStartRow, A11yCopy.toggle("开机自启", autoStart))
+        A11y.switchRow(autoStartRow, autoStart)
+    }
+
+    private fun refreshSignalingRow() {
         val signaling = store.signalingUrl()
         val crossNetOn = SignalingSettings.enabled(signaling)
         crossNetRow.text = if (crossNetOn) "跨网信令：已配置（$signaling）" else "跨网信令：未配置（仅局域网）"
         crossNetRow.setTextColor(if (crossNetOn) Theme.TEXT_PRIMARY else Theme.TEXT_SECONDARY)
         A11y.describe(crossNetRow, A11yCopy.signaling(crossNetOn, signaling))
+    }
+
+    /** 画质档位：null 代表「自动」；未探到任何档位时整行不显示。 */
+    private fun refreshQualityRows() {
         for ((tier, row) in qualityRows) {
-            row.text = if (tier == null) {
-                "${if (qualityLock == null) "●" else "○"} 自动（推荐）"
-            } else {
-                "${if (qualityLock == tier) "●" else "○"} ${tier.label} · ${tier.width}x${tier.height} ${tier.fps}帧"
-            }
-            row.setTextColor(if (tier == qualityLock) Theme.ACCENT else Theme.TEXT_SECONDARY)
-            if (tier == null) {
-                A11y.describe(row, A11yCopy.qualityAuto(qualityLock == null))
-                A11y.switchRow(row, qualityLock == null)
-            } else {
-                A11y.describe(row, A11yCopy.quality(tier.label, tier.width, tier.height, tier.fps, qualityLock == tier))
-                A11y.switchRow(row, qualityLock == tier)
-            }
+            renderQualityRow(tier, row)
         }
         badgeRow.visibility = if (qualityRows.isEmpty()) View.GONE else View.VISIBLE
-        badgeRow.text = "画质角标：${if (store.qualityBadgeEnabled()) "开" else "关"}"
-        A11y.describe(badgeRow, A11yCopy.toggle("画质角标", store.qualityBadgeEnabled()))
-        A11y.switchRow(badgeRow, store.qualityBadgeEnabled())
-        diagnosticsRow.text = "崩溃日志：${if (diagnostics.enabled()) "开（仅本机 · 7 天自动清除）" else "关（默认）"}"
-        A11y.describe(diagnosticsRow, A11yCopy.diagnostics(diagnostics.enabled()))
-        A11y.switchRow(diagnosticsRow, diagnostics.enabled())
-        clearDataRow.text = "清除本地日志与缓存（${diagnostics.count()} 条）"
-        A11y.describe(clearDataRow, A11yCopy.clearData(diagnostics.count()))
-        // 画质档位行是探完能力后动态 addView 的，刷新时再扫一次树；不抢当前焦点
-        TvFocus.applyTree(settingsPanel, requestInitialFocus = false)
+    }
+
+    /** 一行档位：选中标记 + 规格文案 + 读屏开关状态；「自动」是 null 档。 */
+    private fun renderQualityRow(tier: QualityTier?, row: TextView) {
+        val selected = tier == qualityLock
+        row.text = if (tier == null) {
+            "${if (qualityLock == null) "●" else "○"} 自动（推荐）"
+        } else {
+            "${if (selected) "●" else "○"} ${tier.label} · ${tier.width}x${tier.height} ${tier.fps}帧"
+        }
+        row.setTextColor(if (selected) Theme.ACCENT else Theme.TEXT_SECONDARY)
+        if (tier == null) {
+            A11y.describe(row, A11yCopy.qualityAuto(qualityLock == null))
+        } else {
+            A11y.describe(row, A11yCopy.quality(tier.label, tier.width, tier.height, tier.fps, selected))
+        }
+        A11y.switchRow(row, selected)
+    }
+
+    /** 角标、崩溃日志与清除数据：后两项要带上当前实际状态（开关值与条数）。 */
+    private fun refreshMaintenanceRows() {
+        val badgeOn = store.qualityBadgeEnabled()
+        badgeRow.text = "画质角标：${if (badgeOn) "开" else "关"}"
+        A11y.describe(badgeRow, A11yCopy.toggle("画质角标", badgeOn))
+        A11y.switchRow(badgeRow, badgeOn)
+        val diagnosticsOn = diagnostics.enabled()
+        diagnosticsRow.text = "崩溃日志：${if (diagnosticsOn) "开（仅本机 · 7 天自动清除）" else "关（默认）"}"
+        A11y.describe(diagnosticsRow, A11yCopy.diagnostics(diagnosticsOn))
+        A11y.switchRow(diagnosticsRow, diagnosticsOn)
+        val count = diagnostics.count()
+        clearDataRow.text = "清除本地日志与缓存（$count 条）"
+        A11y.describe(clearDataRow, A11yCopy.clearData(count))
     }
 
     /** PRD FS-04：留空即关闭跨网，大屏不向任何外部服务发请求；填了才启动待命。 */
@@ -1094,7 +1127,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
 
     /** FS-09：投屏中第一次返回只提示，10 秒内不再按就自动取消，第二次才真的结束。 */
     @Deprecated("Activity's back callback; keeps the app free of AndroidX")
-    override fun onBackPressed() {
+    override fun onBackPressed() { // NOSONAR(kotlin:S1133) 平台回调必须覆写（项目无 AndroidX），不能删除
         if (!isCasting) {
             super.onBackPressed()
             return
@@ -1427,47 +1460,61 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     }
 
     private fun refreshWaitingPage() {
+        refreshCodePanel()
+        refreshBrowserRow()
+        refreshPairingQr()
+    }
+
+    /** 投屏码面板：锁定期用占位符；描述只在换码/锁定翻转时改写与播报，每秒倒计时不打断读屏（R8）。 */
+    private fun refreshCodePanel() {
         val code = pairing.code
         val locked = code.state() == CastCode.State.LOCKED
         // 锁定期内展示的数字输了也不认，宁可用占位符也不给一个「看着能用」的码
         renderCode(if (locked) LOCK_PLACEHOLDER else code.code())
         val seconds = code.secondsUntilRotation()
-        // 描述只在换码/锁定翻转时改写与播报：每秒倒计时刷新不触发，避免读屏被打断（R8）
-        val codeValue = if (locked) "" else code.code()
-        val a11yKey = "$locked:$codeValue"
-        if (a11yKey != lastCodeA11yKey) {
-            val first = lastCodeA11yKey == null
-            lastCodeA11yKey = a11yKey
-            A11y.describe(activeCode, A11yCopy.code(codeValue, locked, seconds))
-            if (!first) {
-                if (locked) A11y.announce(codeSlot, A11yCopy.codeLocked(), "code-locked")
-                else A11y.announce(codeSlot, A11yCopy.codeRotated(codeValue, seconds), "code-rotated")
-            }
-        }
+        updateCodeA11y(locked, if (locked) "" else code.code(), seconds)
         countdownText.text = if (locked) "投屏码已临时锁定" else "${seconds} 秒后更换投屏码"
         ring.fraction = if (locked) 0f else seconds / 60f
-        val address = localIpv4() ?: "127.0.0.1"
-        val port = host.port
+    }
+
+    private fun updateCodeA11y(locked: Boolean, codeValue: String, seconds: Int) {
+        val a11yKey = "$locked:$codeValue"
+        if (a11yKey == lastCodeA11yKey) return
+        val first = lastCodeA11yKey == null
+        lastCodeA11yKey = a11yKey
+        A11y.describe(activeCode, A11yCopy.code(codeValue, locked, seconds))
+        if (first) return
+        if (locked) A11y.announce(codeSlot, A11yCopy.codeLocked(), "code-locked")
+        else A11y.announce(codeSlot, A11yCopy.codeRotated(codeValue, seconds), "code-rotated")
+    }
+
+    /** 浏览器投屏入口：没开浏览器投屏时两个视图都不占位，开了才按 URL 变化重画二维码。 */
+    private fun refreshBrowserRow() {
         val browser = host.browserCastUrl()
         if (browser.isNullOrBlank()) {
             browserText.visibility = View.GONE
             browserQr.visibility = View.GONE
             lastBrowserUrl = ""
-        } else {
-            browserText.visibility = View.VISIBLE
-            browserText.text = getString(R.string.browser_cast_url, browser)
-            if (browser != lastBrowserUrl) {
-                lastBrowserUrl = browser
-                Qr.into(browserQr, browser, BROWSER_QR_PIXELS)
-                A11y.describe(browserText, A11yCopy.browserUrl(browser))
-            }
-            browserQr.visibility = View.VISIBLE
+            return
         }
+        browserText.visibility = View.VISIBLE
+        browserText.text = getString(R.string.browser_cast_url, browser)
+        if (browser != lastBrowserUrl) {
+            lastBrowserUrl = browser
+            Qr.into(browserQr, browser, BROWSER_QR_PIXELS)
+            A11y.describe(browserText, A11yCopy.browserUrl(browser))
+        }
+        browserQr.visibility = View.VISIBLE
+    }
+
+    private fun refreshPairingQr() {
+        val address = localIpv4() ?: "127.0.0.1"
+        val port = host.port
+        val locked = pairing.code.state() == CastCode.State.LOCKED
         val payload = if (port > 0 && !locked) pairing.qrPayload(address, port, deviceNameText.text.toString()) else ""
-        if (payload.isNotEmpty() && payload != lastPayload) {
-            lastPayload = payload
-            Qr.into(qrView, payload, QR_PIXELS)
-        }
+        if (payload.isEmpty() || payload == lastPayload) return
+        lastPayload = payload
+        Qr.into(qrView, payload, QR_PIXELS)
     }
 
     private fun showPrompt(prompt: ReceiverSession.Prompt) {

@@ -88,20 +88,20 @@ class ReceiverHost private constructor(context: Context) {
     private val residency = ProtocolResidency(now = { System.currentTimeMillis() })
 
     /** 释放巡检：远小于 5 分钟窗口的粒度，模块不忙且闲置够久才放。 */
-    private val idleSweep = object : Runnable {
-        override fun run() {
-            if (!protocolsResident) {
-                for (module in residency.releaseCandidates()) {
-                    val released = when (module) {
-                        ProtocolModule.DLNA -> dlna?.releaseIdle() == true
-                        // 私有通道没有可释放的常驻运行时，监听必须一直在
-                        ProtocolModule.PRIVATE_CHANNEL -> false
-                    }
-                    if (released) residency.markReleased(module)
+    private val idleSweep = Runnable { sweepIdleProtocols() }
+
+    private fun sweepIdleProtocols() {
+        if (!protocolsResident) {
+            for (module in residency.releaseCandidates()) {
+                val released = when (module) {
+                    ProtocolModule.DLNA -> dlna?.releaseIdle() == true
+                    // 私有通道没有可释放的常驻运行时，监听必须一直在
+                    ProtocolModule.PRIVATE_CHANNEL -> false
                 }
+                if (released) residency.markReleased(module)
             }
-            main.postDelayed(this, ProtocolResidency.TICK_MILLIS)
         }
+        main.postDelayed(idleSweep, ProtocolResidency.TICK_MILLIS)
     }
 
     /** 界面交下来的 Surface：宿主比 Surface 晚起来时（进程重启、界面重建）靠它补挂，否则画面会一直黑。 */

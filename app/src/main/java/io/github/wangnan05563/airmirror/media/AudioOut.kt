@@ -99,7 +99,7 @@ class AudioOut(private val spec: AudioFormat.Spec) {
                     val bytes = ByteArray(info.size.coerceAtLeast(0))
                     if (info.size > 0) {
                         buffer.position(info.offset)
-                        buffer.get(bytes, 0, info.size)
+                        buffer.get(bytes, 0, info.size) // NOSONAR(kotlin:S6518) ByteBuffer 批量读取，不是索引访问
                     }
                     codec.releaseOutputBuffer(index, false)
                     if (bytes.isNotEmpty()) enqueue(Pcm(bytes, info.presentationTimeUs))

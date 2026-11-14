@@ -128,54 +128,66 @@ class SenderActivity : Activity() {
         getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
 
     /** 采集在后台服务里跑，界面按拍轮询它的结论。 */
-    private val refresh = object : Runnable {
-        override fun run() {
-            // 异常文案优先；没有异常时展示协商后的画质，两者都不在就保持当前提示
-            val report = SenderReport.last
-            val note = if (report.isEmpty()) SenderReport.quality else report
-            if (note != lastReport) {
-                lastReport = note
-                // UX-02：码类拒绝是发送端唯一可观测的「换码」时刻，按输入态给可重新确认的提示，
-                // 输入框保留不清空（这里从不 setText("")）；非码类错误照旧走原提示。
-                status.text = codeRotationNotice(report) ?: note.ifEmpty { hint.text.ifEmpty { SEARCHING } }
-                statusState = when {
-                    report.isNotEmpty() -> CastStatus.State.ERROR
-                    SenderReport.quality.isNotEmpty() ->
-                        if (SenderControl.paused) CastStatus.State.PAUSED else CastStatus.State.CASTING
-                    else -> CastStatus.State.IDLE
-                }
-                status.setTextColor(StatusColors.textOf(statusState))
-                // 出错时把输入放开让用户重试；正常投屏中保持禁用，避免重复发起
-                codeInput.isEnabled = report.isNotEmpty()
+    private val refresh = Runnable { refreshStatus() }
+
+    private fun refreshStatus() {
+        updateStatusLine()
+        // 有画质说明即表示会话在跑；暂停只停送帧，按钮仍留在原位
+        val casting = SenderReport.quality.isNotEmpty()
+        updateCastingChrome(casting)
+        if (casting) updateCastingControls()
+        refreshTakeover(casting)
+        main.postDelayed(refresh, POLL_MS)
+    }
+
+    /** 状态行：异常文案优先，没有异常时展示协商后的画质，两者都不在就保持当前提示。 */
+    private fun updateStatusLine() {
+        val report = SenderReport.last
+        val note = if (report.isEmpty()) SenderReport.quality else report
+        if (note == lastReport) return
+        lastReport = note
+        // UX-02：码类拒绝是发送端唯一可观测的「换码」时刻，按输入态给可重新确认的提示，
+        // 输入框保留不清空（这里从不 setText("")）；非码类错误照旧走原提示。
+        status.text = codeRotationNotice(report) ?: note.ifEmpty { hint.text.ifEmpty { SEARCHING } }
+        statusState = statusStateOf(report)
+        status.setTextColor(StatusColors.textOf(statusState))
+        // 出错时把输入放开让用户重试；正常投屏中保持禁用，避免重复发起
+        codeInput.isEnabled = report.isNotEmpty()
+    }
+
+    private fun statusStateOf(report: String): CastStatus.State = when {
+        report.isNotEmpty() -> CastStatus.State.ERROR
+        SenderReport.quality.isNotEmpty() ->
+            if (SenderControl.paused) CastStatus.State.PAUSED else CastStatus.State.CASTING
+        else -> CastStatus.State.IDLE
+    }
+
+    /** 投屏态切换时调整可见性：投屏中收起设备列表，退出后恢复。 */
+    private fun updateCastingChrome(casting: Boolean) {
+        if (casting == lastCasting) return
+        lastCasting = casting
+        controlBar.visibility = if (casting) View.VISIBLE else View.GONE
+        // PRD §11.3「投屏中列表收起」
+        listScroller.visibility = if (casting) View.GONE else View.VISIBLE
+        if (casting) expandedFingerprint = null
+    }
+
+    /** 投屏中的按钮文案与无障碍描述：暂停、停止、声音三键始终反映当前状态。 */
+    private fun updateCastingControls() {
+        // UX-03：暂停是发送端本地状态（只停送帧），状态条跟着切换；错误文案优先级更高
+        if (SenderReport.last.isEmpty()) {
+            val pausedLine = CastStatus.line(CastStatus.State.PAUSED)
+            if (SenderControl.paused) {
+                if (status.text != pausedLine) showStatus(CastStatus.State.PAUSED, pausedLine)
+            } else if (status.text == pausedLine) {
+                showStatus(CastStatus.State.CASTING, SenderReport.quality.ifEmpty { CastStatus.castingLine() })
             }
-            // 有画质说明即表示会话在跑；暂停只停送帧，按钮仍留在原位
-            val casting = SenderReport.quality.isNotEmpty()
-            if (casting != lastCasting) {
-                lastCasting = casting
-                controlBar.visibility = if (casting) View.VISIBLE else View.GONE
-                // PRD §11.3「投屏中列表收起」
-                listScroller.visibility = if (casting) View.GONE else View.VISIBLE
-                if (casting) expandedFingerprint = null
-            }
-            if (casting) {
-                // UX-03：暂停是发送端本地状态（只停送帧），状态条跟着切换；错误文案优先级更高
-                if (SenderReport.last.isEmpty()) {
-                    val pausedLine = CastStatus.line(CastStatus.State.PAUSED)
-                    if (SenderControl.paused) {
-                        if (status.text != pausedLine) showStatus(CastStatus.State.PAUSED, pausedLine)
-                    } else if (status.text == pausedLine) {
-                        showStatus(CastStatus.State.CASTING, SenderReport.quality.ifEmpty { CastStatus.castingLine() })
-                    }
-                }
-                pauseButton.text = DeviceCardPolicy.pauseLabel(SenderControl.paused)
-                audioButton.text = audioLabel()
-                A11y.describe(pauseButton, A11yCopy.pause(SenderControl.paused))
-                A11y.describe(stopButton, A11yCopy.stop(castingTargetName))
-                A11y.describe(audioButton, A11yCopy.audio(SenderControl.audio))
-            }
-            refreshTakeover(casting)
-            main.postDelayed(this, POLL_MS)
         }
+        pauseButton.text = DeviceCardPolicy.pauseLabel(SenderControl.paused)
+        audioButton.text = audioLabel()
+        A11y.describe(pauseButton, A11yCopy.pause(SenderControl.paused))
+        A11y.describe(stopButton, A11yCopy.stop(castingTargetName))
+        A11y.describe(audioButton, A11yCopy.audio(SenderControl.audio))
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -490,113 +502,158 @@ class SenderActivity : Activity() {
         list.removeAllViews()
         for (row in devices.rows()) {
             val target = targetOf(row.fingerprint, row.name) ?: continue
-            // 一台设备可能同时广播多种协议：有能用的就按能用的展示，全都用不了才标不支持
-            val usable = ProtocolBoundary.bestSupported(row.protocols)
-            val card = DeviceCardPolicy.Card(
-                fingerprint = row.fingerprint,
-                online = row.online,
-                supported = usable != null,
-                lastConnectedAt = row.lastConnectedAt,
-            )
-            val actions = DeviceCardPolicy.actions(card)
-            val lastLabel = if (row.lastConnectedAt == null || row.lastConnectedAt <= 0L) {
-                "还没连过"
-            } else {
-                val minutes = ((System.currentTimeMillis() - row.lastConnectedAt) / 60_000L).coerceAtLeast(0L)
-                if (minutes < 1L) "刚刚连过" else "上次连接 $minutes 分钟前"
-            }
-            list.addView(LinearLayout(this@SenderActivity).apply {
-                orientation = LinearLayout.VERTICAL
-                setBackgroundColor(if (row.online) Theme.SURFACE else Theme.BACKGROUND)
-                val gap = Theme.dp(this@SenderActivity, Theme.SPACE_MD_DP)
-                setPadding(gap, gap, gap, gap)
-                addView(LinearLayout(this@SenderActivity).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    minimumHeight = Theme.dp(this@SenderActivity, DeviceCardPolicy.TOUCH_TARGET_DP)
-                    A11y.describe(this, A11yCopy.card(row.name, row.online, usable != null, row.fingerprint == expandedFingerprint, lastLabel))
-                    addView(TextView(this@SenderActivity).apply {
-                        text = row.name
-                        textSize = Theme.DEVICE_NAME_SP
-                        setTextColor(if (row.online) Theme.TEXT_PRIMARY else StatusColors.offlineText())
-                        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                        A11y.decorative(this)
-                    })
-                    addView(DeviceCardTag.chip(this@SenderActivity, DeviceCardPolicy.tag(card, usable?.let { ProtocolBoundary.badgeFor(it) }.orEmpty())).apply {
-                        A11y.decorative(this)
-                    })
-                    // PRD §11.3：点击先展开两个动作，不再「点一下就先连上再选」
-                    setOnClickListener {
-                        if (actions.isEmpty()) {
-                            toast(if (row.online) ProtocolBoundary.describe(row.strongest).text() else DeviceCardPolicy.offlineHint())
-                        } else {
-                            expandedFingerprint = DeviceCardPolicy.toggle(expandedFingerprint, row.fingerprint)
-                            renderList()
-                        }
-                    }
-                }, matchWidth())
-                // PRD UI-05：离线说清「上次连接 + 可能原因」，在线且近期连过给「最近使用」，其余不占行
-                DeviceCardPolicy.subtitle(card, System.currentTimeMillis())?.let { note ->
-                    addView(LinearLayout(this@SenderActivity).apply {
-                        orientation = LinearLayout.HORIZONTAL
-                        gravity = Gravity.CENTER_VERTICAL
-                        setPadding(0, Theme.dp(this@SenderActivity, 6), 0, 0)
-                        if (DeviceCardPolicy.needsOfflineMarker(card)) {
-                            addView(DeviceCardTag.offlineDot(this@SenderActivity))
-                        }
-                        addView(TextView(this@SenderActivity).apply {
-                            text = note
-                            textSize = Theme.PHONE_BODY_SP
-                            setTextColor(StatusColors.offlineText())
-                        })
-                    }, matchWidth())
-                }
-                if (row.fingerprint == expandedFingerprint && actions.isNotEmpty()) {
-                    addView(LinearLayout(this@SenderActivity).apply {
-                        orientation = LinearLayout.HORIZONTAL
-                        setPadding(0, gap, 0, 0)
-                        for (action in actions) {
-                            addView(Button(this@SenderActivity).apply {
-                                text = when (action) {
-                                    DeviceCardPolicy.CardAction.MIRROR -> "镜像屏幕"
-                                    DeviceCardPolicy.CardAction.PUSH_VIDEO -> "推送视频"
-                                }
-                                setTextColor(Theme.ACCENT)
-                                A11y.describe(this, A11yCopy.cardAction(row.name, action == DeviceCardPolicy.CardAction.MIRROR))
-                                setOnClickListener {
-                                    expandedFingerprint = null
-                                    renderList()
-                                    when (action) {
-                                        DeviceCardPolicy.CardAction.MIRROR -> connectTo(target)
-                                        // 本片不伪装修好推送链路：按 7.3 给可执行替代路径
-                                        DeviceCardPolicy.CardAction.PUSH_VIDEO -> toast(DeviceCardPolicy.pushVideoFallback())
-                                    }
-                                }
-                            }, LinearLayout.LayoutParams(0, Theme.dp(this@SenderActivity, DeviceCardPolicy.ACTION_ROW_DP), 1f))
-                        }
-                    }, LinearLayout.LayoutParams(
+            list.addView(deviceCard(row, target), matchWidth())
+        }
+        renderEmptyState()
+    }
+
+    /** 一张设备卡：标题行 + 离线/最近使用说明 + 展开后的两个动作。 */
+    private fun deviceCard(row: DeviceRegistry.Row, target: Target): View {
+        // 一台设备可能同时广播多种协议：有能用的就按能用的展示，全都用不了才标不支持
+        val usable = ProtocolBoundary.bestSupported(row.protocols)
+        val card = DeviceCardPolicy.Card(
+            fingerprint = row.fingerprint,
+            online = row.online,
+            supported = usable != null,
+            lastConnectedAt = row.lastConnectedAt,
+        )
+        val actions = DeviceCardPolicy.actions(card)
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(if (row.online) Theme.SURFACE else Theme.BACKGROUND)
+            val gap = Theme.dp(this@SenderActivity, Theme.SPACE_MD_DP)
+            setPadding(gap, gap, gap, gap)
+            addView(deviceHeader(row, card, usable, actions), matchWidth())
+            addSubtitle(this, card)
+            if (row.fingerprint == expandedFingerprint && actions.isNotEmpty()) {
+                addView(
+                    actionRow(row, target, actions, gap),
+                    LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
                         Theme.dp(this@SenderActivity, DeviceCardPolicy.ACTION_ROW_DP) + gap,
-                    ))
-                }
-            }, matchWidth())
+                    ),
+                )
+            }
         }
+    }
+
+    /** 标题行：设备名 + 协议角标；点击按「先展开动作、再选动作」处理（PRD §11.3）。 */
+    private fun deviceHeader(
+        row: DeviceRegistry.Row,
+        card: DeviceCardPolicy.Card,
+        usable: String?,
+        actions: List<DeviceCardPolicy.CardAction>,
+    ): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        minimumHeight = Theme.dp(this@SenderActivity, DeviceCardPolicy.TOUCH_TARGET_DP)
+        A11y.describe(
+            this,
+            A11yCopy.card(row.name, row.online, usable != null, row.fingerprint == expandedFingerprint, lastConnectedLabel(row)),
+        )
+        addView(TextView(this@SenderActivity).apply {
+            text = row.name
+            textSize = Theme.DEVICE_NAME_SP
+            setTextColor(if (row.online) Theme.TEXT_PRIMARY else StatusColors.offlineText())
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            A11y.decorative(this)
+        })
+        addView(DeviceCardTag.chip(this@SenderActivity, DeviceCardPolicy.tag(card, usable?.let { ProtocolBoundary.badgeFor(it) }.orEmpty())).apply {
+            A11y.decorative(this)
+        })
+        // PRD §11.3：点击先展开两个动作，不再「点一下就先连上再选」
+        setOnClickListener {
+            if (actions.isEmpty()) {
+                toast(if (row.online) ProtocolBoundary.describe(row.strongest).text() else DeviceCardPolicy.offlineHint())
+            } else {
+                expandedFingerprint = DeviceCardPolicy.toggle(expandedFingerprint, row.fingerprint)
+                renderList()
+            }
+        }
+    }
+
+    /** PRD UI-05：离线说清「上次连接 + 可能原因」，在线且近期连过给「最近使用」，其余不占行。 */
+    private fun addSubtitle(container: LinearLayout, card: DeviceCardPolicy.Card) {
+        val note = DeviceCardPolicy.subtitle(card, System.currentTimeMillis()) ?: return
+        container.addView(
+            LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, Theme.dp(this@SenderActivity, 6), 0, 0)
+                if (DeviceCardPolicy.needsOfflineMarker(card)) {
+                    addView(DeviceCardTag.offlineDot(this@SenderActivity))
+                }
+                addView(TextView(this@SenderActivity).apply {
+                    text = note
+                    textSize = Theme.PHONE_BODY_SP
+                    setTextColor(StatusColors.offlineText())
+                })
+            },
+            matchWidth(),
+        )
+    }
+
+    private fun actionRow(
+        row: DeviceRegistry.Row,
+        target: Target,
+        actions: List<DeviceCardPolicy.CardAction>,
+        gap: Int,
+    ): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        setPadding(0, gap, 0, 0)
+        for (action in actions) {
+            addView(
+                actionButton(row, target, action),
+                LinearLayout.LayoutParams(0, Theme.dp(this@SenderActivity, DeviceCardPolicy.ACTION_ROW_DP), 1f),
+            )
+        }
+    }
+
+    private fun actionButton(row: DeviceRegistry.Row, target: Target, action: DeviceCardPolicy.CardAction): Button =
+        Button(this).apply {
+            text = when (action) {
+                DeviceCardPolicy.CardAction.MIRROR -> "镜像屏幕"
+                DeviceCardPolicy.CardAction.PUSH_VIDEO -> "推送视频"
+            }
+            setTextColor(Theme.ACCENT)
+            A11y.describe(this, A11yCopy.cardAction(row.name, action == DeviceCardPolicy.CardAction.MIRROR))
+            setOnClickListener {
+                expandedFingerprint = null
+                renderList()
+                when (action) {
+                    DeviceCardPolicy.CardAction.MIRROR -> connectTo(target)
+                    // 本片不伪装修好推送链路：按 7.3 给可执行替代路径
+                    DeviceCardPolicy.CardAction.PUSH_VIDEO -> toast(DeviceCardPolicy.pushVideoFallback())
+                }
+            }
+        }
+
+    /** 最近一次连接距今多久：没有记录就说「还没连过」，有记录才提示间隔。 */
+    private fun lastConnectedLabel(row: DeviceRegistry.Row): String {
+        val connectedAt = row.lastConnectedAt
+        if (connectedAt == null || connectedAt <= 0L) return "还没连过"
+        val minutes = ((System.currentTimeMillis() - connectedAt) / 60_000L).coerceAtLeast(0L)
+        return if (minutes < 1L) "刚刚连过" else "上次连接 $minutes 分钟前"
+    }
+
+    /** 空列表自救卡：能给出成因就换成诊断卡，否则按有无在线设备给一句提示。 */
+    private fun renderEmptyState() {
         val registry = devices.emptyReason()
         val verdict = scanner?.verdict()
             ?: DiscoveryLadder.Verdict.Nothing(DiscoveryLadder.Empty.SEARCHING, "")
         val cause = EmptyDiagnosis.of(verdict, registry)
-        if (cause != null) {
-            val notice = ErrorNotice.noticeFor(cause)
-            diagnosisHeadline.text = notice.headline
-            diagnosisNextStep.text = notice.nextStep
-            diagnosisCard.visibility = View.VISIBLE
-            hint.text = ""
-            hint.visibility = View.GONE
-        } else {
+        if (cause == null) {
             diagnosisCard.visibility = View.GONE
             hint.text = if (registry == DeviceRegistry.EmptyReason.HAS_ONLINE) "点设备名开始投屏" else ""
             hint.visibility = if (hint.text.isEmpty()) View.GONE else View.VISIBLE
+            return
         }
+        val notice = ErrorNotice.noticeFor(cause)
+        diagnosisHeadline.text = notice.headline
+        diagnosisNextStep.text = notice.nextStep
+        diagnosisCard.visibility = View.VISIBLE
+        hint.text = ""
+        hint.visibility = View.GONE
     }
 
     /**
@@ -779,7 +836,7 @@ class SenderActivity : Activity() {
         }
         val link = PairingLink.parse(text)
         val host = link?.host ?: text.substringBefore(':')
-        val port = link?.port ?: text.substringAfter(':', "").toIntOrNull() ?: DEFAULT_PORT
+        val port = link?.port ?: text.substringAfter(':', "").toIntOrNull() ?: DEFAULT_PORT // NOSONAR(kotlin:S6619) toIntOrNull() 返回 Int?，此 elvis 必需
         val code = codeInput.text.toString().trim()
         if (host.isEmpty() || port !in 1..65_535) {
             toast("地址不完整")
@@ -1048,7 +1105,7 @@ class SenderActivity : Activity() {
     }
 
     @Deprecated("Activity result API kept dependency-free")
-    override fun onRequestPermissionsResult(
+    override fun onRequestPermissionsResult( // NOSONAR(kotlin:S1133) 权限回调必须覆写（项目无 AndroidX），不能删除
         requestCode: Int,
         permissions: Array<out String>,
         grantResults: IntArray,
@@ -1075,7 +1132,7 @@ class SenderActivity : Activity() {
     }
 
     @Deprecated("Activity result API kept dependency-free")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) { // NOSONAR(kotlin:S1133) 授权结果回调必须覆写（项目无 AndroidX），不能删除
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != REQUEST_CAPTURE) return
         val target = pending ?: return
@@ -1132,14 +1189,17 @@ class SenderActivity : Activity() {
             .setTitle("跨网信令服务")
             .setMessage("留空则不启用跨网。信令只交换建连信息，画面仍点对点直连、不经服务器。")
             .setView(input)
-            .setPositiveButton("保存") { _, _ ->
-                store.saveSignalingUrl(input.text.toString())
-                refreshCrossNetRow()
-                val on = SignalingSettings.enabled(store.signalingUrl())
-                toast(if (on) "跨网已启用；同网搜不到设备时会自动尝试" else "跨网已关闭")
-            }
+            .setPositiveButton("保存") { _, _ -> saveSignaling(input.text.toString()) }
             .setNegativeButton("取消", null)
             .show()
+    }
+
+    /** 留空即关闭跨网：保存后立刻刷新该行并提示当前状态。 */
+    private fun saveSignaling(url: String) {
+        store.saveSignalingUrl(url)
+        refreshCrossNetRow()
+        val on = SignalingSettings.enabled(store.signalingUrl())
+        toast(if (on) "跨网已启用；同网搜不到设备时会自动尝试" else "跨网已关闭")
     }
 
     /** 检查更新：远端是 GitHub Release，本端按 ABI 优先挑独立包，其次 universal。
@@ -1151,30 +1211,39 @@ class SenderActivity : Activity() {
         val version = runCatching {
             packageManager.getPackageInfo(packageName, 0).versionName
         }.getOrNull().orEmpty()
-        // minSdk 19：SUPPORTED_ABIS 是 API 21，4.4 上退回单值 CPU_ABI（已 deprecated 但仍可用）
-        @Suppress("DEPRECATION")
-        val abis = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            Build.SUPPORTED_ABIS
-        } else {
-            arrayOf(Build.CPU_ABI)
-        }
-        val abi = when {
-            abis.any { it.equals("arm64-v8a", ignoreCase = true) } -> "arm64-v8a"
-            abis.any { it.equals("armeabi-v7a", ignoreCase = true) } -> "armeabi-v7a"
-            else -> ""
-        }
+        val abi = deviceAbi()
         thread(name = "airmirror-update-check") {
             val result = UpdateChecker(UrlHttpText(), version, preferAbi = abi).check()
             main.post {
                 if (isFinishing) return@post
                 updateBusy = false
                 if (!silent) updateRow.text = "检查更新"
-                when (result) {
-                    is UpdateResult.UpToDate -> if (!silent) toast("已是最新版本（${version.ifEmpty { "未知" }}）")
-                    is UpdateResult.Failed -> if (!silent) toast(result.reason)
-                    is UpdateResult.Available -> promptUpdate(result.release)
-                }
+                applyUpdateResult(result, silent, version)
             }
+        }
+    }
+
+    /** 更新检查结果落到界面：静默自检只在发现新版本时才弹框，其余提示一律不吵用户。 */
+    private fun applyUpdateResult(result: UpdateResult, silent: Boolean, version: String) {
+        when (result) {
+            is UpdateResult.UpToDate -> if (!silent) toast("已是最新版本（${version.ifEmpty { "未知" }}）")
+            is UpdateResult.Failed -> if (!silent) toast(result.reason)
+            is UpdateResult.Available -> promptUpdate(result.release)
+        }
+    }
+
+    /** 本机 ABI 主标识：minSdk 19 上 SUPPORTED_ABIS 不可用，退回单值 CPU_ABI（已 deprecated 但仍可用）。 */
+    @Suppress("DEPRECATION")
+    private fun deviceAbi(): String {
+        val abis = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            Build.SUPPORTED_ABIS
+        } else {
+            arrayOf(Build.CPU_ABI)
+        }
+        return when {
+            abis.any { it.equals("arm64-v8a", ignoreCase = true) } -> "arm64-v8a"
+            abis.any { it.equals("armeabi-v7a", ignoreCase = true) } -> "armeabi-v7a"
+            else -> ""
         }
     }
 
@@ -1195,12 +1264,7 @@ class SenderActivity : Activity() {
         thread(name = "airmirror-update-download") {
             val target = File(ApkProvider.dir(this), ApkDownload.safeName(release.apkName))
             val file = runCatching {
-                ApkDownload.download(release.apkUrl, target) { done, total ->
-                    if (total > 0) {
-                        val percent = (done * 100 / total).toInt()
-                        main.post { if (!isFinishing) updateRow.text = "正在下载更新… $percent%" }
-                    }
-                }
+                ApkDownload.download(release.apkUrl, target) { done, total -> reportProgress(done, total) }
             }.getOrNull()
             main.post {
                 updateBusy = false
@@ -1210,24 +1274,37 @@ class SenderActivity : Activity() {
                     toast("下载失败，请检查网络后重试")
                     return@post
                 }
-                // Android 8+ 必须先由用户为本应用打开「安装未知应用」，App 不能自批
-                if (ApkInstaller.needsInstallPermission(this)) {
-                    AlertDialog.Builder(this)
-                        .setTitle("还需要一步授权")
-                        .setMessage("系统要求你为本应用单独允许「安装未知应用」，之后才能完成更新。")
-                        .setPositiveButton("去设置") { _, _ ->
-                            // 部分定制 ROM 没有这个设置页，静默失败会让用户以为按钮坏了
-                            runCatching { startActivity(ApkInstaller.permissionSettings(this)) }
-                                .onFailure { toast("系统没有这个设置页，请到系统设置里手动允许安装") }
-                        }
-                        .setNegativeButton("取消", null)
-                        .show()
-                } else {
-                    runCatching { startActivity(ApkInstaller.install(this, file)) }
-                        .onFailure { toast("没有可用的安装器") }
-                }
+                installUpdate(file)
             }
         }
+    }
+
+    /** 下载进度：总量未知时干脆不报百分比，免得显示一个假的 100%。 */
+    private fun reportProgress(done: Long, total: Long) {
+        if (total <= 0) return
+        val percent = (done * 100 / total).toInt()
+        main.post { if (!isFinishing) updateRow.text = "正在下载更新… $percent%" }
+    }
+
+    /** Android 8+ 必须先由用户为本应用打开「安装未知应用」，App 不能自批。 */
+    private fun installUpdate(file: File) {
+        if (ApkInstaller.needsInstallPermission(this)) {
+            AlertDialog.Builder(this)
+                .setTitle("还需要一步授权")
+                .setMessage("系统要求你为本应用单独允许「安装未知应用」，之后才能完成更新。")
+                .setPositiveButton("去设置") { _, _ -> openInstallSettings() }
+                .setNegativeButton("取消", null)
+                .show()
+            return
+        }
+        runCatching { startActivity(ApkInstaller.install(this, file)) }
+            .onFailure { toast("没有可用的安装器") }
+    }
+
+    private fun openInstallSettings() {
+        // 部分定制 ROM 没有这个设置页，静默失败会让用户以为按钮坏了
+        runCatching { startActivity(ApkInstaller.permissionSettings(this)) }
+            .onFailure { toast("系统没有这个设置页，请到系统设置里手动允许安装") }
     }
 
     private fun sameSubnet(address: String): Boolean {

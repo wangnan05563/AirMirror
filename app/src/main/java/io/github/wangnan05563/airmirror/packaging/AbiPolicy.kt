@@ -15,11 +15,15 @@ object AbiPolicy {
     /** 接收端硬下限（Q-5 已裁，不得静默抬高）。 */
     const val MIN_SDK = 19
 
+    /** ABI 名称单源：发布集合、默认值与选择逻辑共用，避免同一字符串散落多处。 */
+    const val ABI_ARM64 = "arm64-v8a"
+    const val ABI_ARMV7 = "armeabi-v7a"
+
     /** 对外发布的两个独立 ABI（不含 x86_64，它由 universal 兜底开发/模拟器通道）。 */
-    val SHIPPED_ABIS: Set<String> = setOf("armeabi-v7a", "arm64-v8a")
+    val SHIPPED_ABIS: Set<String> = setOf(ABI_ARMV7, ABI_ARM64)
 
     /** 老盒子默认 32 位 arm；也是「未知设备」的兜底构建。 */
-    const val DEFAULT_ABI = "armeabi-v7a"
+    const val DEFAULT_ABI = ABI_ARMV7
 
     /** 开发/模拟器通道 ABI（universal 包内含，不单独发布）。 */
     const val EMULATOR_ABI = "x86_64"
@@ -32,8 +36,8 @@ object AbiPolicy {
     fun selectBest(deviceAbis: List<String>): String? {
         val set = deviceAbis.toSet()
         return when {
-            "arm64-v8a" in set -> "arm64-v8a"
-            "armeabi-v7a" in set -> "armeabi-v7a"
+            ABI_ARM64 in set -> ABI_ARM64
+            ABI_ARMV7 in set -> ABI_ARMV7
             else -> null
         }
     }

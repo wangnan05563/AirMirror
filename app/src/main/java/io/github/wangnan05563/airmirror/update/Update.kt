@@ -1,11 +1,10 @@
 package io.github.wangnan05563.airmirror.update
 
 import io.github.wangnan05563.airmirror.util.Json
-import io.github.wangnan05563.airmirror.util.JsonValue
 import io.github.wangnan05563.airmirror.util.readAtMost
 import java.io.IOException
 import java.net.HttpURLConnection
-import java.net.URL
+import java.net.URI
 
 /**
  * 在线更新（PRD 通用需求「菜单新增在线更新，自动检测内置仓库版本」）。
@@ -101,13 +100,13 @@ sealed interface UpdateResult {
  * 纯文本 GET。抽成接口是为了让「检查更新」能在 JVM 单测里跑：
  * 真实实现走 HttpURLConnection，测试用内存实现，不依赖外网。
  */
-interface HttpText {
+fun interface HttpText {
     fun get(url: String, timeoutMs: Int): String
 }
 
 class UrlHttpText : HttpText {
     override fun get(url: String, timeoutMs: Int): String {
-        val connection = (URL(url).openConnection() as HttpURLConnection)
+        val connection = (URI(url).toURL().openConnection() as HttpURLConnection)
         try {
             connection.connectTimeout = timeoutMs
             connection.readTimeout = timeoutMs

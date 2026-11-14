@@ -1,5 +1,8 @@
 package io.github.wangnan05563.airmirror.protocol
 
+/** DLNA 的中文展示名：枚举标签、能力描述与列表角标共用同一份文案。 */
+private const val DLNA_LABEL = "DLNA 推送"
+
 /**
  * PRD §04 P0 边界 + §13.1 平台限制的唯一出口：界面能说的协议只从这里取。
  *
@@ -14,7 +17,7 @@ object ProtocolBoundary {
 
     enum class Protocol(val wireName: String, val label: String) {
         AMRC("AMRC", "AirMirror 镜像"),
-        DLNA("DLNA", "DLNA 推送"),
+        DLNA("DLNA", DLNA_LABEL),
         BROWSER("Browser", "浏览器投屏"),
         AIRPLAY("AirPlay", "AirPlay 镜像"),
         CAST("Cast", "Cast 推送"),
@@ -43,7 +46,7 @@ object ProtocolBoundary {
 
     fun describe(name: String): Capability = when (val protocol = of(name)) {
         Protocol.AMRC -> Capability(protocol, true, "AirMirror 镜像", "在本机打开 AirMirror，扫码或输入投屏码即可。")
-        Protocol.DLNA -> Capability(protocol, true, "DLNA 推送", "在视频 App 里点「投屏」选本机即可。")
+        Protocol.DLNA -> Capability(protocol, true, DLNA_LABEL, "在视频 App 里点「投屏」选本机即可。")
         Protocol.BROWSER -> Capability(
             protocol, true, "浏览器投屏",
             "用手机或电脑浏览器打开大屏上的地址，选择文件即可投。",
@@ -71,7 +74,7 @@ object ProtocolBoundary {
     /** 发送端列表角标：已实现的协议按能力分档，未实现的统一「不支持」 */
     fun badgeFor(name: String): String = when (of(name)) {
         Protocol.AMRC -> "镜像 · 私有通道"
-        Protocol.DLNA -> "DLNA 推送"
+        Protocol.DLNA -> DLNA_LABEL
         Protocol.BROWSER -> "浏览器上传"
         else -> "不支持"
     }

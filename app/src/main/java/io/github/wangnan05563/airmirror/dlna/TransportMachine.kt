@@ -133,8 +133,8 @@ class TransportMachine {
      * 否则控制点会以为还在播并一直轮询进度。
      */
     fun onPlaybackFailed() {
-        playRequested = false
-        if (media != null) state = State.STOPPED
+        // 与主动 Stop 的收尾一致：清掉播放意图、状态回落 STOPPED，媒体信息保留给 GetPositionInfo。
+        onStopInvoked()
     }
 
     /**

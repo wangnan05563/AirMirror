@@ -79,52 +79,69 @@ class CrossNetConnector(
         // 等一件不会发生的事，而大屏那边还在等这一端的候选。
         while (true) {
             sessionId = try {
-                if (role == CrossNetProtocol.Role.SENDER) {
-                    signaling.matchSender(codeHash, timeouts.matchMs)
-                } else {
-                    signaling.openSession(codeHash, timeouts.matchMs)
-                }
+                matchSession(signaling, codeHash)
             } catch (e: SignalingException) {
                 session.onFailure(e.reason)
                 return Outcome(session.state, session.prompt, session.failure, sessionId.ifEmpty { null })
             }
             session.onMatched(now())
+            val outcome = punchAndConnect(session, signaling, sessionId, credential) ?: continue
+            return outcome
+        }
+    }
 
-            var socket: DatagramSocket? = null
-            try {
-                val bound = socketFactory().also { socket = it }
-                val candidates = collect(bound)
-                if (candidates.isEmpty()) {
-                    session.onFailure(FailureReason.NO_CANDIDATES)
-                    closeQuietly(bound)
-                    return Outcome(session.state, session.prompt, session.failure, sessionId)
-                }
-                signaling.publishCandidates(sessionId, role, candidates)
-                val peers = signaling.awaitPeerCandidates(sessionId, role, timeouts.candidatesMs)
-                val punch = UdpPuncher(bound, sessionId, role, credential, now)
-                    .punch(peers, timeouts.punchMs, timeouts.punchIntervalMs)
-                if (!punch.connected || punch.peer == null) {
-                    signaling.abort(sessionId, role, FailureReason.PUNCH_BLOCKED)
-                    session.onPunchFailed(now(), FailureReason.PUNCH_BLOCKED)
-                    closeQuietly(bound)
-                    if (session.state == CrossNetState.MATCHING) continue
-                    return Outcome(session.state, session.prompt, session.failure, sessionId)
-                }
-                session.onDirectEstablished()
-                val link = UdpTunnel(bound, punch.peer).start()
-                return Outcome(session.state, session.prompt, null, sessionId, link, punch.peer, credential)
-            } catch (e: SignalingException) {
-                // 超时也要主动放弃会话：否则服务端会一直保留这个 session，等它自己过期
-                runCatching { signaling.abort(sessionId, role, e.reason) }
-                session.onFailure(e.reason)
-                socket?.let { closeQuietly(it) }
-                return Outcome(session.state, session.prompt, session.failure, sessionId)
-            } catch (e: IOException) {
-                // 本地 socket 异常（端口耗尽、网络切换）：按网络不可用收口，不冒充「信号不好」
-                session.onFailure(FailureReason.NO_INTERNET)
-                socket?.let { closeQuietly(it) }
+    /** 一次匹配：发送端去认领接收端登记的码，接收端开一个会话等发送端来认领。 */
+    private fun matchSession(signaling: SignalingClient, codeHash: ByteArray): String =
+        if (role == CrossNetProtocol.Role.SENDER) {
+            signaling.matchSender(codeHash, timeouts.matchMs)
+        } else {
+            signaling.openSession(codeHash, timeouts.matchMs)
+        }
+
+    /**
+     * 候选交换 + 打洞。返回 null 表示状态机要求「回第 3 步重试一次」，
+     * 由 [connect] 重新匹配；不在这一层自旋，免得重试语义和状态机两处各说一套。
+     */
+    private fun punchAndConnect(
+        session: CrossNetSession,
+        signaling: SignalingClient,
+        sessionId: String,
+        credential: String,
+    ): Outcome? {
+        var socket: DatagramSocket? = null
+        try {
+            val bound = socketFactory().also { socket = it }
+            val candidates = collect(bound)
+            if (candidates.isEmpty()) {
+                session.onFailure(FailureReason.NO_CANDIDATES)
+                closeQuietly(bound)
                 return Outcome(session.state, session.prompt, session.failure, sessionId)
             }
+            signaling.publishCandidates(sessionId, role, candidates)
+            val peers = signaling.awaitPeerCandidates(sessionId, role, timeouts.candidatesMs)
+            val punch = UdpPuncher(bound, sessionId, role, credential, now)
+                .punch(peers, timeouts.punchMs, timeouts.punchIntervalMs)
+            if (!punch.connected || punch.peer == null) {
+                signaling.abort(sessionId, role, FailureReason.PUNCH_BLOCKED)
+                session.onPunchFailed(now(), FailureReason.PUNCH_BLOCKED)
+                closeQuietly(bound)
+                if (session.state == CrossNetState.MATCHING) return null
+                return Outcome(session.state, session.prompt, session.failure, sessionId)
+            }
+            session.onDirectEstablished()
+            val link = UdpTunnel(bound, punch.peer).start()
+            return Outcome(session.state, session.prompt, null, sessionId, link, punch.peer, credential)
+        } catch (e: SignalingException) {
+            // 超时也要主动放弃会话：否则服务端会一直保留这个 session，等它自己过期
+            runCatching { signaling.abort(sessionId, role, e.reason) }
+            session.onFailure(e.reason)
+            socket?.let { closeQuietly(it) }
+            return Outcome(session.state, session.prompt, session.failure, sessionId)
+        } catch (e: IOException) {
+            // 本地 socket 异常（端口耗尽、网络切换）：按网络不可用收口，不冒充「信号不好」
+            session.onFailure(FailureReason.NO_INTERNET)
+            socket?.let { closeQuietly(it) }
+            return Outcome(session.state, session.prompt, session.failure, sessionId)
         }
     }
 

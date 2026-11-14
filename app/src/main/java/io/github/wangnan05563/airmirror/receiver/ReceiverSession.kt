@@ -229,16 +229,10 @@ class ReceiverSession(
         onStatus("等待连接 · $advertisedName")
         worker = thread(name = "airmirror-receiver") {
             while (running) {
-                val socket = try {
-                    server.accept()
-                } catch (e: Exception) {
-                    // 一次 accept 失败不该把整个监听线程带走：界面还停在「等待连接」，
-                    // 但从此再也收不到任何投屏请求，用户只能杀进程重启。退避后继续听。
-                    if (!running) return@thread
-                    Log.w(TAG, "accept failed: ${Redactor.throwable(e)}")
+                val socket = acceptSocket()
+                if (socket == null) {
                     // 真正被关掉（stop 或系统回收）就没法再 accept，交给宿主重启
-                    if (server.isClosed) return@thread
-                    runCatching { Thread.sleep(ACCEPT_RETRY_MS) }
+                    if (!running || server.isClosed) return@thread
                     continue
                 }
                 // 每个连接一条线程：不设上限就等于把「开几千个空连接」当成合法的拒绝服务手法。
@@ -248,17 +242,36 @@ class ReceiverSession(
                     runCatching { socket.close() }
                     continue
                 }
-                clients.add(socket)
-                thread(name = "airmirror-conn") {
-                    val served = runCatching { handle(socket) }
-                        .onFailure { if (running) Log.w(TAG, "connection failed: ${Redactor.throwable(it)}") }
-                        .getOrNull()
-                    clients.remove(socket)
-                    // 保留窗口内不提示「连接结束」，大屏该显示「正在恢复」
-                    if (served != null && !handoverInProgress && recovery.active() == null) {
-                        onStatus("$served 连接结束，继续等待")
-                    }
-                }
+                serveClient(socket)
+            }
+        }
+    }
+
+    /** accept 一次；失败时退避，返回 null 让调用方决定「重试还是收工」。 */
+    private fun acceptSocket(): Socket? {
+        return try {
+            server.accept()
+        } catch (e: Exception) {
+            // 一次 accept 失败不该把整个监听线程带走：界面还停在「等待连接」，
+            // 但从此再也收不到任何投屏请求，用户只能杀进程重启。退避后继续听。
+            if (!running) return null
+            Log.w(TAG, "accept failed: ${Redactor.throwable(e)}")
+            runCatching { Thread.sleep(ACCEPT_RETRY_MS) }
+            null
+        }
+    }
+
+    /** 每个连接一条线程；连接结束后按保留窗口决定要不要提示「连接结束」。 */
+    private fun serveClient(socket: Socket) {
+        clients.add(socket)
+        thread(name = "airmirror-conn") {
+            val served = runCatching { handle(socket) }
+                .onFailure { if (running) Log.w(TAG, "connection failed: ${Redactor.throwable(it)}") }
+                .getOrNull()
+            clients.remove(socket)
+            // 保留窗口内不提示「连接结束」，大屏该显示「正在恢复」
+            if (served != null && !handoverInProgress && recovery.active() == null) {
+                onStatus("$served 连接结束，继续等待")
             }
         }
     }
@@ -385,257 +398,312 @@ class ReceiverSession(
         }
     }
 
-    private fun handleConnection(conn: StreamConnection, peer: String, tunnelCredential: String? = null): String? {
-            // 能力位带音频：老发送端不带时协商结果自动只剩画面，不会硬起一条播不出声的流水线
-            val hello = try {
-                conn.acceptAsServer(
-                    Build.MODEL,
-                    Handshake.Capability.VIDEO_H264 or Handshake.Capability.AUDIO_AAC,
-                    // 当前码/令牌 + 宽限期内的上一组：发送端的握手签名要能对上任一受理中的凭据（T04493）。
-                    // 跨网还要额外带上「这条隧道建连时用的码」：打洞过去后还隔着录屏授权，
-                    // 用户点完可能已跨过 10 秒宽限，只按屏幕上的当前码判就会把刚建好的链路误拒。
-                    credentials = (pairing.code.candidates() + listOfNotNull(tunnelCredential)).distinct(),
-                )
-            } catch (e: Exception) {
-                // 握手没走完就断（半帧、乱码、版本谈不拢、写完就撤）也算一次被拒：
-                // 不记这笔的话，「发半个 HELLO 就撤」就是绕过闸门最省事的写法
-                pairing.throttle.refuse(peer)
-                throw e
-            }
-            // PRD 8.9：两端都递了公钥才加密；对面是没升级的老发送端时如实记一行，别让它悄悄裸奔
-            Log.i(TAG, "media ${if (conn.secure) "encrypted (ECDH-P256/AES-GCM)" else "in clear, legacy peer"}")
-            avSync = AvSync.Tracker()
-            pacer = AvSync.Pacer()
-            bandwidth.reset()
-            lastBandwidthPollAtMs = 0L
-            lastAudioAtMs = 0L
-            audioGone = false
-            lastDriftMs = 0
-            avDowngrades = 0
-            var audioFrames = 0L
-            var droppedLate = 0
-            val request = readAuth(conn) ?: run {
-                refuse(conn, "缺少授权")
-                // 连 AUTH 都不发的空连接正是刷子最爱，这类一次都不会记进投屏码的失败账，只能在这里拦
-                pairing.throttle.refuse(peer)
-                return null
-            }
-            val deviceId = admit(conn, request, hello.deviceName, peer) ?: return null
-            val done = CountDownLatch(1)
-            sessionDone = done
-            activeConn = conn
-            activeDeviceId = deviceId
-            endRequested = false
-            var received = 0
-            var decoded = 0
-            var decodeFailures = 0
-            var droppedUntilKey = 0
-            var byeReceived = false
-            try {
-                while (running) {
-                    val frame = conn.receive()
-                    if (frame == null) {
-                        Log.i(TAG, "peer closed after received=$received decoded=$decoded")
-                        break
-                    }
-                    when (frame.type) {
-                        Protocol.Type.VIDEO -> {
-                            if (frame.flags and Protocol.Flags.CONFIG != 0) {
-                                hasCast = true
-                                configAtNano = System.nanoTime()
-                                val hevc = frame.flags and Protocol.Flags.CODEC_HEVC != 0
-                                pendingConfig = frame.payload
-                                pendingHevc = hevc
-                                runCatching { H264.unpackConfig(frame.payload) }
-                                    .onSuccess {
-                                        onVideoSize(it.width, it.height)
-                                        rebuildLadder(QualityTiers.tierWithin(it.width, it.height))
-                                    }
-                                val existing = decoder
-                                if (existing == null) {
-                                    // Surface 可能早就在前台等着了，配置到了才建流水线
-                                    startPipeline(frame.payload)
-                                } else {
-                                    val videoCodec = if (hevc) VideoCodec.HEVC else VideoCodec.AVC
-                                    runCatching { existing.configure(frame.payload, videoCodec) }
-                                        .onFailure { error -> fallBackToOneTierLower(error) }
-                                    // 配置后面紧跟着的就是 IDR，从 IDR 起才算新流水线的第一帧
-                                    awaitKeyFrame = true
-                                }
-                                Log.i(TAG, "config received: ${frame.payload.size}B codec=${if (hevc) VideoCodec.HEVC.display else VideoCodec.AVC.display} decoder=${decoder != null}")
-                                onStatus("${hello.deviceName} 推流中")
-                                onCasting(true, hello.deviceName)
-                            } else {
-                                received++
-                                // 实测带宽只数画面字节：档位码率表写的就是视频，掺进声音会把「撑不住」读成撑得住
-                                val arrivedAtMs = System.currentTimeMillis()
-                                bandwidth.add(frame.payload.size, frame.ptsUs, arrivedAtMs)
-                                // 判决按墙钟时间跑，不按帧数：拥塞时帧数自己就先掉了，
-                                // 借「每 30 帧查一次」的班车会让最该快的时候反而拖到十几秒
-                                if (arrivedAtMs - lastBandwidthPollAtMs >= BANDWIDTH_POLL_MS) {
-                                    lastBandwidthPollAtMs = arrivedAtMs
-                                    pollBandwidth(hello.deviceName)
-                                }
-                                val codec = decoder
-                                val key = frame.flags and Protocol.Flags.KEY_FRAME != 0
-                                if (awaitKeyFrame && !key) {
-                                    // 新流水线没拿到 IDR 前喂 P 帧，解码器会一直不出画，只会把延迟样本拖没
-                                    droppedUntilKey++
-                                } else {
-                                    if (awaitKeyFrame) Log.i(TAG, "key frame after $droppedUntilKey drops")
-                                    awaitKeyFrame = false
-                                    if (codec == null) {
-                                        if (received == 1) Log.w(TAG, "video frame without surface decoder")
-                                    } else if (!paused) {
-                                        val clock = audioOut?.clockUs() ?: 0L
-                                        if (clock > 0L && AvSync.videoAction(frame.ptsUs, clock, key) == AvSync.VideoAction.DROP) {
-                                            // 晚到超容忍区只能「丢到下一个 IDR」：单独抽掉一个中间帧会断参考链、画面发花，
-                                            // 关键帧不参与丢弃（PRD FR-09「丢非关键帧，避免花屏」）
-                                            awaitKeyFrame = true
-                                            requestKeyFrame()
-                                            droppedLate++
-                                            Log.i(TAG, "video late beyond tolerance, dropping until key frame")
-                                        } else {
-                                            runCatching { codec.decode(frame.payload, frame.ptsUs) }
-                                                .onSuccess { decoded++; decodeFailures = 0 }
-                                                .onFailure { error ->
-                                                    // IllegalStateException 表示这个实例已不在执行态：MediaCodec 报致命错误后
-                                                    // 不再接受任何调用，再喂下一帧只是刷异常。等计数器走完要拖到几十个
-                                                    // 「丢到关键帧」的周期，画面回不来得太久，所以这种当场判死。
-                                                    // 其余异常（单帧码流问题）仍然连着几次才算解不动，避免瞬时抖动触发重谈。
-                                                    decodeFailures =
-                                                        if (error is IllegalStateException) DECODE_FAILURE_LIMIT else decodeFailures + 1
-                                                    Log.w(TAG, "decode failed ($decodeFailures/$DECODE_FAILURE_LIMIT)", error)
-                                                    if (decodeFailures >= DECODE_FAILURE_LIMIT) {
-                                                        decodeFailures = 0
-                                                        // 先摘掉 H.265 声明（PRD 8.7 异常表「改用 H.264 并降档」）：
-                                                        // 只要还在声明，发端就一直按 H.265 推，光降尺寸救不回来
-                                                        codec.discardUnusable()
-                                                        awaitKeyFrame = true
-                                                        fallBackToOneTierLower(error)
-                                                    }
-                                                }
-                                        }
-                                    }
-                                }
-                                if (received % 30 == 0) {
-                                    val rendered = codec?.renderedFrames ?: 0L
-                                    logFirstFrame(codec)
-                                    val latency = codec?.latency
-                                    Log.i(
-                                        TAG,
-                                        "received=$received decoded=$decoded rendered=$rendered " +
-                                            "等关键帧丢 $droppedUntilKey 晚到丢 $droppedLate 音画偏差 ${lastDriftMs}ms " +
-                                            "音帧 $audioFrames/已播 ${audioOut?.playedFrames ?: 0} " +
-                                            "${latency?.summary() ?: ""}",
-                                    )
-                                    onStatus(
-                                        "${hello.deviceName} · 收 $received / 解码 $decoded / 渲染 $rendered 帧" +
-                                            " · P90 ${latency?.percentile(90) ?: 0}ms · 偏差 ${lastDriftMs}ms" +
-                                            qualitySuffix(),
-                                    )
-                                    pollLatency(codec, hello.deviceName)
-                                    reportQuality(codec)
-                                    watchAudioInterrupt(hello.deviceName)
-                                }
-                            }
-                        }
-
-                        Protocol.Type.AUDIO -> {
-                            if (frame.flags and Protocol.Flags.CONFIG != 0) {
-                                openAudio(frame.payload, hello.deviceName)
-                            } else {
-                                audioFrames++
-                                lastAudioAtMs = System.currentTimeMillis()
-                                val out = audioOut
-                                if (out == null) {
-                                    if (audioFrames == 1L) Log.i(TAG, "audio data before a usable config, ignored")
-                                } else if (!paused) {
-                                    runCatching { out.write(frame.payload, frame.ptsUs) }
-                                        .onFailure {
-                                            Log.w(TAG, "audio output failed: ${Redactor.throwable(it)}")
-                                            closeAudio()
-                                        }
-                                    if (audioFrames % AV_SAMPLE_FRAMES == 0L) sampleAvSync(hello.deviceName)
-                                }
-                            }
-                        }
-
-                        Protocol.Type.PING -> conn.send(Protocol.Frame(Protocol.Type.PONG, payload = frame.payload))
-                        Protocol.Type.CONTROL -> {
-                            val signal = SessionControl.decode(frame.payload)
-                            when (signal.op) {
-                                SessionControl.OP_PAUSE -> {
-                                    paused = true
-                                    Log.i(TAG, "paused by peer")
-                                    onStatus("${hello.deviceName} 已暂停")
-                                    onNotice("${hello.deviceName} 已暂停")
-                                }
-                                SessionControl.OP_RESUME -> {
-                                    paused = false
-                                    lastAudioAtMs = System.currentTimeMillis()
-                                    audioGone = false
-                                    // 暂停期间两条流各自停了一段，恢复即重新对齐，1 秒内要回到容忍区（PRD FR-09 状态迁移）
-                                    resyncAvClock("${hello.deviceName} 恢复投屏")
-                                    Log.i(TAG, "resumed by peer")
-                                    onStatus("${hello.deviceName} 推流中")
-                                    onNotice("${hello.deviceName} 推流中")
-                                }
-                                SessionControl.OP_TAKEOVER_RESULT -> {
-                                    Log.i(TAG, "takeover answer allow=${signal.allow}")
-                                    takeoverAnswers.offer(signal.allow)
-                                }
-                                SessionControl.OP_AUDIO -> {
-                                    // 对方主动关了声音：这是选择，不是故障，不能等到 1 秒后弹「被占用」
-                                    if (!signal.allow) {
-                                        closeAudio()
-                                        Log.i(TAG, "peer switched audio off")
-                                        onNotice("${hello.deviceName} 已关闭声音")
-                                    } else {
-                                        Log.i(TAG, "peer switched audio on, waiting for its config frame")
-                                        onNotice("${hello.deviceName} 已打开声音")
-                                    }
-                                }
-                                else -> Unit
-                            }
-                        }
-                        Protocol.Type.BYE -> {
-                            byeReceived = true
-                            return hello.deviceName
-                        }
-                        else -> Unit
-                    }
-                }
-            } catch (e: IOException) {
-                if (running) Log.w(TAG, "connection dropped: ${Redactor.throwable(e)}")
-            } finally {
-                // 接管时旧线程可能晚于新会话收尾，只有仍属于自己才清空共享状态并撤回投屏态
-                val owns = activeConn === conn
-                val dropped = owns && running && !byeReceived && !endRequested && !handoverInProgress &&
-                    activeDeviceId != null && hasCast
-                if (owns) {
-                    activeConn = null
-                    paused = false
-                    // 声音跟着会话走：留着会让断线后的主时钟继续往前跑，续会时按假偏差乱抽帧
-                    closeAudio()
-                }
-                if (dropped) {
-                    // PRD FS-10：短暂中断不重来，保留最后一帧并等原设备在 30 秒内回来
-                    startRecovery(activeDeviceId ?: deviceId, hello.deviceName)
-                } else {
-                    if (owns) {
-                        activeDeviceId = null
-                        endRequested = false
-                        hasCast = false
-                    }
-                    pairing.trust.releaseSession(deviceId)
-                    if (owns) onCasting(false, "")
-                }
-                done.countDown()
-                if (sessionDone === done) sessionDone = null
-            }
-            return hello.deviceName
+    /** 一条连接内的收流计数：只服务日志与判决，跨帧累计。 */
+    private class FlowStats {
+        var received = 0
+        var decoded = 0
+        var decodeFailures = 0
+        var droppedUntilKey = 0
+        var droppedLate = 0
+        var audioFrames = 0L
     }
+
+    private fun handleConnection(conn: StreamConnection, peer: String, tunnelCredential: String? = null): String? {
+        val hello = acceptHello(conn, peer, tunnelCredential)
+        // PRD 8.9：两端都递了公钥才加密；对面是没升级的老发送端时如实记一行，别让它悄悄裸奔
+        Log.i(TAG, "media ${if (conn.secure) "encrypted (ECDH-P256/AES-GCM)" else "in clear, legacy peer"}")
+        resetSessionGauges()
+        val request = readAuth(conn) ?: run {
+            refuse(conn, "缺少授权")
+            // 连 AUTH 都不发的空连接正是刷子最爱，这类一次都不会记进投屏码的失败账，只能在这里拦
+            pairing.throttle.refuse(peer)
+            return null
+        }
+        val deviceId = admit(conn, request, hello.deviceName, peer) ?: return null
+        val done = CountDownLatch(1)
+        sessionDone = done
+        activeConn = conn
+        activeDeviceId = deviceId
+        endRequested = false
+        val stats = FlowStats()
+        var byeReceived = false
+        try {
+            byeReceived = pumpFrames(conn, hello, stats)
+        } catch (e: IOException) {
+            if (running) Log.w(TAG, "connection dropped: ${Redactor.throwable(e)}")
+        } finally {
+            finishSession(conn, done, deviceId, hello.deviceName, byeReceived)
+        }
+        return hello.deviceName
+    }
+
+    /** 握手失败也算一次被拒：不记这笔的话，「发半个 HELLO 就撤」就是绕过闸门最省事的写法。 */
+    private fun acceptHello(conn: StreamConnection, peer: String, tunnelCredential: String?): Handshake.Hello =
+        try {
+            conn.acceptAsServer(
+                Build.MODEL,
+                Handshake.Capability.VIDEO_H264 or Handshake.Capability.AUDIO_AAC,
+                // 当前码/令牌 + 宽限期内的上一组：发送端的握手签名要能对上任一受理中的凭据（T04493）。
+                // 跨网还要额外带上「这条隧道建连时用的码」：打洞过去后还隔着录屏授权，
+                // 用户点完可能已跨过 10 秒宽限，只按屏幕上的当前码判就会把刚建好的链路误拒。
+                credentials = (pairing.code.candidates() + listOfNotNull(tunnelCredential)).distinct(),
+            )
+        } catch (e: Exception) {
+            // 握手没走完就断（半帧、乱码、版本谈不拢、写完就撤）也算一次被拒
+            pairing.throttle.refuse(peer)
+            throw e
+        }
+
+    /** 新会话的度量与音画同步一律从零开始，避免沿用上一条连接的偏差。 */
+    private fun resetSessionGauges() {
+        avSync = AvSync.Tracker()
+        pacer = AvSync.Pacer()
+        bandwidth.reset()
+        lastBandwidthPollAtMs = 0L
+        lastAudioAtMs = 0L
+        audioGone = false
+        lastDriftMs = 0
+        avDowngrades = 0
+    }
+
+    /** 收流主循环；返回 true 表示对端发了 BYE（正常收尾）。 */
+    private fun pumpFrames(conn: StreamConnection, hello: Handshake.Hello, stats: FlowStats): Boolean {
+        while (running) {
+            val frame = conn.receive()
+            if (frame == null) {
+                Log.i(TAG, "peer closed after received=${stats.received} decoded=${stats.decoded}")
+                return false
+            }
+            when (frame.type) {
+                Protocol.Type.VIDEO ->
+                    if (frame.flags and Protocol.Flags.CONFIG != 0) {
+                        acceptVideoConfig(frame, hello)
+                    } else {
+                        onVideoData(frame, hello, stats)
+                    }
+                Protocol.Type.AUDIO ->
+                    if (frame.flags and Protocol.Flags.CONFIG != 0) {
+                        openAudio(frame.payload, hello.deviceName)
+                    } else {
+                        onAudioData(frame, hello, stats)
+                    }
+                Protocol.Type.PING -> conn.send(Protocol.Frame(Protocol.Type.PONG, payload = frame.payload))
+                Protocol.Type.CONTROL -> onControl(frame, hello)
+                Protocol.Type.BYE -> return true
+                else -> Unit
+            }
+        }
+        return false
+    }
+
+    /** 编码配置：尺寸变了就重建档位阶梯；解码器已在就重配，没在就等 Surface 到了再起流水线。 */
+    private fun acceptVideoConfig(frame: Protocol.Frame, hello: Handshake.Hello) {
+        hasCast = true
+        configAtNano = System.nanoTime()
+        val hevc = frame.flags and Protocol.Flags.CODEC_HEVC != 0
+        pendingConfig = frame.payload
+        pendingHevc = hevc
+        runCatching { H264.unpackConfig(frame.payload) }
+            .onSuccess {
+                onVideoSize(it.width, it.height)
+                rebuildLadder(QualityTiers.tierWithin(it.width, it.height))
+            }
+        val existing = decoder
+        if (existing == null) {
+            // Surface 可能早就在前台等着了，配置到了才建流水线
+            startPipeline(frame.payload)
+        } else {
+            val videoCodec = if (hevc) VideoCodec.HEVC else VideoCodec.AVC
+            runCatching { existing.configure(frame.payload, videoCodec) }
+                .onFailure { error -> fallBackToOneTierLower(error) }
+            // 配置后面紧跟着的就是 IDR，从 IDR 起才算新流水线的第一帧
+            awaitKeyFrame = true
+        }
+        Log.i(TAG, "config received: ${frame.payload.size}B codec=${if (hevc) VideoCodec.HEVC.display else VideoCodec.AVC.display} decoder=${decoder != null}")
+        onStatus("${hello.deviceName} 推流中")
+        onCasting(true, hello.deviceName)
+    }
+
+    /** 一帧画面：先记带宽，再按「等 IDR」与暂停态决定是喂解码器还是只计数。 */
+    private fun onVideoData(frame: Protocol.Frame, hello: Handshake.Hello, stats: FlowStats) {
+        stats.received++
+        // 实测带宽只数画面字节：档位码率表写的就是视频，掺进声音会把「撑不住」读成撑得住
+        val arrivedAtMs = System.currentTimeMillis()
+        bandwidth.add(frame.payload.size, frame.ptsUs, arrivedAtMs)
+        // 判决按墙钟时间跑，不按帧数：拥塞时帧数自己就先掉了，
+        // 借「每 30 帧查一次」的班车会让最该快的时候反而拖到十几秒
+        if (arrivedAtMs - lastBandwidthPollAtMs >= BANDWIDTH_POLL_MS) {
+            lastBandwidthPollAtMs = arrivedAtMs
+            pollBandwidth(hello.deviceName)
+        }
+        val codec = decoder
+        val key = frame.flags and Protocol.Flags.KEY_FRAME != 0
+        if (awaitKeyFrame && !key) {
+            // 新流水线没拿到 IDR 前喂 P 帧，解码器会一直不出画，只会把延迟样本拖没
+            stats.droppedUntilKey++
+        } else {
+            if (awaitKeyFrame) Log.i(TAG, "key frame after ${stats.droppedUntilKey} drops")
+            awaitKeyFrame = false
+            if (codec == null) {
+                if (stats.received == 1) Log.w(TAG, "video frame without surface decoder")
+            } else if (!paused) {
+                feedFrame(codec, frame, key, stats)
+            }
+        }
+        if (stats.received % 30 == 0) logProgress(hello, stats, codec)
+    }
+
+    /** 正常喂帧：晚到超容忍区的丢到下一个 IDR，其余交给解码器。 */
+    private fun feedFrame(codec: VideoDecoder, frame: Protocol.Frame, key: Boolean, stats: FlowStats) {
+        val clock = audioOut?.clockUs() ?: 0L
+        if (clock > 0L && AvSync.videoAction(frame.ptsUs, clock, key) == AvSync.VideoAction.DROP) {
+            // 晚到超容忍区只能「丢到下一个 IDR」：单独抽掉一个中间帧会断参考链、画面发花，
+            // 关键帧不参与丢弃（PRD FR-09「丢非关键帧，避免花屏」）
+            awaitKeyFrame = true
+            requestKeyFrame()
+            stats.droppedLate++
+            Log.i(TAG, "video late beyond tolerance, dropping until key frame")
+            return
+        }
+        runCatching { codec.decode(frame.payload, frame.ptsUs) }
+            .onSuccess {
+                stats.decoded++
+                stats.decodeFailures = 0
+            }
+            .onFailure { error -> onDecodeFailure(codec, error, stats) }
+    }
+
+    /**
+     * 解码失败计数：IllegalStateException 表示实例已不在执行态，当场判死；
+     * 其余异常（单帧码流问题）连着几次才算解不动，避免瞬时抖动触发重谈。
+     */
+    private fun onDecodeFailure(codec: VideoDecoder, error: Throwable, stats: FlowStats) {
+        stats.decodeFailures = if (error is IllegalStateException) DECODE_FAILURE_LIMIT else stats.decodeFailures + 1
+        Log.w(TAG, "decode failed (${stats.decodeFailures}/$DECODE_FAILURE_LIMIT)", error)
+        if (stats.decodeFailures < DECODE_FAILURE_LIMIT) return
+        stats.decodeFailures = 0
+        // 先摘掉 H.265 声明（PRD 8.7 异常表「改用 H.264 并降档」）：
+        // 只要还在声明，发端就一直按 H.265 推，光降尺寸救不回来
+        codec.discardUnusable()
+        awaitKeyFrame = true
+        fallBackToOneTierLower(error)
+    }
+
+    /** 每 30 帧打一次进度：日志、状态行与延迟/带宽/音画的例行采样。 */
+    private fun logProgress(hello: Handshake.Hello, stats: FlowStats, codec: VideoDecoder?) {
+        val rendered = codec?.renderedFrames ?: 0L
+        logFirstFrame(codec)
+        val latency = codec?.latency
+        Log.i(
+            TAG,
+            "received=${stats.received} decoded=${stats.decoded} rendered=$rendered " +
+                "等关键帧丢 ${stats.droppedUntilKey} 晚到丢 ${stats.droppedLate} 音画偏差 ${lastDriftMs}ms " +
+                "音帧 ${stats.audioFrames}/已播 ${audioOut?.playedFrames ?: 0} " +
+                "${latency?.summary() ?: ""}",
+        )
+        onStatus(
+            "${hello.deviceName} · 收 ${stats.received} / 解码 ${stats.decoded} / 渲染 $rendered 帧" +
+                " · P90 ${latency?.percentile(90) ?: 0}ms · 偏差 ${lastDriftMs}ms" +
+                qualitySuffix(),
+        )
+        pollLatency(codec, hello.deviceName)
+        reportQuality(codec)
+        watchAudioInterrupt(hello.deviceName)
+    }
+
+    /** 一帧声音：配置帧由 [openAudio] 处理，这里只写采样并按节拍采样音画偏差。 */
+    private fun onAudioData(frame: Protocol.Frame, hello: Handshake.Hello, stats: FlowStats) {
+        stats.audioFrames++
+        lastAudioAtMs = System.currentTimeMillis()
+        val out = audioOut
+        if (out == null) {
+            if (stats.audioFrames == 1L) Log.i(TAG, "audio data before a usable config, ignored")
+            return
+        }
+        if (paused) return
+        runCatching { out.write(frame.payload, frame.ptsUs) }
+            .onFailure {
+                Log.w(TAG, "audio output failed: ${Redactor.throwable(it)}")
+                closeAudio()
+            }
+        if (stats.audioFrames % AV_SAMPLE_FRAMES == 0L) sampleAvSync(hello.deviceName)
+    }
+
+    /** 对端控制帧：暂停/恢复/接管答复/声音开关。 */
+    private fun onControl(frame: Protocol.Frame, hello: Handshake.Hello) {
+        val signal = SessionControl.decode(frame.payload)
+        when (signal.op) {
+            SessionControl.OP_PAUSE -> {
+                paused = true
+                Log.i(TAG, "paused by peer")
+                onStatus("${hello.deviceName} 已暂停")
+                onNotice("${hello.deviceName} 已暂停")
+            }
+            SessionControl.OP_RESUME -> {
+                paused = false
+                lastAudioAtMs = System.currentTimeMillis()
+                audioGone = false
+                // 暂停期间两条流各自停了一段，恢复即重新对齐，1 秒内要回到容忍区（PRD FR-09 状态迁移）
+                resyncAvClock("${hello.deviceName} 恢复投屏")
+                Log.i(TAG, "resumed by peer")
+                onStatus("${hello.deviceName} 推流中")
+                onNotice("${hello.deviceName} 推流中")
+            }
+            SessionControl.OP_TAKEOVER_RESULT -> {
+                Log.i(TAG, "takeover answer allow=${signal.allow}")
+                takeoverAnswers.offer(signal.allow)
+            }
+            SessionControl.OP_AUDIO -> {
+                // 对方主动关了声音：这是选择，不是故障，不能等到 1 秒后弹「被占用」
+                if (!signal.allow) {
+                    closeAudio()
+                    Log.i(TAG, "peer switched audio off")
+                    onNotice("${hello.deviceName} 已关闭声音")
+                } else {
+                    Log.i(TAG, "peer switched audio on, waiting for its config frame")
+                    onNotice("${hello.deviceName} 已打开声音")
+                }
+            }
+            else -> Unit
+        }
+    }
+
+    /** 收尾：只有仍属于自己才清共享状态；意外断线进恢复窗口，正常结束就撤回投屏态。 */
+    private fun finishSession(
+        conn: StreamConnection,
+        done: CountDownLatch,
+        deviceId: String,
+        deviceName: String,
+        byeReceived: Boolean,
+    ) {
+        // 接管时旧线程可能晚于新会话收尾，只有仍属于自己才清空共享状态并撤回投屏态
+        val owns = activeConn === conn
+        if (owns) {
+            activeConn = null
+            paused = false
+            // 声音跟着会话走：留着会让断线后的主时钟继续往前跑，续会时按假偏差乱抽帧
+            closeAudio()
+        }
+        if (isDropped(owns, byeReceived)) {
+            // PRD FS-10：短暂中断不重来，保留最后一帧并等原设备在 30 秒内回来
+            startRecovery(activeDeviceId ?: deviceId, deviceName)
+        } else {
+            if (owns) {
+                activeDeviceId = null
+                endRequested = false
+                hasCast = false
+            }
+            pairing.trust.releaseSession(deviceId)
+            if (owns) onCasting(false, "")
+        }
+        done.countDown()
+        if (sessionDone === done) sessionDone = null
+    }
+
+    /** 意外断线：仍持有会话、没收到 BYE、没主动结束，也没在接管，且确实推过画面。 */
+    private fun isDropped(owns: Boolean, byeReceived: Boolean): Boolean =
+        owns && running && !byeReceived && !endRequested && !handoverInProgress &&
+            activeDeviceId != null && hasCast
 
     /**
      * HELLO 之后的第一道判定（PRD FS-10）：恢复请求只认保留窗口内的原设备；
@@ -741,7 +809,7 @@ class ReceiverSession(
                 val reason = when (verdict.reason) {
                     AuthGate.Refused.TOO_MANY_ATTEMPTS -> "投屏码错误次数过多"
                     AuthGate.Refused.ALREADY_USED -> "投屏码已用过"
-                    AuthGate.Refused.SESSION_BUSY -> "已有设备在投屏"
+                    AuthGate.Refused.SESSION_BUSY -> SESSION_BUSY_TEXT
                     // 静默期内连输码的机会都没有（authorize 判码之前就返回了），
                     // 说「投屏码不正确」会让用户白跑一轮重新读码
                     AuthGate.Refused.NOT_TRUSTED -> "大屏已拒绝"
@@ -794,7 +862,8 @@ class ReceiverSession(
                 // 旧连接已经写不进去：按等价于旧会话结束处理，释放后再放行新设备
                 Log.w(TAG, "takeover request not delivered, dropping dead session $oldId")
                 runCatching { old.close() }
-                sessionDone?.await(TAKEOVER_STOP_WAIT_MS, TimeUnit.MILLISECONDS)
+                val stopped = sessionDone?.await(TAKEOVER_STOP_WAIT_MS, TimeUnit.MILLISECONDS) ?: false
+                if (!stopped) Log.w(TAG, "takeover: dead session $oldId did not stop within ${TAKEOVER_STOP_WAIT_MS}ms")
                 pairing.trust.releaseSession(oldId)
                 return promoteDirectly(conn, verdict, peer)
             }
@@ -803,7 +872,7 @@ class ReceiverSession(
                     Log.i(TAG, "takeover refused by $oldId")
                     onStatus("已拒绝 ${verdict.deviceName} 的接管请求，继续投屏")
                     onNotice("已拒绝 ${verdict.deviceName} 的接管请求")
-                    refuse(conn, "已有设备在投屏")
+                    refuse(conn, SESSION_BUSY_TEXT)
                     return null
                 }
                 null -> {
@@ -811,7 +880,7 @@ class ReceiverSession(
                     Log.i(TAG, "takeover timed out, keeping $oldId")
                     onStatus("对方未响应，已保留当前会话")
                     onNotice("对方未响应，已保留当前会话")
-                    refuse(conn, "已有设备在投屏")
+                    refuse(conn, SESSION_BUSY_TEXT)
                     return null
                 }
                 true -> Unit
@@ -820,7 +889,8 @@ class ReceiverSession(
             // 先执行停止：旧会话彻底结束并释放占用后才给新设备授权（PRD「先执行停止，再处理接管请求」）
             runCatching { old.send(Protocol.Frame(Protocol.Type.BYE)) }
             old.close()
-            sessionDone?.await(TAKEOVER_STOP_WAIT_MS, TimeUnit.MILLISECONDS)
+            val stopped = sessionDone?.await(TAKEOVER_STOP_WAIT_MS, TimeUnit.MILLISECONDS) ?: false
+            if (!stopped) Log.w(TAG, "takeover: session $oldId did not stop within ${TAKEOVER_STOP_WAIT_MS}ms")
             pairing.trust.releaseSession(oldId)
             return promoteDirectly(conn, verdict, peer)
         } finally {
@@ -832,7 +902,7 @@ class ReceiverSession(
     private fun promoteDirectly(conn: StreamConnection, verdict: AuthGate.Verdict.TakeoverRequired, peer: String): String? {
         val promoted = pairing.gate.promote(verdict.deviceId, verdict.deviceName, verdict.permanent)
         if (promoted == null) {
-            refuse(conn, "已有设备在投屏")
+            refuse(conn, SESSION_BUSY_TEXT)
             onStatus("${verdict.deviceName} 接管失败，已保留当前会话")
             onNotice("${verdict.deviceName} 接管失败，已保留当前会话")
             return null
@@ -1271,6 +1341,9 @@ class ReceiverSession(
 
     private companion object {
         const val TAG = "AirMirrorReceiver"
+
+        /** 会话被占用时的统一拒绝文案：拒绝码路径与接管路径共用，避免两处写法漂移。 */
+        const val SESSION_BUSY_TEXT = "已有设备在投屏"
         /**
          * 跨网会话的防滥用记账键：不打码、不带地址。
          * 公网映射地址随 NAT 变化，拿它做键既拦不住刷子，也可能把无关用户捆进同一个静默期。

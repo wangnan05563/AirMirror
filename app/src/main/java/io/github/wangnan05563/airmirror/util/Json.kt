@@ -163,20 +163,29 @@ object Json {
         private fun number(): JsonValue.Num {
             val start = position
             if (peek() == '-') position++
-            while (!done() && text[position].isDigit()) position++
+            skipDigits()
             if (!done() && text[position] == '.') {
                 position++
-                while (!done() && text[position].isDigit()) position++
+                skipDigits()
             }
-            if (!done() && (text[position] == 'e' || text[position] == 'E')) {
-                position++
-                if (!done() && (text[position] == '+' || text[position] == '-')) position++
-                while (!done() && text[position].isDigit()) position++
-            }
+            skipExponent()
             if (position == start) throw JsonException("bad number at $start")
             val raw = text.substring(start, position)
             raw.toDoubleOrNull() ?: throw JsonException("bad number: $raw")
             return JsonValue.Num(raw)
+        }
+
+        private fun skipDigits() {
+            while (!done() && text[position].isDigit()) position++
+        }
+
+        /** 指数部分：e/E 后可选正负号，再跟一段数字；合法性最终由 toDoubleOrNull 兜底。 */
+        private fun skipExponent() {
+            if (done()) return
+            if (text[position] != 'e' && text[position] != 'E') return
+            position++
+            if (!done() && (text[position] == '+' || text[position] == '-')) position++
+            skipDigits()
         }
 
         private fun peek(): Char {

@@ -190,7 +190,8 @@ class ServiceLocator(
         }
         main.post { runCatching { manager.discoverServices(Nsd.SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, listener) } }
         try {
-            latch.await(timeoutMs, TimeUnit.MILLISECONDS)
+            val completed = latch.await(timeoutMs, TimeUnit.MILLISECONDS)
+            if (!completed) Log.w(Nsd.TAG, "locate $serviceName timed out after ${timeoutMs}ms")
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()
         }

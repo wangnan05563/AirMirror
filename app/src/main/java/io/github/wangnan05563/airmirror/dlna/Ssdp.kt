@@ -23,6 +23,9 @@ object Ssdp {
     const val CACHE_MAX_SECONDS = 1800
     const val ST_ALL = "ssdp:all"
 
+    /** 三份报文都要带同一份 BOOTID，抽成常量避免版本号在报文里各写各的。 */
+    private const val BOOTID_HEADER = "BOOTID.UPNP.ORG: 1\r\n"
+
     /** 是 M-SEARCH 则返回其 ST，否则 null（NOTIFY/HTTP 探测一律忽略）。 */
     fun searchTarget(datagram: String): String? {
         val lines = datagram.split("\r\n", "\n")
@@ -50,7 +53,7 @@ object Ssdp {
         append("SERVER: ").append(SERVER).append("\r\n")
         append("ST: ").append(st).append("\r\n")
         append("USN: ").append(usn).append("\r\n")
-        append("BOOTID.UPNP.ORG: 1\r\n")
+        append(BOOTID_HEADER)
         append("CONFIGID.UPNP.ORG: 1\r\n")
         append("\r\n")
     }
@@ -71,7 +74,7 @@ object Ssdp {
         append("NTS: ssdp:alive\r\n")
         append("SERVER: ").append(SERVER).append("\r\n")
         append("USN: ").append(usn).append("\r\n")
-        append("BOOTID.UPNP.ORG: 1\r\n")
+        append(BOOTID_HEADER)
         append("CONFIGID.UPNP.ORG: 1\r\n")
         append("\r\n")
     }
@@ -82,7 +85,7 @@ object Ssdp {
         append("NT: ").append(nt).append("\r\n")
         append("NTS: ssdp:byebye\r\n")
         append("USN: ").append(usn).append("\r\n")
-        append("BOOTID.UPNP.ORG: 1\r\n")
+        append(BOOTID_HEADER)
         append("\r\n")
     }
 }

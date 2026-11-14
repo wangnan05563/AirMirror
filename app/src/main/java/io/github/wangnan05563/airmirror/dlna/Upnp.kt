@@ -36,6 +36,11 @@ object Upnp {
     const val ID_RENDERING_CONTROL = "urn:upnp-org:serviceId:RenderingControl"
     const val ID_CONNECTION_MANAGER = "urn:upnp-org:serviceId:ConnectionManager"
 
+    /** 描述/SCPD/SOAP 报文共用的片段：XML 声明与 stateVariable 的开合标签。 */
+    private const val XML_DECLARATION = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"
+    private const val STATE_VAR_NO_HEAD = "<stateVariable sendEvents=\"no\"><name>"
+    private const val STATE_VAR_END = "</stateVariable>\n"
+
     /** SOAP 错误码（UPnP AVTransport 规范段 700~714 与通用 5xx/600~699）。 */
     const val FAULT_INVALID_ACTION = 401
     const val FAULT_INVALID_ARGS = 402
@@ -100,7 +105,7 @@ object Upnp {
     fun deviceXml(device: Device): String {
         val base = device.urlBase.trimEnd('/') + "/"
         return buildString {
-            append("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n")
+            append(XML_DECLARATION)
             append("<root xmlns=\"urn:schemas-upnp-org:device-1-0\" ")
             append("xmlns:dlna=\"urn:schemas-dlna-org:device-1-0\">\n")
             append("<specVersion><major>1</major><minor>0</minor></specVersion>\n")
@@ -208,14 +213,14 @@ object Upnp {
                 .append("</name><dataType>string</dataType></stateVariable>\n")
         }
         for (name in listOf("CurrentTransportActions", "CurrentTrackURI", "CurrentTrackDuration", "CurrentTrackMetaData")) {
-            append("<stateVariable sendEvents=\"no\"><name>").append(name)
+            append(STATE_VAR_NO_HEAD).append(name)
                 .append("</name><dataType>string</dataType></stateVariable>\n")
         }
         append("<stateVariable sendEvents=\"no\"><name>NumberOfTracks</name>")
             .append("<dataType>ui4</dataType></stateVariable>\n")
         append("<stateVariable sendEvents=\"no\"><name>CurrentTrack</name>")
             .append("<dataType>ui4</dataType><allowedValueRange>0,99999,1</allowedValueRange>")
-            .append("</stateVariable>\n")
+            .append(STATE_VAR_END)
         for ((name, type) in listOf(
             "A_ARG_TYPE_InstanceID" to "ui4",
             "A_ARG_TYPE_URI" to "uri",
@@ -227,12 +232,12 @@ object Upnp {
             "A_ARG_TYPE_SeekMode" to "string",
             "A_ARG_TYPE_SeekTarget" to "string",
         )) {
-            append("<stateVariable sendEvents=\"no\"><name>").append(name)
+            append(STATE_VAR_NO_HEAD).append(name)
                 .append("</name><dataType>").append(type).append("</dataType></stateVariable>\n")
         }
         append("<stateVariable sendEvents=\"no\"><name>TransportPlaySpeed</name><dataType>string</dataType>")
             .append("<allowedValueList><allowedValue>1</allowedValue><allowedValue>0</allowedValue></allowedValueList>")
-            .append("</stateVariable>\n")
+            .append(STATE_VAR_END)
     }
 
     private val RENDERING_CONTROL_STATE_VARS = buildString {
@@ -240,14 +245,14 @@ object Upnp {
             .append("<dataType>string</dataType></stateVariable>\n")
         append("<stateVariable sendEvents=\"no\"><name>Volume</name>")
             .append("<dataType>ui2</dataType><allowedValueRange>0,100,0</allowedValueRange>")
-            .append("</stateVariable>\n")
+            .append(STATE_VAR_END)
         append("<stateVariable sendEvents=\"no\"><name>Mute</name>")
             .append("<dataType>boolean</dataType></stateVariable>\n")
         append("<stateVariable sendEvents=\"no\"><name>A_ARG_TYPE_InstanceID</name>")
             .append("<dataType>ui4</dataType></stateVariable>\n")
         append("<stateVariable sendEvents=\"no\"><name>A_ARG_TYPE_Channel</name>")
             .append("<dataType>string</dataType><allowedValueList><allowedValue>Master</allowedValue></allowedValueList>")
-            .append("</stateVariable>\n")
+            .append(STATE_VAR_END)
         append("<stateVariable sendEvents=\"no\"><name>A_ARG_TYPE_PresetNameList</name>")
             .append("<dataType>string</dataType></stateVariable>\n")
     }
@@ -264,7 +269,7 @@ object Upnp {
             "A_ARG_TYPE_ProtocolInfo" to "string",
             "A_ARG_TYPE_ConnectionStatus" to "string",
         )) {
-            append("<stateVariable sendEvents=\"no\"><name>").append(name)
+            append(STATE_VAR_NO_HEAD).append(name)
                 .append("</name><dataType>").append(type).append("</dataType></stateVariable>\n")
         }
     }
@@ -295,7 +300,7 @@ object Upnp {
             else -> return null
         }
         return buildString {
-            append("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n")
+            append(XML_DECLARATION)
             append("<scpd xmlns=\"urn:schemas-upnp-org:service-1-0\">\n")
             append("<specVersion><major>1</major><minor>0</minor></specVersion>\n")
             append("<actionList>\n")
@@ -356,7 +361,7 @@ object Upnp {
     private const val SOAP_NS = "http://schemas.xmlsoap.org/soap/envelope/"
 
     fun soapResponse(serviceType: String, action: String, args: List<Pair<String, String>>): String = buildString {
-        append("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n")
+        append(XML_DECLARATION)
         append("<s:Envelope xmlns:s=\"").append(SOAP_NS).append("\" ")
             .append("xmlns:u=\"").append(serviceType).append("\">\n")
         append("<s:Body><u:").append(action).append("Response>")
@@ -367,7 +372,7 @@ object Upnp {
     }
 
     fun soapFault(code: Int, message: String): String = buildString {
-        append("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n")
+        append(XML_DECLARATION)
         append("<s:Envelope xmlns:s=\"").append(SOAP_NS).append("\"><s:Body>\n")
         append("<s:Fault><faultcode>s:Client</faultcode><faultstring>UPnPError</faultstring>")
         append("<detail><UPnPError xmlns=\"urn:schemas-upnp-org:control-1-0\">")
@@ -425,8 +430,8 @@ object Upnp {
         val parts = text.trim().split(':')
         if (parts.isEmpty() || parts.any { it.isEmpty() }) return -1L
         var hours = 0L
-        var minutes = 0L
-        var seconds = 0.0
+        var minutes: Long
+        var seconds: Double
         when (parts.size) {
             3 -> {
                 hours = parts[0].toLongOrNull() ?: return -1L
@@ -488,18 +493,26 @@ object Upnp {
         return text.substring(start + 9, end)
     }
 
+    /** 注释 / 处理指令 / 声明不是元素：返回跳过后的扫描位置，null 表示当前位置就是标签。 */
+    private fun skipNonTag(xml: String, lt: Int): Int? {
+        if (xml.startsWith("<!--", lt)) {
+            return xml.indexOf("-->", lt).let { if (it < 0) xml.length else it + 3 }
+        }
+        if (xml.startsWith("<?", lt) || xml.startsWith("<!", lt)) {
+            return xml.indexOf('>', lt).let { if (it < 0) xml.length else it + 1 }
+        }
+        return null
+    }
+
     /** 元素文本（取第一个同名元素，含嵌套同名时的配对处理）。 */
     fun elementText(xml: String, name: String): String? {
         var i = 0
         while (true) {
             val lt = xml.indexOf('<', i)
             if (lt < 0) return null
-            if (xml.startsWith("<!--", lt)) {
-                i = xml.indexOf("-->", lt).let { if (it < 0) xml.length else it + 3 }
-                continue
-            }
-            if (xml.startsWith("<?", lt) || xml.startsWith("<!", lt)) {
-                i = xml.indexOf('>', lt).let { if (it < 0) xml.length else it + 1 }
+            val skip = skipNonTag(xml, lt)
+            if (skip != null) {
+                i = skip
                 continue
             }
             val gt = xml.indexOf('>', lt)
@@ -517,32 +530,36 @@ object Upnp {
     private fun findClose(xml: String, from: Int, name: String): Int {
         var depth = 1
         var i = from
+        while (true) {
+            val tag = scanTag(xml, i) ?: return -1
+            when {
+                tag.body.startsWith("/") -> if (tagName(tag.body) == name && --depth == 0) return tag.lt
+                tag.body.endsWith("/") -> Unit
+                tagName(tag.body) == name -> depth++
+            }
+            i = tag.after
+        }
+    }
+
+    /** 一个真实标签：起点、`<` 与 `>` 之间的标签体、闭合符之后的下标。 */
+    private class Tag(val lt: Int, val body: String, val after: Int)
+
+    /** 从 from 起找下一个真实标签：跳过注释与 XML 声明，找不到返回 null。 */
+    private fun scanTag(xml: String, from: Int): Tag? {
+        var i = from
         while (i < xml.length) {
             val lt = xml.indexOf('<', i)
-            if (lt < 0) return -1
-            if (xml.startsWith("<!--", lt)) {
-                i = xml.indexOf("-->", lt).let { if (it < 0) xml.length else it + 3 }
-                continue
-            }
-            if (xml.startsWith("<?", lt) || xml.startsWith("<!", lt)) {
-                i = xml.indexOf('>', lt).let { if (it < 0) xml.length else it + 1 }
+            if (lt < 0) return null
+            val skip = skipNonTag(xml, lt)
+            if (skip != null) {
+                i = skip
                 continue
             }
             val gt = xml.indexOf('>', lt)
-            if (gt < 0) return -1
-            val raw = xml.substring(lt + 1, gt).trim()
-            val tag = tagName(raw)
-            when {
-                raw.startsWith("/") -> if (tag == name) {
-                    depth--
-                    if (depth == 0) return lt
-                }
-                raw.endsWith("/") -> Unit
-                tag == name -> depth++
-            }
-            i = gt + 1
+            if (gt < 0) return null
+            return Tag(lt, xml.substring(lt + 1, gt).trim(), gt + 1)
         }
-        return -1
+        return null
     }
 
     /** 一级子元素：名字（去前缀）、开标签属性（去前缀）、内部文本。 */
@@ -551,42 +568,24 @@ object Upnp {
     fun childElements(xml: String): List<Element> {
         val out = ArrayList<Element>()
         var i = 0
-        while (i < xml.length) {
-            val lt = xml.indexOf('<', i)
-            if (lt < 0) break
-            if (xml.startsWith("<!--", lt)) {
-                i = xml.indexOf("-->", lt).let { if (it < 0) xml.length else it + 3 }
-                continue
-            }
-            if (xml.startsWith("<?", lt) || xml.startsWith("<!", lt)) {
-                i = xml.indexOf('>', lt).let { if (it < 0) xml.length else it + 1 }
-                continue
-            }
-            val gt = xml.indexOf('>', lt)
-            if (gt < 0) break
-            val raw = xml.substring(lt + 1, gt).trim()
-            if (raw.startsWith("/")) {
-                i = gt + 1
-                continue
-            }
-            val tag = tagName(raw)
-            if (tag.isEmpty()) {
-                i = gt + 1
-                continue
-            }
+        while (true) {
+            val tag = scanTag(xml, i) ?: break
+            i = tag.after
+            if (tag.body.startsWith("/")) continue
+            val name = tagName(tag.body)
+            if (name.isEmpty()) continue
             // 属性只在开标签上（DIDL 的 res 带 duration/protocolInfo/size）
-            val attrs = attributes(raw)
-            if (raw.endsWith("/")) {
-                out += Element(tag, attrs, "")
-                i = gt + 1
+            val attrs = attributes(tag.body)
+            if (tag.body.endsWith("/")) {
+                out += Element(name, attrs, "")
                 continue
             }
-            val end = findClose(xml, gt + 1, tag)
+            val end = findClose(xml, tag.after, name)
             if (end < 0) {
-                out += Element(tag, attrs, xml.substring(gt + 1))
+                out += Element(name, attrs, xml.substring(tag.after))
                 break
             }
-            out += Element(tag, attrs, xml.substring(gt + 1, end))
+            out += Element(name, attrs, xml.substring(tag.after, end))
             val closeGt = xml.indexOf('>', end)
             i = if (closeGt < 0) xml.length else closeGt + 1
         }

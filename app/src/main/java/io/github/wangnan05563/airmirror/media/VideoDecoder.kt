@@ -138,25 +138,28 @@ class VideoDecoder(private val surface: Surface) {
             when {
                 index == MediaCodec.INFO_TRY_AGAIN_LATER -> return
                 index == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> Unit
-                index >= 0 -> {
-                    decoder.releaseOutputBuffer(index, true)
-                    renderedFrames++
-                    val nowNano = System.nanoTime()
-                    if (firstRenderAtNano == 0L) firstRenderAtNano = nowNano
-                    if (info.presentationTimeUs > 0L) lastRenderedPtsUs = info.presentationTimeUs
-                    if (info.presentationTimeUs > 0) {
-                        val sample = (nowNano / 1_000 - info.presentationTimeUs) / 1_000
-                        latency.record(sample)
-                        window.record(sample)
-                        if (++windowFrames >= WINDOW_FRAMES) {
-                            windowFrames = 0L
-                            val snapshot = window.snapshot()
-                            window.reset()
-                            // 只留最新一张：收流线程取慢了也不该把过期窗口当成当前状态
-                            pendingWindow.set(snapshot)
-                        }
-                    }
-                }
+                index >= 0 -> onFrameRendered(decoder, index, info)
+            }
+        }
+    }
+
+    /** 渲染一帧并记延迟：首个渲染时刻、最后一帧 PTS 与窗口统计都在这里更新。 */
+    private fun onFrameRendered(decoder: MediaCodec, index: Int, info: MediaCodec.BufferInfo) {
+        decoder.releaseOutputBuffer(index, true)
+        renderedFrames++
+        val nowNano = System.nanoTime()
+        if (firstRenderAtNano == 0L) firstRenderAtNano = nowNano
+        if (info.presentationTimeUs > 0L) lastRenderedPtsUs = info.presentationTimeUs
+        if (info.presentationTimeUs > 0) {
+            val sample = (nowNano / 1_000 - info.presentationTimeUs) / 1_000
+            latency.record(sample)
+            window.record(sample)
+            if (++windowFrames >= WINDOW_FRAMES) {
+                windowFrames = 0L
+                val snapshot = window.snapshot()
+                window.reset()
+                // 只留最新一张：收流线程取慢了也不该把过期窗口当成当前状态
+                pendingWindow.set(snapshot)
             }
         }
     }

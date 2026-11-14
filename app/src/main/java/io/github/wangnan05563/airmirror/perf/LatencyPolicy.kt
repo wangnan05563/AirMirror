@@ -161,25 +161,32 @@ class LatencyPolicy(
         }
         if (!window.isTrustworthy) return keep("打点样本不足，不动画质")
         if (window.frames < minFrames) return keep("窗口只有 ${window.frames} 帧")
-        if (isOver(window)) {
-            goodStreak = 0
-            badStreak++
-            if (badStreak < badWindowsNeeded) return keep("超标 ${badStreak}/${badWindowsNeeded} 窗")
-            badStreak = 0
-            if (locked) {
-                // 锁定 = 用户表了态，画质一格都不能动；但「放不稳」得说，只说不降（PRD FS-05）
-                if (notifyQuiet > 0) {
-                    notifyQuiet--
-                    return keep("锁定中，提示静默剩 $notifyQuiet 窗")
-                }
-                notifyQuiet = NOTIFY_QUIET_WINDOWS
-                return LatencyDecision(LatencyMove.NOTIFY, stepIndex, "档位已锁定，p90 ${window.p90Ms}ms 超 ${targetP90Ms}ms")
+        return if (isOver(window)) degrade(window, steps) else recover()
+    }
+
+    /** 超标窗：连续超窗才动档，锁定只发提示，已到最低档就保画面不黑屏。 */
+    private fun degrade(window: LatencyWindow, steps: Int): LatencyDecision {
+        goodStreak = 0
+        badStreak++
+        if (badStreak < badWindowsNeeded) return keep("超标 ${badStreak}/${badWindowsNeeded} 窗")
+        badStreak = 0
+        if (locked) {
+            // 锁定 = 用户表了态，画质一格都不能动；但「放不稳」得说，只说不降（PRD FS-05）
+            if (notifyQuiet > 0) {
+                notifyQuiet--
+                return keep("锁定中，提示静默剩 $notifyQuiet 窗")
             }
-            if (stepIndex >= steps - 1) return keep("已到最低档（第 $stepIndex 档），保画面不黑屏")
-            stepIndex++
-            settling = settleWindows
-            return LatencyDecision(LatencyMove.DEGRADE, stepIndex, "p90 ${window.p90Ms}ms 超 ${targetP90Ms}ms")
+            notifyQuiet = NOTIFY_QUIET_WINDOWS
+            return LatencyDecision(LatencyMove.NOTIFY, stepIndex, "档位已锁定，p90 ${window.p90Ms}ms 超 ${targetP90Ms}ms")
         }
+        if (stepIndex >= steps - 1) return keep("已到最低档（第 $stepIndex 档），保画面不黑屏")
+        stepIndex++
+        settling = settleWindows
+        return LatencyDecision(LatencyMove.DEGRADE, stepIndex, "p90 ${window.p90Ms}ms 超 ${targetP90Ms}ms")
+    }
+
+    /** 达标窗累计到阈值就回升一档；锁定或已在最高档时只清计数。 */
+    private fun recover(): LatencyDecision {
         badStreak = 0
         notifyQuiet = 0
         goodStreak++

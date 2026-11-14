@@ -21,7 +21,7 @@ import java.net.Socket
  * 传输层是可替换的：局域网走 TCP，跨网走 [UdpTunnel]。
  * 正因为握手、身份锚、加密、帧协议都只依赖字节流，跨网不需要另造一套私有协议。
  */
-class StreamConnection private constructor(private val channel: FrameChannel) : Closeable {
+class StreamConnection private constructor(private val channel: FrameChannel) : Closeable by channel {
     private val input = channel.input
     private val output = channel.output
 
@@ -215,10 +215,6 @@ class StreamConnection private constructor(private val channel: FrameChannel) : 
         channel.shutdownOutput()
     }
 
-    override fun close() {
-        channel.close()
-    }
-
     private fun enableEncryption(
         myPrivate: java.security.PrivateKey,
         peerPublicSpki: ByteArray,
@@ -295,7 +291,7 @@ private class SocketChannel(private val socket: Socket) : FrameChannel {
 
 private class TunnelChannel(
     private val tunnel: io.github.wangnan05563.airmirror.crossnet.UdpTunnel,
-) : FrameChannel {
+) : FrameChannel, Closeable by tunnel {
     override val input: java.io.InputStream get() = tunnel.input
     override val output: java.io.OutputStream get() = tunnel.output
 
@@ -303,6 +299,4 @@ private class TunnelChannel(
 
     /** 隧道没有半关概念：它的 close 自带 FIN 与重传，收尾语义与半关一致。 */
     override fun shutdownOutput() = Unit
-
-    override fun close() = tunnel.close()
 }
