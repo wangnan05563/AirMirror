@@ -68,6 +68,9 @@ import kotlin.concurrent.thread
  */
 class SenderActivity : Activity() {
 
+    /** 同一套页面在电视上要按 3 米观看距离放大字号（PRD §11.5），标题/正文按端取角色字号。 */
+    private val isTv: Boolean by lazy { TvFocus.isTvMode(this) }
+
     private data class Target(val name: String, val host: String, val port: Int, val fingerprint: String)
 
     private lateinit var store: DeviceStore
@@ -204,20 +207,20 @@ class SenderActivity : Activity() {
         }
         root.addView(TextView(this).apply {
             text = "投到其他设备"
-            textSize = Theme.SENDER_TITLE_SP
+            textSize = FocusPolicy.titleSp(isTv)
             setTextColor(Theme.TEXT_PRIMARY)
             setTypeface(typeface, Typeface.BOLD)
         })
         // PRD §04 / §13.1：能做什么先说清楚，Miracast 不在承诺内
         root.addView(TextView(this).apply {
             text = "支持镜像到同网 AirMirror 设备；不支持 Miracast"
-            textSize = Theme.PHONE_BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_SECONDARY)
             setPadding(0, Theme.dp(this@SenderActivity, Theme.SPACE_XS_DP), 0, 0)
         })
         status = TextView(this).apply {
             text = SEARCHING
-            textSize = Theme.PHONE_BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(StatusColors.textOf(CastStatus.State.IDLE))
             setPadding(0, Theme.dp(this@SenderActivity, 6), 0, Theme.dp(this@SenderActivity, 14))
             A11y.liveStatus(this)
@@ -225,9 +228,8 @@ class SenderActivity : Activity() {
         root.addView(status)
         // PRD 7.4「权限缺失：跳转设置」：真到了只能去设置的地步（系统不再询问），
         // 说明框里已经问不出结果，这里留一个持久入口，位置就在拒绝后的状态行下面
-        permissionFix = Button(this).apply {
+        permissionFix = UiKit.button(this, kind = UiKit.Kind.Ghost).apply {
             text = "去设置打开权限"
-            setTextColor(Theme.ACCENT)
             visibility = View.GONE
             setOnClickListener { openPermissionSettings() }
         }
@@ -242,14 +244,14 @@ class SenderActivity : Activity() {
         )
         root.addView(TextView(this).apply {
             text = "电视待连接页上的 6 位数字"
-            textSize = Theme.PHONE_BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_SECONDARY)
             setPadding(Theme.dp(this@SenderActivity, Theme.SPACE_XS_DP), 0, 0, Theme.dp(this@SenderActivity, Theme.SPACE_XS_DP))
         }, matchWidth())
         // PRD FS-04：跨网入口与局域网并列，但只在「局域网没搜到设备」时才会尝试，
         // 填了端点才启用；不填就不向任何外部服务发请求。
         crossNetRow = TextView(this).apply {
-            textSize = Theme.PHONE_BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_SECONDARY)
             setPadding(Theme.dp(this@SenderActivity, Theme.SPACE_XS_DP), 0, 0, Theme.dp(this@SenderActivity, Theme.SPACE_MD_DP))
             setOnClickListener { editCrossNet() }
@@ -258,7 +260,7 @@ class SenderActivity : Activity() {
         // PRD 通用需求「菜单新增在线更新」：内置仓库地址，不开放手填；只查 GitHub Release（Q-6）
         updateRow = TextView(this).apply {
             text = "检查更新"
-            textSize = Theme.PHONE_BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_SECONDARY)
             setPadding(Theme.dp(this@SenderActivity, Theme.SPACE_XS_DP), 0, 0, Theme.dp(this@SenderActivity, Theme.SPACE_MD_DP))
             setOnClickListener { checkUpdate() }
@@ -267,7 +269,7 @@ class SenderActivity : Activity() {
         root.addView(updateRow, matchWidth())
 
         hint = TextView(this).apply {
-            textSize = Theme.PHONE_BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_SECONDARY)
             setPadding(Theme.dp(this@SenderActivity, Theme.SPACE_XS_DP), 0, 0, Theme.dp(this@SenderActivity, Theme.SPACE_SM_DP))
         }
@@ -289,7 +291,7 @@ class SenderActivity : Activity() {
         root.addView(rowWith(addressInput, "直接连接") { connectByAddress() }, matchWidth())
         root.addView(TextView(this).apply {
             text = "局域网直连 · 无广告 · 不经服务器"
-            textSize = Theme.PHONE_BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(StatusColors.offlineText())
             gravity = Gravity.CENTER
             setPadding(0, Theme.dp(this@SenderActivity, 10), 0, 0)
@@ -303,14 +305,14 @@ class SenderActivity : Activity() {
             val inset = Theme.dp(this@SenderActivity, Theme.SPACE_SM_DP)
             setPadding(inset, inset, inset, inset)
         }
-        pauseButton = Button(this).apply {
+        pauseButton = UiKit.button(this).apply {
             text = DeviceCardPolicy.pauseLabel(false)
             setTextColor(Theme.ACCENT)
             setOnClickListener { SenderControl.paused = !SenderControl.paused }
             A11y.describe(this, A11yCopy.pause(SenderControl.paused))
         }
         controlBar.addView(pauseButton, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        stopButton = Button(this).apply {
+        stopButton = UiKit.button(this).apply {
             text = "停止"
             setTextColor(Theme.DANGER)
             setOnClickListener {
@@ -320,8 +322,13 @@ class SenderActivity : Activity() {
             }
             A11y.describe(this, A11yCopy.stop(castingTargetName))
         }
-        controlBar.addView(stopButton, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        audioButton = Button(this).apply {
+        controlBar.addView(
+            stopButton,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                leftMargin = Theme.dp(this@SenderActivity, Theme.SPACE_SM_DP)
+            },
+        )
+        audioButton = UiKit.button(this).apply {
             text = audioLabel()
             setTextColor(Theme.ACCENT)
             setOnClickListener {
@@ -329,7 +336,12 @@ class SenderActivity : Activity() {
             }
             A11y.describe(this, A11yCopy.audio(SenderControl.audio))
         }
-        controlBar.addView(audioButton, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        controlBar.addView(
+            audioButton,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                leftMargin = Theme.dp(this@SenderActivity, Theme.SPACE_SM_DP)
+            },
+        )
         root.addView(controlBar, matchWidth())
         setContentView(root)
 
@@ -362,23 +374,26 @@ class SenderActivity : Activity() {
             setPadding(gap, gap, gap, gap)
         }
         takeoverText = TextView(this).apply {
-            textSize = Theme.PHONE_BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_PRIMARY)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         takeoverBar.addView(takeoverText)
-        takeoverDeny = Button(this).apply {
+        takeoverDeny = UiKit.button(this).apply {
             text = "拒绝"
             setTextColor(Theme.DANGER)
             setOnClickListener { SenderControl.answerTakeover(false) }
         }
         takeoverBar.addView(takeoverDeny)
-        takeoverYield = Button(this).apply {
+        takeoverYield = UiKit.button(this, kind = UiKit.Kind.Primary).apply {
             text = "让出"
-            setTextColor(Theme.ACCENT)
             setOnClickListener { SenderControl.answerTakeover(true) }
         }
-        takeoverBar.addView(takeoverYield)
+        takeoverBar.addView(
+            takeoverYield,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                .apply { leftMargin = Theme.dp(this@SenderActivity, Theme.SPACE_SM_DP) },
+        )
         return takeoverBar
     }
 
@@ -407,7 +422,7 @@ class SenderActivity : Activity() {
     private fun makeInput(label: String, inputType: Int) = EditText(this).apply {
         hint = label
         this.inputType = inputType
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, Theme.PHONE_BODY_SP)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, FocusPolicy.bodySp(isTv))
         setTextColor(Theme.TEXT_PRIMARY)
         setHintTextColor(StatusColors.offlineText())
         setBackgroundColor(Theme.SURFACE)
@@ -419,11 +434,13 @@ class SenderActivity : Activity() {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         addView(input, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        addView(Button(this@SenderActivity).apply {
+        addView(UiKit.button(this@SenderActivity, kind = UiKit.Kind.Primary).apply {
             text = action
-            setTextColor(Theme.ACCENT)
             A11y.describe(this, if (action == "用码连接") A11yCopy.codeConnect() else A11yCopy.addressConnect())
             setOnClickListener { onClick() }
+        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            // 输入框与按钮之间留 8dp，贴在一起时点错率明显变高
+            leftMargin = Theme.dp(this@SenderActivity, Theme.SPACE_SM_DP)
         })
     }
 
@@ -586,7 +603,7 @@ class SenderActivity : Activity() {
                 }
                 addView(TextView(this@SenderActivity).apply {
                     text = note
-                    textSize = Theme.PHONE_BODY_SP
+                    textSize = FocusPolicy.bodySp(isTv)
                     setTextColor(StatusColors.offlineText())
                 })
             },
@@ -602,16 +619,22 @@ class SenderActivity : Activity() {
     ): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
         setPadding(0, gap, 0, 0)
-        for (action in actions) {
+        for ((index, action) in actions.withIndex()) {
             addView(
                 actionButton(row, target, action),
-                LinearLayout.LayoutParams(0, Theme.dp(this@SenderActivity, DeviceCardPolicy.ACTION_ROW_DP), 1f),
+                LinearLayout.LayoutParams(
+                    0,
+                    Theme.dp(this@SenderActivity, DeviceCardPolicy.ACTION_ROW_DP),
+                    1f,
+                ).apply {
+                    if (index > 0) leftMargin = Theme.dp(this@SenderActivity, Theme.SPACE_SM_DP)
+                },
             )
         }
     }
 
     private fun actionButton(row: DeviceRegistry.Row, target: Target, action: DeviceCardPolicy.CardAction): Button =
-        Button(this).apply {
+        UiKit.button(this).apply {
             text = when (action) {
                 DeviceCardPolicy.CardAction.MIRROR -> "镜像屏幕"
                 DeviceCardPolicy.CardAction.PUSH_VIDEO -> "推送视频"
@@ -670,13 +693,13 @@ class SenderActivity : Activity() {
             visibility = View.GONE
         }
         diagnosisHeadline = TextView(this).apply {
-            textSize = Theme.PHONE_BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_PRIMARY)
             setTypeface(typeface, Typeface.BOLD)
         }
         card.addView(diagnosisHeadline, matchWidth())
         diagnosisNextStep = TextView(this).apply {
-            textSize = Theme.PHONE_BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_SECONDARY)
             setPadding(0, Theme.dp(this@SenderActivity, Theme.SPACE_XS_DP), 0, 0)
         }
@@ -686,7 +709,7 @@ class SenderActivity : Activity() {
             setPadding(0, gap, 0, 0)
         }
         for (action in EmptyDiagnosis.ACTIONS) {
-            buttons.addView(Button(this).apply {
+            buttons.addView(UiKit.button(this).apply {
                 text = ErrorNotice.actionLabel(action)
                 setTextColor(Theme.ACCENT)
                 minimumHeight = Theme.dp(this@SenderActivity, 48)

@@ -38,8 +38,12 @@ class ThemeTokenTest {
         assertEquals(14f, Theme.PHONE_BODY_SP, 0.0001f)
         assertEquals(36f, Theme.CODE_SP, 0.0001f)
         assertEquals(32f, Theme.PHONE_TITLE_SP, 0.0001f)
-        assertEquals(28f, Theme.SENDER_TITLE_SP, 0.0001f)
+        // 2026-11-15 用户口径：各页标题统一，发送端不再单独 28sp（原冻结值的例外已收回）
+        assertEquals(32f, Theme.SENDER_TITLE_SP, 0.0001f)
+        assertEquals(Theme.PHONE_TITLE_SP, Theme.SENDER_TITLE_SP, 0.0001f)
         assertEquals(18f, Theme.DEVICE_NAME_SP, 0.0001f)
+        assertEquals(16f, Theme.PHONE_BUTTON_SP, 0.0001f)
+        assertEquals(24f, Theme.BUTTON_SP, 0.0001f)
         assertTrue(Theme.BODY_SP >= 24f)
         assertTrue(Theme.TITLE_SP >= 40f)
         assertTrue(Theme.PHONE_BODY_SP >= 14f)

@@ -31,8 +31,18 @@ object Theme {
     const val PHONE_BODY_SP = 14f
     /** 手机页标题（TV 走 TITLE_SP）；发送端页标题与设备名行各有固定字号。 */
     const val PHONE_TITLE_SP = 32f
-    const val SENDER_TITLE_SP = 28f
+    /**
+     * 2026-11-15 用户口径：各页标题必须同字号，发送端不再单独 28sp。
+     * 常量名保留给既有引用与守卫测试，新代码直接用 FocusPolicy.titleSp。
+     */
+    const val SENDER_TITLE_SP = PHONE_TITLE_SP
     const val DEVICE_NAME_SP = 18f
+
+    /** 按钮文字：手机 16sp、TV 24sp（MaterialButton 统一取值，见 UiKit.button）。 */
+    const val PHONE_BUTTON_SP = 16f
+    const val BUTTON_SP = 24f
+    /** 按钮圆角：贴近冻结视觉的胶囊感，又不至于像系统默认那样看不出边界。 */
+    const val RADIUS_BUTTON_DP = 14
 
     /** 6 位投屏码要在倒计时环内单行放下，再大就会拆成两截。 */
     const val CODE_SP = 36f

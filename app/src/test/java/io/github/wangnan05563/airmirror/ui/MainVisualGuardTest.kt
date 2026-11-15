@@ -71,7 +71,7 @@ class MainVisualGuardTest {
         assertTrue("环形倒计时要留在码槽里", src.contains("codeSlot.addView(ring"))
         assertTrue("投屏码字号走 36sp 令牌", src.contains("view.textSize = Theme.CODE_SP"))
         assertEquals("投屏码必须 36sp", 36f, Theme.CODE_SP, 0f)
-        assertTrue("设备名走标题字号", src.contains("textSize = Theme.TITLE_SP"))
+        assertTrue("设备名走标题角色字号（TV 40sp / 手机 32sp）", src.contains("textSize = FocusPolicy.titleSp(isTv)"))
         assertTrue("主区正文不得小于 24sp", Theme.BODY_SP >= 24f)
     }
 

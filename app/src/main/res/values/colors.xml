@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  色值唯一真相源仍是 ui/Theme.kt；这里只是给 XML 主题（Material3）提供同名令牌。
+  改动色板时必须两边同步，ThemeTokenTest 里有对齐校验。
+-->
+<resources>
+    <color name="airmirror_background">#FF0B1F3A</color>
+    <color name="airmirror_surface">#FF12314F</color>
+    <color name="airmirror_accent">#FF17C3B2</color>
+    <color name="airmirror_text_primary">#FFFFFFFF</color>
+    <color name="airmirror_text_secondary">#B3FFFFFF</color>
+    <color name="airmirror_offline">#4DFFFFFF</color>
+    <color name="airmirror_danger">#FFFF6B6B</color>
+</resources>

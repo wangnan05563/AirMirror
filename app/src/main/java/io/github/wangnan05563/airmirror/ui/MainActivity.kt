@@ -42,20 +42,24 @@ class MainActivity : Activity() {
             textSize = bodySp
             setTextColor(Theme.TEXT_SECONDARY)
             gravity = Gravity.CENTER
-            setPadding(0, Theme.dp(this@MainActivity, 6), 0, Theme.dp(this@MainActivity, Theme.SPACE_XXL_DP))
+            setPadding(0, Theme.dp(this@MainActivity, Theme.SPACE_SM_DP), 0, Theme.dp(this@MainActivity, Theme.SPACE_XL_DP))
         })
-        root.addView(Button(this).apply {
-            text = "投到其他设备"
-            setTextColor(Theme.ACCENT)
-            setOnClickListener { startActivity(Intent(this@MainActivity, SenderActivity::class.java)) }
-            A11y.describe(this, A11yCopy.mainSend())
-        })
-        root.addView(Button(this).apply {
-            text = "接收别人投来的画面"
-            setTextColor(Theme.TEXT_PRIMARY)
-            setOnClickListener { startActivity(Intent(this@MainActivity, ReceiverActivity::class.java)) }
-            A11y.describe(this, A11yCopy.mainReceive())
-        })
+        // 两个入口按钮：统一用 MaterialButton（开源库 UI），并留出 16dp 间距
+        // —— 改造前无间距，两个胶囊直接粘在一起（用户 2026-11-15 截图反馈）。
+        root.addView(
+            UiKit.button(this, "投到其他设备", UiKit.Kind.Primary).apply {
+                setOnClickListener { startActivity(Intent(this@MainActivity, SenderActivity::class.java)) }
+                A11y.describe(this, A11yCopy.mainSend())
+            },
+            UiKit.fullWidth(this, Theme.SPACE_MD_DP, Theme.SPACE_LG_DP),
+        )
+        root.addView(
+            UiKit.button(this, "接收别人投来的画面").apply {
+                setOnClickListener { startActivity(Intent(this@MainActivity, ReceiverActivity::class.java)) }
+                A11y.describe(this, A11yCopy.mainReceive())
+            },
+            UiKit.fullWidth(this, 0, Theme.SPACE_XL_DP),
+        )
         root.addView(TextView(this).apply {
             text = "局域网直连 · 无广告 · 不需要账号"
             textSize = bodySp

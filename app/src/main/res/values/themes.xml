@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      应用主题：Material3 深色（开源库 UI）。色板与 ui/Theme.kt 同源，
+      按钮造型统一由 Widget.AirMirror.Button 决定（尺寸/字号在 UiKit.button 里按端设置）。
+    -->
+    <style name="Theme.AirMirror" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">@color/airmirror_accent</item>
+        <item name="colorOnPrimary">@color/airmirror_background</item>
+        <item name="colorPrimaryContainer">@color/airmirror_surface</item>
+        <item name="colorOnPrimaryContainer">@color/airmirror_text_primary</item>
+        <item name="colorSecondary">@color/airmirror_accent</item>
+        <item name="colorOnSecondary">@color/airmirror_background</item>
+        <item name="colorSurface">@color/airmirror_surface</item>
+        <item name="colorOnSurface">@color/airmirror_text_primary</item>
+        <item name="colorSurfaceVariant">@color/airmirror_surface</item>
+        <item name="colorError">@color/airmirror_danger</item>
+        <item name="android:colorBackground">@color/airmirror_background</item>
+        <item name="android:windowBackground">@color/airmirror_background</item>
+        <item name="android:statusBarColor">@color/airmirror_background</item>
+        <item name="android:navigationBarColor">@color/airmirror_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="materialButtonStyle">@style/Widget.AirMirror.Button</item>
+    </style>
+
+    <!-- 全站按钮基座：造型只有一套，颜色与字号由 UiKit.button 按语义/端别覆写。 -->
+    <style name="Widget.AirMirror.Button" parent="Widget.Material3.Button">
+        <item name="android:textAllCaps">false</item>
+        <item name="android:letterSpacing">0</item>
+        <item name="android:minHeight">48dp</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="backgroundTint">@color/airmirror_surface</item>
+        <item name="android:textColor">@color/airmirror_text_primary</item>
+        <item name="cornerRadius">14dp</item>
+    </style>
+</resources>

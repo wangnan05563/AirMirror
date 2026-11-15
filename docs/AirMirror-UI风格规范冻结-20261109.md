@@ -47,6 +47,15 @@
 - **开局焦点**：总是尝试给首个可点控件（`FocusPolicy.shouldRequestInitialFocus() = true`），页面首次建立才请求，设置页刷新不得抢焦点。
 - **动效分级**：焦点 120ms、连接成功 200ms、C 级设备 0ms（直接置终态）。新增过渡（如投屏码轮换）时长不在本单冻结，由 T04819 / T04837 定稿后回填，且须遵守「轻微过渡、不闪烁」。
 
+### 2026-11-15 修订（用户确认，覆盖上文冲突值）
+
+- **标题角色拉齐**：TV 40sp、手机 32sp 一套口径；发送端不再单独使用 28sp，`SENDER_TITLE_SP` 并入 `PHONE_TITLE_SP`（发送端/接收端/菜单标题同值）。
+- **正文角色拉齐**：TV 24sp、手机 14sp；各页面只取 `FocusPolicy.titleSp(isTv)` / `bodySp(isTv)`，不再按页面另写字号。
+- **按钮字号**：TV 24sp、手机 16sp（新增 `BUTTON_SP` / `PHONE_BUTTON_SP`）。
+- **按钮造型**：统一走开源库 Material Components（`MaterialButton`，Apache-2.0），圆角 14dp（`RADIUS_BUTTON_DP`），最小高度 TV 56dp / 手机 48dp，文字不全大写、无字距。
+- **按钮间距**：竖排主入口 16dp；同屏并排按钮与输入框之间 8dp（`UiKit` + `SPACE_SM_DP` 统一）。
+- 字号下限不变：TV 正文 ≥24sp、TV 标题 ≥40sp、手机正文 ≥14sp、投屏码 36sp。
+
 ## 四、文案词汇表（不可扩词）
 
 - 允许：设备、投屏、镜像、推送、投屏码（`ErrorNotice.kt` L7）。

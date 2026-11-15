@@ -32,7 +32,7 @@
         android:icon="@mipmap/ic_launcher"
         android:label="AirMirror"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
+        android:theme="@style/Theme.AirMirror"
         android:usesCleartextTraffic="true">
 
         <activity

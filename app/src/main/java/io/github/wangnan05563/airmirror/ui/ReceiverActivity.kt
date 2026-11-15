@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.text.TextUtils
 import android.util.Log
 import android.view.Gravity
 import android.view.SurfaceHolder
@@ -47,6 +48,9 @@ import kotlin.concurrent.thread
  * 投屏中整屏只保留画面，仅在连接成功时叠加 3 秒设备名。
  */
 class ReceiverActivity : Activity(), SurfaceHolder.Callback {
+
+    /** TV / 手机共用同一页面：字号按端取角色值，避免手机端沿用 40sp/24sp 的电视口径。 */
+    private val isTv: Boolean by lazy { TvFocus.isTvMode(this) }
 
     private lateinit var store: DeviceStore
     private lateinit var pairing: Pairing
@@ -326,13 +330,19 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             gravity = Gravity.CENTER_HORIZONTAL
         }
         deviceNameText = TextView(this).apply {
-            textSize = Theme.TITLE_SP
+            textSize = FocusPolicy.titleSp(isTv)
             setTextColor(Theme.TEXT_PRIMARY)
             gravity = Gravity.CENTER
+            // 右上角「显示设置」是浮层按钮（顶部 20dp、高约 44dp）。设备名下移 44dp 让到按钮
+            // 下方，整行保持居中；长设备名最多两行，不会被按钮盖住，也不会把二维码挤歪。
+            maxLines = 2
+            ellipsize = TextUtils.TruncateAt.END
             // setLetterSpacing 是 API 21：接收端硬下限 19，4.4 上不能在这里崩
             if (Build.VERSION.SDK_INT >= 21) letterSpacing = 0.02f
         }
-        mainArea.addView(deviceNameText, matchWidth())
+        mainArea.addView(deviceNameText, matchWidth().apply {
+            topMargin = Theme.dp(this@ReceiverActivity, 44)
+        })
 
         val side = Theme.dp(this, 190)
         qrView = ImageView(this).apply {
@@ -366,7 +376,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         // PRD UI-02 / §7.3：次要入口收进「更多信息」，与主区间距 ≥24dp，不与二维码争夺视觉中心。
         moreInfoToggle = TextView(this).apply {
             text = MORE_INFO_LABEL
-            textSize = Theme.BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_SECONDARY)
             gravity = Gravity.CENTER
             A11y.describe(this, A11yCopy.moreInfo(false))
@@ -383,28 +393,28 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         // PRD §04 / §13.1：只写本机真能做到的入口，AirPlay 与 Miracast 在补齐前明确说不支持
         moreInfoBody.addView(TextView(this).apply {
             text = ProtocolBoundary.receiverMirrorLine()
-            textSize = Theme.BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_SECONDARY)
             gravity = Gravity.CENTER
             setPadding(0, Theme.dp(this@ReceiverActivity, Theme.SPACE_SM_DP), 0, 0)
         }, matchWidth())
         moreInfoBody.addView(TextView(this).apply {
             text = ProtocolBoundary.receiverPushLine()
-            textSize = Theme.BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_SECONDARY)
             gravity = Gravity.CENTER
             setPadding(0, Theme.dp(this@ReceiverActivity, Theme.SPACE_XS_DP), 0, Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP))
         }, matchWidth())
         moreInfoBody.addView(TextView(this).apply {
             text = ProtocolBoundary.receiverUnsupportedLine()
-            textSize = Theme.BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(StatusColors.offlineText())
             gravity = Gravity.CENTER
             setPadding(0, 0, 0, Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP))
         }, matchWidth())
 
         countdownText = TextView(this).apply {
-            textSize = Theme.BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(StatusColors.secondaryText(highContrastUi))
             gravity = Gravity.CENTER
             setPadding(0, Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP), 0, 0)
@@ -414,7 +424,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         // PRD §5.9：访客免装入口。地址带一次性 token，只有看得到大屏的人才能上传；
         // 服务未起来时整行隐藏，不给一个打不开的地址。UI-02 把该入口收进「更多信息」。
         browserText = TextView(this).apply {
-            textSize = Theme.BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_SECONDARY)
             gravity = Gravity.CENTER
             setPadding(0, Theme.dp(this@ReceiverActivity, 10), 0, 0)
@@ -436,7 +446,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         )
 
         statusText = TextView(this).apply {
-            textSize = Theme.BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_PRIMARY)
             gravity = Gravity.CENTER
             setPadding(0, Theme.dp(this@ReceiverActivity, 20), 0, 0)
@@ -445,7 +455,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         moreInfoBody.addView(statusText, matchWidth())
         moreInfoBody.addView(TextView(this).apply {
             text = "局域网直连 · 无广告 · 不保存画面"
-            textSize = Theme.BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(StatusColors.offlineText())
             gravity = Gravity.CENTER
             setPadding(0, Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP), 0, 0)
@@ -453,7 +463,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         // FS-13 降级提示：系统禁止自启时，用户至少知道从应用列表手动打开
         moreInfoBody.addView(TextView(this).apply {
             text = "电视重启后若未自动打开，请从应用列表打开"
-            textSize = Theme.BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(StatusColors.offlineText())
             gravity = Gravity.CENTER
             setPadding(0, Theme.dp(this@ReceiverActivity, 6), 0, 0)
@@ -493,7 +503,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
 
     private fun buildNameOverlay(): TextView {
         overlayName = TextView(this).apply {
-            textSize = Theme.BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_PRIMARY)
             setBackgroundColor(Theme.BACKGROUND_ALPHA_80)
             setPadding(Theme.dp(this@ReceiverActivity, Theme.SPACE_XL_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_XL_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP))
@@ -505,7 +515,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     /** 投屏中状态栏和待连接页都不可见：暂停、接管请求、接管超时等状态在这里短暂提示。 */
     private fun buildNoticeOverlay(): TextView {
         noticeOverlay = TextView(this).apply {
-            textSize = Theme.BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(StatusColors.overlayText())
             setBackgroundColor(StatusColors.OVERLAY_LAYER)
             setPadding(Theme.dp(this@ReceiverActivity, 20), Theme.dp(this@ReceiverActivity, 10), Theme.dp(this@ReceiverActivity, 20), Theme.dp(this@ReceiverActivity, 10))
@@ -529,7 +539,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     private fun buildRecoveryBar(): TextView {
         recoveryBar = TextView(this).apply {
             text = CastStatus.line(CastStatus.State.RECOVERING)
-            textSize = Theme.BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             maxLines = 1
             setTextColor(StatusColors.textOf(CastStatus.State.RECOVERING))
             setBackgroundColor(StatusColors.BAR_LAYER)
@@ -550,7 +560,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     /** 角落提示：竖屏标签与「比例不同可切换模式」都只出现 3 秒（PRD FS-08 步骤 5）。 */
     private fun buildCornerHint(): TextView {
         cornerHint = TextView(this).apply {
-            textSize = Theme.BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_PRIMARY)
             setBackgroundColor(Theme.BACKGROUND_ALPHA_80)
             setPadding(Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_SM_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_SM_DP))
@@ -572,7 +582,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     /** 画面标识（PRD FS-05）：默认不显示画质信息，用户在设置页开启后才常驻当前画幅与码率。 */
     private fun buildQualityBadge(): TextView {
         qualityBadge = TextView(this).apply {
-            textSize = Theme.BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_SECONDARY)
             setPadding(
                 Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_SM_DP),
@@ -606,7 +616,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     private fun buildSettingsEntry(): TextView {
         settingsEntry = TextView(this).apply {
             text = "显示设置"
-            textSize = Theme.BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.ACCENT)
             setBackgroundColor(Theme.BACKGROUND_ALPHA_80)
             setPadding(
@@ -679,13 +689,13 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         }
         settingsPanel.addView(TextView(this).apply {
             text = "显示设置"
-            textSize = Theme.TITLE_SP
+            textSize = FocusPolicy.titleSp(isTv)
             setTextColor(Theme.TEXT_PRIMARY)
             setPadding(0, 0, 0, Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP))
         })
         for (mode in DisplayMode.entries) {
             val row = TextView(this).apply {
-                textSize = Theme.BODY_SP
+                textSize = FocusPolicy.bodySp(isTv)
                 setPadding(0, Theme.dp(this@ReceiverActivity, 10), 0, Theme.dp(this@ReceiverActivity, 10))
                 setOnClickListener { chooseMode(mode) }
             }
@@ -695,7 +705,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         settingsPanel.addView(View(this).apply { setBackgroundColor(Theme.DIVIDER) },
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, Theme.dp(this@ReceiverActivity, 1)))
         rotationRow = TextView(this).apply {
-            textSize = Theme.BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_PRIMARY)
             setPadding(0, Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP), 0, Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP))
             setOnClickListener {
@@ -713,7 +723,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         }
         settingsPanel.addView(rotationRow, matchWidth())
         labelRow = TextView(this).apply {
-            textSize = Theme.BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_PRIMARY)
             setPadding(0, 0, 0, Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP))
             setOnClickListener {
@@ -724,7 +734,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         }
         settingsPanel.addView(labelRow, matchWidth())
         autoStartRow = TextView(this).apply {
-            textSize = Theme.BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_PRIMARY)
             setPadding(0, 0, 0, Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP))
             setOnClickListener {
@@ -735,7 +745,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         settingsPanel.addView(autoStartRow, matchWidth())
         // PRD FS-04：信令端点由部署方决定，所以只做手填入口，不内置任何默认外部地址
         crossNetRow = TextView(this).apply {
-            textSize = Theme.BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_PRIMARY)
             setPadding(0, Theme.dp(this@ReceiverActivity, Theme.SPACE_XS_DP), 0, Theme.dp(this@ReceiverActivity, Theme.SPACE_SM_DP))
             setOnClickListener { editSignaling() }
@@ -743,7 +753,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         settingsPanel.addView(crossNetRow, matchWidth())
         settingsPanel.addView(TextView(this).apply {
             text = "填了才启用；只交换建连信息，画面不经服务器"
-            textSize = Theme.BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_SECONDARY)
             setPadding(0, 0, 0, Theme.dp(this@ReceiverActivity, 10))
         }, matchWidth())
@@ -754,7 +764,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         // FS-05：先把「本机最高支持哪一档、为什么没有 4K」写在档位列表上方，
         // 再列出可选档位——不可达的档位由 populateQualityRows 决定连行都不生成
         gateLine = TextView(this).apply {
-            textSize = Theme.BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_SECONDARY)
             setPadding(0, 0, 0, Theme.dp(this@ReceiverActivity, Theme.SPACE_SM_DP))
         }
@@ -762,7 +772,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         qualityContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         settingsPanel.addView(qualityContainer, matchWidth())
         badgeRow = TextView(this).apply {
-            textSize = Theme.BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_PRIMARY)
             setPadding(0, Theme.dp(this@ReceiverActivity, 10), 0, Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP))
             setOnClickListener {
@@ -778,34 +788,33 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         ))
         settingsPanel.addView(TextView(this).apply {
             text = "隐私"
-            textSize = Theme.TITLE_SP
+            textSize = FocusPolicy.titleSp(isTv)
             setTextColor(Theme.TEXT_PRIMARY)
             setPadding(0, Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP), 0, Theme.dp(this@ReceiverActivity, Theme.SPACE_SM_DP))
         }, matchWidth())
         settingsPanel.addView(TextView(this).apply {
             // PRD FS-11「首次启动一句话数据边界说明」在设置页也要有一句，不使用长文弹窗
             text = "画面、文件名、地址都不保存；投屏内容只在本次会话内使用"
-            textSize = Theme.BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_SECONDARY)
             setPadding(0, 0, 0, Theme.dp(this@ReceiverActivity, 10))
         }, matchWidth())
         diagnosticsRow = TextView(this).apply {
-            textSize = Theme.BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_PRIMARY)
             setPadding(0, Theme.dp(this@ReceiverActivity, 10), 0, Theme.dp(this@ReceiverActivity, 10))
             setOnClickListener { toggleDiagnostics() }
         }
         settingsPanel.addView(diagnosticsRow, matchWidth())
         clearDataRow = TextView(this).apply {
-            textSize = Theme.BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_PRIMARY)
             setPadding(0, Theme.dp(this@ReceiverActivity, 10), 0, Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP))
             setOnClickListener { clearLocalData() }
         }
         settingsPanel.addView(clearDataRow, matchWidth())
-        settingsPanel.addView(Button(this).apply {
+        settingsPanel.addView(UiKit.button(this, kind = UiKit.Kind.Primary).apply {
             text = "完成"
-            setTextColor(Theme.ACCENT)
             A11y.describe(this, A11yCopy.finish())
             setOnClickListener { hideSettings() }
         }, matchWidth())
@@ -827,7 +836,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         options += QualityTiers.reachable(ceiling)
         for (tier in options) {
             val row = TextView(this).apply {
-                textSize = Theme.BODY_SP
+                textSize = FocusPolicy.bodySp(isTv)
                 setPadding(0, Theme.dp(this@ReceiverActivity, 10), 0, Theme.dp(this@ReceiverActivity, 10))
                 setOnClickListener { chooseQuality(tier) }
             }
@@ -1059,24 +1068,27 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             setPadding(Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP))
         }
         promptText = TextView(this).apply {
-            textSize = Theme.BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_PRIMARY)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             A11y.liveStatus(this)
         }
         promptBar.addView(promptText)
-        promptDeny = Button(this).apply {
+        promptDeny = UiKit.button(this).apply {
             text = "拒绝"
             setTextColor(Theme.DANGER)
             setOnClickListener { respondToPrompt(false) }
         }
         promptBar.addView(promptDeny)
-        promptAllow = Button(this).apply {
+        promptAllow = UiKit.button(this, kind = UiKit.Kind.Primary).apply {
             text = "允许"
-            setTextColor(Theme.ACCENT)
             setOnClickListener { respondToPrompt(true) }
         }
-        promptBar.addView(promptAllow)
+        promptBar.addView(
+            promptAllow,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                .apply { leftMargin = Theme.dp(this@ReceiverActivity, Theme.SPACE_SM_DP) },
+        )
         return promptBar
     }
 
@@ -1089,25 +1101,29 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             setPadding(Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP))
         }
         endText = TextView(this).apply {
-            textSize = Theme.BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_PRIMARY)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         endBar.addView(endText)
-        endCancelButton = Button(this).apply {
+        endCancelButton = UiKit.button(this).apply {
             text = "取消"
             setTextColor(Theme.TEXT_SECONDARY)
             A11y.describe(this, A11yCopy.endCancel())
             setOnClickListener { cancelEndConfirm() }
         }
         endBar.addView(endCancelButton)
-        endConfirmButton = Button(this).apply {
+        endConfirmButton = UiKit.button(this).apply {
             text = "结束"
             setTextColor(Theme.DANGER)
             A11y.describe(this, A11yCopy.endConfirm())
             setOnClickListener { confirmEnd() }
         }
-        endBar.addView(endConfirmButton)
+        endBar.addView(
+            endConfirmButton,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                .apply { leftMargin = Theme.dp(this@ReceiverActivity, Theme.SPACE_SM_DP) },
+        )
         return endBar
     }
 
@@ -1191,20 +1207,20 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             setBackgroundColor(Theme.SURFACE)
             setPadding(Theme.dp(this@ReceiverActivity, Theme.SPACE_XXL_DP), Theme.dp(this@ReceiverActivity, 28), Theme.dp(this@ReceiverActivity, Theme.SPACE_XXL_DP), Theme.dp(this@ReceiverActivity, 28))
         }
-        onboardStepHint = TextView(this).apply { textSize = Theme.BODY_SP; setTextColor(Theme.TEXT_SECONDARY); gravity = Gravity.CENTER }
+        onboardStepHint = TextView(this).apply { textSize = FocusPolicy.bodySp(isTv); setTextColor(Theme.TEXT_SECONDARY); gravity = Gravity.CENTER }
         card.addView(onboardStepHint, matchWidth())
         onboardTitle = TextView(this).apply {
-            textSize = Theme.TITLE_SP; setTextColor(Theme.TEXT_PRIMARY); gravity = Gravity.CENTER
+            textSize = FocusPolicy.titleSp(isTv); setTextColor(Theme.TEXT_PRIMARY); gravity = Gravity.CENTER
             setPadding(0, Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP), 0, 0)
         }
         card.addView(onboardTitle, matchWidth())
         onboardBody = TextView(this).apply {
-            textSize = Theme.BODY_SP; setTextColor(Theme.TEXT_SECONDARY); gravity = Gravity.CENTER
+            textSize = FocusPolicy.bodySp(isTv); setTextColor(Theme.TEXT_SECONDARY); gravity = Gravity.CENTER
             setPadding(0, Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP), 0, 0)
         }
         card.addView(onboardBody, matchWidth())
         onboardInput = EditText(this).apply {
-            textSize = Theme.BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_PRIMARY)
             setHintTextColor(Theme.TEXT_SECONDARY)
             setBackgroundColor(Theme.BACKGROUND)
@@ -1220,17 +1236,20 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         }
         card.addView(onboardInput)
         onboardAutoToggle = TextView(this).apply {
-            textSize = Theme.BODY_SP; setTextColor(Theme.TEXT_PRIMARY); gravity = Gravity.CENTER
+            textSize = FocusPolicy.bodySp(isTv); setTextColor(Theme.TEXT_PRIMARY); gravity = Gravity.CENTER
             setPadding(0, Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP), 0, 0)
             setOnClickListener { store.saveAutoStartEnabled(!store.autoStartEnabled()); refreshOnboardAutoToggle() }
         }
         card.addView(onboardAutoToggle, matchWidth())
 
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; setPadding(0, Theme.dp(this@ReceiverActivity, Theme.SPACE_XL_DP), 0, 0) }
-        onboardBack = Button(this).apply { text = "上一步"; setTextColor(Theme.TEXT_SECONDARY); A11y.describe(this, A11yCopy.onboardingBack()); setOnClickListener { prevOnboardingStep() } }
-        onboardSkip = Button(this).apply { text = "跳过"; setTextColor(Theme.ACCENT); A11y.describe(this, A11yCopy.onboardingSkip()); setOnClickListener { skipOnboardingStep() } }
-        onboardNext = Button(this).apply { text = "下一步"; setTextColor(Theme.ACCENT); A11y.describe(this, A11yCopy.onboardingNext(false)); setOnClickListener { advanceOrFinish() } }
-        row.addView(onboardBack); row.addView(onboardSkip); row.addView(onboardNext)
+        onboardBack = UiKit.button(this, kind = UiKit.Kind.Ghost).apply { text = "上一步"; A11y.describe(this, A11yCopy.onboardingBack()); setOnClickListener { prevOnboardingStep() } }
+        onboardSkip = UiKit.button(this, kind = UiKit.Kind.Ghost).apply { text = "跳过"; A11y.describe(this, A11yCopy.onboardingSkip()); setOnClickListener { skipOnboardingStep() } }
+        onboardNext = UiKit.button(this, kind = UiKit.Kind.Primary).apply { text = "下一步"; A11y.describe(this, A11yCopy.onboardingNext(false)); setOnClickListener { advanceOrFinish() } }
+        val onboardGap = Theme.dp(this@ReceiverActivity, Theme.SPACE_SM_DP)
+        row.addView(onboardBack)
+        row.addView(onboardSkip, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { leftMargin = onboardGap })
+        row.addView(onboardNext, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { leftMargin = onboardGap })
         card.addView(row, matchWidth())
 
         onboarding.addView(card, FrameLayout.LayoutParams(
@@ -1241,7 +1260,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         })
         onboardSkipAll = TextView(this).apply {
             text = "跳过全部"
-            textSize = Theme.BODY_SP
+            textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_SECONDARY)
             A11y.describe(this, A11yCopy.onboardingSkipAll())
             setPadding(Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP))

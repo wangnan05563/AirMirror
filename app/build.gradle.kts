@@ -103,28 +103,44 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
-
-    // T05734 重命名逻辑见下方 Project 作用域的 afterEvaluate 块（android 扩展接收者内无法调用 afterEvaluate）。
 }
 
 // T05734：构建产物 APK 文件名加 AirMirror 前缀 + 版本号（PRD 命名规范）。
-// AGP 原始名是 app-<abi>-<variant>.apk；当前只出 universal 包，原始名退化为 app-<variant>.apk，
-// 统一改名为 AirMirror-<versionName>-<abi|universal>-<variant>.apk：
+// 命名口径 AirMirror-<versionName>-<abi|universal>-<variant>.apk：
 //   debug            -> AirMirror-0.1.0-m0-universal-debug.apk（保留 debug 标记，便于与本机 release 包区分）
 //   release 未签名   -> AirMirror-0.1.0-m0-universal-release-unsigned.apk（保留 AGP 的签名状态标识）
-// 版本号取 android.defaultConfig.versionName，与包内 BuildConfig/系统「应用信息」显示的版本一致。
-// 实现：在 assemble 生命周期任务收尾时，对 build/outputs/apk/<variant>/ 下的 app-*.apk
-// 做纯文件重命名。这样绕开 variant.outputs 集合在 Kotlin DSL 下的 all/forEach 重载歧义，
-// 且 push-apk.cmd / 配置里的 AirMirror-*.apk 命名能直接命中。
+// 实现：assemble 收尾时把 outputs/apk/<variant>/ 下的 app-*.apk 改名为 AirMirror-*.apk。
+//
+// 2026-11-15 修复（真实事故）：AGP 的 package<Variant> 做增量打包时，会把「上一次的输出 APK」
+// 当作基线来合并 dex。改名搬走后基线消失，下一次改代码再打包只写出 dex + 签名（实测 159 KB、
+// 无 AndroidManifest.xml/resources.arsc），装到设备上直接 INSTALL_PARSE_FAILED。
+// 因此每次打包前先把上一轮的成品复制回 AGP 认识的原始名当基线，再在收尾时改名——
+// 打包基线与成品内容一致，增量和 clean 构建都能得到完整包。
 val apkVersionLabel = android.defaultConfig.versionName ?: "0.1.0-m0"
 
 afterEvaluate {
-    // T05734：在 assemble 生命周期任务收尾时，把 build/outputs/apk/<variant>/ 下的
-    // app-<abi>-<variant>.apk 改名为 AirMirror-<versionName>-<abi>-<variant>.apk。
-    // 挂在 assemble* 上而非具体 package* 任务，可覆盖 abi splits + universal 的全部产出，
-    // 且一定在所有打包动作结束、APK 落盘之后执行。
+    fun outputsDir(variantName: String) =
+        layout.buildDirectory.dir("outputs/apk/$variantName").get().asFile
+
+    fun finalApkName(tail: String): String {
+        val abiTag = if (tail.startsWith("arm") || tail.contains("x86")) "" else "universal-"
+        return "AirMirror-$apkVersionLabel-$abiTag$tail.apk"
+    }
+
+    fun restorePackagingBase(variantName: String) {
+        val dir = outputsDir(variantName)
+        val raw = dir.resolve("app-$variantName.apk")
+        if (raw.isFile) return
+        // 成品名可能是 -release 或 -release-unsigned，按前缀 + 变体后缀匹配，避免漏捡。
+        val finished = dir.listFiles()
+            ?.firstOrNull { it.isFile && it.name.endsWith("-$variantName.apk") && it.name.startsWith("AirMirror-") }
+            ?: return
+        finished.copyTo(raw, overwrite = true)
+        println("[T05734] restored packaging base ${raw.name} <- ${finished.name}")
+    }
+
     fun renameAirMirrorApks(variantName: String) {
-        val outDir = layout.buildDirectory.dir("outputs/apk/$variantName").get().asFile
+        val outDir = outputsDir(variantName)
         val files = outDir.listFiles()?.filter { it.isFile && it.extension == "apk" }.orEmpty()
         val rawApks = files.filter { it.name.startsWith("app-") }
         // package* 为 UP-TO-DATE 时不会再产出 app-*.apk（上一轮的名字已经改掉了），
@@ -136,10 +152,7 @@ afterEvaluate {
         val renamed = mutableListOf<String>()
         rawApks.forEach { f ->
             val tail = f.name.removePrefix("app-").removeSuffix(".apk")
-            // 只出 universal 包时原始名不带 ABI 标记（app-debug.apk），补 universal 保持既有命名口径；
-            // 将来恢复 per-ABI splits 时原始名自带 arm64-v8a / armeabi-v7a，原样保留。
-            val abiTag = if (tail.startsWith("arm") || tail.contains("x86")) "" else "universal-"
-            val target = f.parentFile.resolve("AirMirror-$apkVersionLabel-$abiTag$tail.apk")
+            val target = f.parentFile.resolve(finalApkName(tail))
             // 同名旧产物（上一轮构建留下的）先删掉再搬，Windows 上 renameTo 不会覆盖已存在文件。
             if (target.exists()) target.delete()
             renamed.add(if (f.renameTo(target)) target.name else f.name)
@@ -150,6 +163,12 @@ afterEvaluate {
         files.filter { it.name.startsWith("AirMirror-") && it.name !in expected }.forEach { it.delete() }
         println("[T05734] APK packaged -> ${renamed.joinToString()}")
     }
+
+    tasks.matching { it.name == "packageDebug" || it.name == "packageRelease" }.configureEach {
+        doFirst {
+            restorePackagingBase(name.removePrefix("package").lowercase())
+        }
+    }
     tasks.named("assembleDebug") { doLast { renameAirMirrorApks("debug") } }
     tasks.named("assembleRelease") { doLast { renameAirMirrorApks("release") } }
 }
@@ -157,5 +176,9 @@ afterEvaluate {
 dependencies {
     // 待连接页二维码：zxing core 为 Apache-2.0 纯 Java 实现，符合 PRD §8.10 引入口径
     implementation("com.google.zxing:core:3.5.3")
+    // 按钮统一走开源 UI 库（Material Components, Apache-2.0）：系统默认 Button 在各家 ROM 上
+    // 造型/内边距都不一样，同一页面两个按钮都会出现「高低不齐、挨得太近」。
+    implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("com.google.android.material:material:1.12.0")
     testImplementation("junit:junit:4.13.2")
 }
