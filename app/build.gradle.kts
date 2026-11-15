@@ -28,14 +28,16 @@ android {
         versionName = if (versionPatch.isNullOrBlank()) "0.1.0-m0" else "0.1.0-m0.$versionPatch"
     }
 
-    // PRD 1.1 安装包与 ABI 适配：发布侧产出 armeabi-v7a(32 位, 老盒子默认) + arm64-v8a(64 位)
-    // 双 ABI 独立包；universal 仍含 x86_64，供开发机与模拟器(emulator-5554)安装验证。
+    // PRD 1.1 安装包与 ABI 适配：本项目当前不含任何 native 库，per-ABI 包只会产出三份内容
+    // 完全相同的重复包（2026-11-15 实测：三者 SHA-256 一致、lib/ 条目为 0），故收敛为
+    // **只出单个 universal 包**（全 ABI 通吃，模拟器/开发机也装它）。
+    // 实测记录：splits 保持 isEnable=true 但清空 ABI 列表时，AGP 会产出缺 dex 的残缺包（7KB），
+    // 因此这里直接关掉 splits，让 AGP 走标准单包产出，再由文件末尾的重命名补 universal 标记。
+    // 将来引入 .so 原生库后，按 PRD 1.1 在这里重新启用 splits 并加回双 ABI 列表即可再拆双包。
     splits {
         abi {
-            isEnable = true
+            isEnable = false
             reset()
-            include("armeabi-v7a", "arm64-v8a")
-            isUniversalApk = true
         }
     }
     // 注：各 ABI 包需独立 versionCode 时（Play 商店分发）再按 ABI 分配基段；本项目发到 GitHub，
@@ -84,8 +86,8 @@ android {
 }
 
 // T05734：构建产物 APK 文件名加 AirMirror 前缀 + 版本号（PRD 命名规范）。
-// abi splits 下每个 ABI 一个输出，默认名为 app-<abi>-<variant>.apk（universal 为 app-universal-<variant>.apk），
-// 统一改名为 AirMirror-<versionName>-<abi>-<variant>.apk：
+// AGP 原始名是 app-<abi>-<variant>.apk；当前只出 universal 包，原始名退化为 app-<variant>.apk，
+// 统一改名为 AirMirror-<versionName>-<abi|universal>-<variant>.apk：
 //   debug            -> AirMirror-0.1.0-m0-universal-debug.apk（保留 debug 标记，便于与本机 release 包区分）
 //   release 未签名   -> AirMirror-0.1.0-m0-universal-release-unsigned.apk（保留 AGP 的签名状态标识）
 // 版本号取 android.defaultConfig.versionName，与包内 BuildConfig/系统「应用信息」显示的版本一致。
@@ -96,7 +98,7 @@ val apkVersionLabel = android.defaultConfig.versionName ?: "0.1.0-m0"
 
 afterEvaluate {
     // T05734：在 assemble 生命周期任务收尾时，把 build/outputs/apk/<variant>/ 下的
-    // app-<abi>-<variant>.apk 改名为 AirMirror-<versionName>-<abi>-<variant>.apk（universal 同理）。
+    // app-<abi>-<variant>.apk 改名为 AirMirror-<versionName>-<abi>-<variant>.apk。
     // 挂在 assemble* 上而非具体 package* 任务，可覆盖 abi splits + universal 的全部产出，
     // 且一定在所有打包动作结束、APK 落盘之后执行。
     fun renameAirMirrorApks(variantName: String) {
@@ -112,7 +114,10 @@ afterEvaluate {
         val renamed = mutableListOf<String>()
         rawApks.forEach { f ->
             val tail = f.name.removePrefix("app-").removeSuffix(".apk")
-            val target = f.parentFile.resolve("AirMirror-$apkVersionLabel-$tail.apk")
+            // 只出 universal 包时原始名不带 ABI 标记（app-debug.apk），补 universal 保持既有命名口径；
+            // 将来恢复 per-ABI splits 时原始名自带 arm64-v8a / armeabi-v7a，原样保留。
+            val abiTag = if (tail.startsWith("arm") || tail.contains("x86")) "" else "universal-"
+            val target = f.parentFile.resolve("AirMirror-$apkVersionLabel-$abiTag$tail.apk")
             // 同名旧产物（上一轮构建留下的）先删掉再搬，Windows 上 renameTo 不会覆盖已存在文件。
             if (target.exists()) target.delete()
             renamed.add(if (f.renameTo(target)) target.name else f.name)

@@ -1,14 +1,18 @@
 package io.github.wangnan05563.airmirror.packaging
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
 /**
- * 构建期守卫（PRD 1.1）：[AbiPolicy] 的口径必须在 [app/build.gradle.kts] 里真实落地，
- * 防止「代码里写的 ABI 集合」和「实际打出来的包」漂移。任何对 splits/ndk ABI 的改动
- * 若与 AbiPolicy.SHIPPED_ABIS 不一致，这里会让 testDebugUnitTest 变红。
+ * 构建期守卫（PRD 1.1）：打包口径必须在 [app/build.gradle.kts] 里真实落地，防止
+ * 「代码/文档里写的策略」和「实际打出来的包」漂移。任何对 splits/命名逻辑的改动
+ * 若与本类断言不一致，这里会让 testDebugUnitTest 变红。
+ *
+ * 2026-11-15 T05734 收敛：工程无 native 库，per-ABI 包只会产出重复包，
+ * 打包口径由「arm64-v8a + armeabi-v7a 双独立包 + universal」收敛为「只出 universal 一个包」。
  */
 class BuildAbiGuardTest {
 
@@ -24,6 +28,10 @@ class BuildAbiGuardTest {
 
     private fun gradleText(): String = File(projectRoot(), "app/build.gradle.kts").readText()
 
+    /** 只留代码行：注释里提到旧配置属正常文档记录，不应触发守卫（2026-11-15 实测被 `//` 注释误伤）。 */
+    private fun gradleCodeText(): String =
+        gradleText().lines().filterNot { it.trimStart().startsWith("//") }.joinToString("\n")
+
     @Test
     fun `minSdk 为 22（Q-5 重签后的硬下限）`() {
         val m = Regex("""minSdk\s*=\s*(\d+)""").find(gradleText())
@@ -34,20 +42,29 @@ class BuildAbiGuardTest {
     }
 
     @Test
-    fun `splits 启用双 ABI 且 universal 保留`() {
-        val text = gradleText()
-        assertTrue("splits.abi 未启用", text.contains("abi") && text.contains("isEnable = true"))
-        assertTrue("未产出 armeabi-v7a 独立包", text.contains("\"armeabi-v7a\""))
-        assertTrue("未产出 arm64-v8a 独立包", text.contains("\"arm64-v8a\""))
-        // universal 保留 → 开发机与模拟器(emulator-5554, x86_64)的安装验证通道不被砍断
-        assertTrue("universal 包被关闭（模拟器/开发通道需要它）", text.contains("isUniversalApk = true"))
+    fun `单包分发：per-ABI splits 关闭`() {
+        val text = gradleCodeText()
+        // 无 native 库时拆 per-ABI 包只会产出内容相同的重复包（2026-11-15 实测三包 SHA-256 一致），
+        // 打包口径收敛为单包：splits 必须保持关闭。
+        assertTrue("splits.abi 配置块缺失（口径无处可查）", text.contains("splits {"))
+        assertFalse(
+            "splits 又被打开（无 native 库时只会产出重复包；实测空 ABI 列表还会产出缺 dex 的残缺包）",
+            Regex("""isEnable\s*=\s*true""").containsMatchIn(text),
+        )
+        assertFalse(
+            "splits 又拆出了 per-ABI 独立包",
+            Regex("""include\(\s*"arm""").containsMatchIn(text),
+        )
     }
 
     @Test
-    fun `发布的 ABI 集合与 AbiPolicy 一致`() {
+    fun `产物名带 AirMirror 前缀、版本号与 universal 标记`() {
         val text = gradleText()
-        for (abi in AbiPolicy.SHIPPED_ABIS) {
-            assertTrue("build.gradle.kts 缺少发布 ABI：$abi", text.contains("\"$abi\""))
-        }
+        assertTrue("版本号未取 versionName", text.contains("android.defaultConfig.versionName"))
+        assertTrue(
+            "产物命名未同时带版本号与 universal 标记",
+            text.contains("\"AirMirror-\$apkVersionLabel-\$abiTag\$tail.apk\""),
+        )
+        assertTrue("单包模式下未补 universal 标记", text.contains("\"universal-\""))
     }
 }
