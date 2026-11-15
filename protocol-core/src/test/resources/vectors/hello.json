@@ -1,0 +1,15 @@
+{
+  "name": "hello",
+  "purpose": "验证 HELLO 载荷：版本区间 + 能力位 + UTF-8 设备名",
+  "payload": {
+    "min_version": 1,
+    "max_version": 1,
+    "capabilities": 3,
+    "capability_names": ["VIDEO_H264", "AUDIO_AAC"],
+    "device_name": "PC",
+    "name_bytes": 2,
+    "key_share": null,
+    "proof": null
+  },
+  "payload_hex": "000100010000000300025043"
+}

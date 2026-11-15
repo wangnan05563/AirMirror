@@ -1,0 +1,17 @@
+{
+  "name": "frame-video",
+  "purpose": "验证 20 字节帧头与 VIDEO 帧的逐字节编码",
+  "frame": {
+    "magic": "AMRC",
+    "magic_hex": "414d5243",
+    "version": 1,
+    "type": "VIDEO",
+    "type_code": 3,
+    "flags": ["KEY_FRAME", "ENCRYPTED"],
+    "flags_hex": "11",
+    "pts_us": 123456789,
+    "payload_len": 4
+  },
+  "payload_hex": "deadbeef",
+  "frame_hex": "414d52430103110000000000075bcd1500000004deadbeef"
+}

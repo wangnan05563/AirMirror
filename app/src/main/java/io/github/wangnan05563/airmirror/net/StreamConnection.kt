@@ -121,19 +121,20 @@ class StreamConnection private constructor(private val channel: FrameChannel) : 
             )
             throw e
         }
+        val peerKeyShare = hello.keyShare
         val ackFrame = Handshake.HelloAck(
             ack.chosenVersion,
             capabilities and hello.capabilities,
             deviceName,
-            if (hello.keyShare != null) key?.publicSpki else null,
-            if (matched != null && hello.keyShare != null && key != null) {
-                CodeAnchor.serverProof(matched, hello.keyShare, key.publicSpki)
+            if (peerKeyShare != null) key?.publicSpki else null,
+            if (matched != null && peerKeyShare != null && key != null) {
+                CodeAnchor.serverProof(matched, peerKeyShare, key.publicSpki)
             } else {
                 null
             },
         )
         Protocol.write(output, Protocol.Frame(Protocol.Type.HELLO_ACK, payload = ackFrame.encode()))
-        val peerKey = hello.keyShare
+        val peerKey = peerKeyShare
         val myKey = key
         if (peerKey != null && myKey != null && ackFrame.keyShare != null) {
             enableEncryption(

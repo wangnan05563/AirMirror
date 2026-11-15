@@ -1,0 +1,11 @@
+{
+  "name": "code-anchor",
+  "purpose": "验证投屏码锚：SHA-256(prefix+credential) 与 client/server HMAC-SHA256 逐字节结果",
+  "credential": "123456",
+  "prefix": "AMRC-ANCHOR/v1|",
+  "client_key_share_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+  "server_key_share_hex": "2122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f40",
+  "anchor_tag_hex": "ad5fe2219a10023eaa72ff1ed3cc3fd36d6c84a9ecb1f1e8bbf6b477a33a7795",
+  "client_proof_hex": "60298e4ec2f256895614c00853aaab9994b51a0fcdeaeff17fc193faf6e036db",
+  "server_proof_hex": "b7edba41871742c1def1468ae3ec1d53d2f222132459c94dd16b55bd5147b4fb"
+}

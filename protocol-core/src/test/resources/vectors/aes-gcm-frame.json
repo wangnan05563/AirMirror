@@ -1,0 +1,19 @@
+{
+  "name": "aes-gcm-frame",
+  "purpose": "固定 key/iv/明文/AAD，验证 MediaCipher 的 AAD 组装与 AES-256-GCM 逐字节结果",
+  "frame": {
+    "version": 1,
+    "type": "VIDEO",
+    "type_code": 3,
+    "flags": ["KEY_FRAME"],
+    "flags_byte": 1,
+    "pts_us": 123456789
+  },
+  "key_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "iv_hex": "000102030405060708090a0b",
+  "aad_hex": "01030100000000075bcd15",
+  "plaintext_hex": "4169724d6972726f7220763120766563746f72",
+  "plaintext_utf8": "AirMirror v1 vector",
+  "ciphertext_and_tag_hex": "066ba456ac97b074ff61e1ba919f1d0ef7b9f5a181e786019ebe5ddff563a0ae5d37f6",
+  "wire_payload_hex": "000102030405060708090a0b066ba456ac97b074ff61e1ba919f1d0ef7b9f5a181e786019ebe5ddff563a0ae5d37f6"
+}

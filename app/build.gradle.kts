@@ -174,6 +174,8 @@ afterEvaluate {
 }
 
 dependencies {
+    // 跨端协议核心：纯 JVM 的帧/握手/加密/版本协商，Android 与 PC 共用（T05760）
+    implementation(project(":protocol-core"))
     // 待连接页二维码：zxing core 为 Apache-2.0 纯 Java 实现，符合 PRD §8.10 引入口径
     implementation("com.google.zxing:core:3.5.3")
     // 按钮统一走开源 UI 库（Material Components, Apache-2.0）：系统默认 Button 在各家 ROM 上

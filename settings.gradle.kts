@@ -15,4 +15,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "AirMirror"
-include(":app")
+include(":app", ":protocol-core")
