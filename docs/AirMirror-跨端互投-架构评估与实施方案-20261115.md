@@ -5,6 +5,8 @@
 - 结论：**当前仓库只有 Android 客户端，PC / HarmonyOS 均为从零新增模块；本环境无法在单轮交付可执行安装包。建议按「先冻结协议 → Windows PC 发送端 → Windows PC 接收端 → HarmonyOS PoC → 鸿蒙 MVP → 多端集成测试」分阶段实施。**
 - 本轮交付：架构评估、协议事实盘点、可行性矩阵、WBS 与风险清单；**不包含 PC/鸿蒙客户端源码或安装包**。
 
+> **2026-11-15 裁决更新（已确认）**：① PC 端重新进入 P1；② 鸿蒙目标为 HarmonyOS NEXT 原生 HAP；③ 接受首版 120–200ms 延迟。M0（协议 v1 冻结 + `:protocol-core` 抽取）已完成，提交 `8b55c528`；后续按 M1 → M2 → M3/M4 → M5 推进。
+
 ---
 
 ## 1. 结论摘要
@@ -16,7 +18,7 @@
 | HarmonyOS 端可行性 | **中低**。HarmonyOS NEXT 不兼容 APK，ArkTS/NAPI 需重写协议、媒体与加密；且当前环境无 DevEco Studio / HarmonyOS SDK / 鸿蒙设备 |
 | 能否单轮交付安装包？ | **不能**。工作量约 73–100 人日（不含真机测试排队），且 HarmonyOS 工具链缺失 |
 | 建议范围 | **Windows PC 优先**；macOS 与 HarmonyOS 作为后续阶段；HarmonyOS 先做协议 PoC，再决定是否投入完整客户端 |
-| 需要产品裁决 | ① PC 是否重新进入 P1（2026-11-08 曾裁决桌面端移出 P1）；② 鸿蒙目标是 HarmonyOS NEXT 还是兼容 Android 的旧版；③ 延迟指标是否接受首版 120–200ms、逐步优化到 100ms |
+| 需要产品裁决 | **已裁决（2026-11-15）**：PC 重新进入 P1；鸿蒙采用 HarmonyOS NEXT 原生 HAP；接受首版 120–200ms 延迟 |
 
 ---
 
