@@ -54,6 +54,7 @@ import io.github.wangnan05563.airmirror.sender.SystemAudio
 import io.github.wangnan05563.airmirror.update.ApkDownload
 import io.github.wangnan05563.airmirror.update.ApkInstaller
 import io.github.wangnan05563.airmirror.update.ApkProvider
+import io.github.wangnan05563.airmirror.update.ApkSignatureState
 import io.github.wangnan05563.airmirror.update.ReleaseInfo
 import io.github.wangnan05563.airmirror.update.UpdateChecker
 import io.github.wangnan05563.airmirror.update.UpdateResult
@@ -1288,6 +1289,26 @@ class SenderActivity : Activity() {
 
     /** Android 8+ 必须先由用户为本应用打开「安装未知应用」，App 不能自批。 */
     private fun installUpdate(file: File) {
+        // 先自己判签名：系统安装器只会甩「软件包似乎无效 / 签名不一致」，用户无从下手。
+        when (ApkInstaller.signatureState(this, file)) {
+            ApkSignatureState.Unknown -> {
+                toast("下载的安装包已损坏或没有签名，请重新检查更新再试")
+                return
+            }
+            ApkSignatureState.Mismatch -> {
+                AlertDialog.Builder(this)
+                    .setTitle("需要先卸载旧版本")
+                    .setMessage("更新包的签名与当前安装的版本不同，Android 不允许直接覆盖安装。卸载当前版本后再点「检查更新」下载安装即可（本地数据会一并清除）。")
+                    .setPositiveButton("去卸载") { _, _ ->
+                        runCatching { startActivity(ApkInstaller.uninstallIntent(this)) }
+                            .onFailure { toast("没有可用的卸载入口，请到系统设置里手动卸载") }
+                    }
+                    .setNegativeButton("取消", null)
+                    .show()
+                return
+            }
+            ApkSignatureState.Match -> Unit
+        }
         if (ApkInstaller.needsInstallPermission(this)) {
             AlertDialog.Builder(this)
                 .setTitle("还需要一步授权")

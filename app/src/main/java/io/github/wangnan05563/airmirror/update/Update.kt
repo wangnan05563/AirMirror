@@ -60,7 +60,7 @@ data class ReleaseInfo(
 )
 
 object ReleaseParser {
-    /** GitHub `/releases/latest` 响应；没有 `.apk` 资产时返回 null（下载不了就不该提示可更新）。 */
+    /** GitHub `/releases/latest` 响应；没有**可安装**的 `.apk` 资产时返回 null（下载不了就不该提示可更新）。 */
     fun parse(body: String, preferAbi: String = ""): ReleaseInfo? {
         val root = try {
             Json.parse(body)
@@ -73,6 +73,9 @@ object ReleaseParser {
             val url = asset.text("browser_download_url") ?: return@mapNotNull null
             val name = asset.text("name").orEmpty()
             if (!name.endsWith(".apk", ignoreCase = true)) return@mapNotNull null
+            // 未签名包 Android 一律拒绝安装（系统只给一句「软件包似乎无效」），
+            // 提示用户下载一个注定装不上的包没有任何意义：直接当成不可更新。
+            if (name.contains("unsigned", ignoreCase = true)) return@mapNotNull null
             Pair(name, url)
         }
         if (apks.isEmpty()) return null
@@ -146,7 +149,10 @@ class UpdateChecker(
             return UpdateResult.Failed(NETWORK_ERROR)
         }
         val release = ReleaseParser.parse(body, preferAbi)
-            ?: return UpdateResult.Failed(PARSE_ERROR)
+            ?: return UpdateResult.Failed(
+                // 只有 unsigned 资产时给一句能对上号的提示，别让用户以为是自己网络的问题
+                if (body.contains("unsigned.apk", ignoreCase = true)) UNSIGNED_ONLY else PARSE_ERROR,
+            )
         return if (UpdateVersion.isNewer(release.tag, currentVersion)) {
             UpdateResult.Available(release)
         } else {
@@ -158,5 +164,6 @@ class UpdateChecker(
         const val DEFAULT_API = "https://api.github.com/repos/wangnan05563/AirMirror/releases/latest"
         const val NETWORK_ERROR = "连不上更新服务，请检查网络后重试"
         const val PARSE_ERROR = "更新服务返回了无法识别的内容，请稍后再试"
+        const val UNSIGNED_ONLY = "该版本只有未签名安装包，系统无法安装；请等发布方发布签名包后再更新"
     }
 }

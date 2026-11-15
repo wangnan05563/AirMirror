@@ -81,6 +81,19 @@ class ReleaseParserTest {
     }
 
     @Test
+    fun `只有未签名资产时视为不可更新`() {
+        // 2026-11-13 的 Release 就是只有 unsigned 包：下载后系统必然报「软件包似乎无效」
+        val unsigned = """
+            {"tag_name":"v0.1.0-m0.20261113-001","assets":[
+              {"name":"app-universal-release-unsigned.apk","browser_download_url":"https://x/u.apk"},
+              {"name":"app-arm64-v8a-release-unsigned.apk","browser_download_url":"https://x/a.apk"}
+            ]}
+        """.trimIndent()
+        assertNull(ReleaseParser.parse(unsigned))
+        assertNull(ReleaseParser.parse(unsigned, preferAbi = "arm64-v8a"))
+    }
+
+    @Test
     fun `缺 tag 或格式非法时返回 null`() {
         assertNull(ReleaseParser.parse("""{"assets":[{"name":"a.apk","browser_download_url":"https://x/a.apk"}]}"""))
         assertNull(ReleaseParser.parse("not json"))
@@ -127,6 +140,16 @@ class UpdateCheckerTest {
         assertEquals(
             UpdateResult.Failed(UpdateChecker.PARSE_ERROR),
             checker { "<html>502</html>" }.check(),
+        )
+    }
+
+    @Test
+    fun `远端只有未签名包时提示等签名包而不是让用户白下`() {
+        assertEquals(
+            UpdateResult.Failed(UpdateChecker.UNSIGNED_ONLY),
+            checker {
+                """{"tag_name":"v0.1.0-m0.20261113-001","assets":[{"name":"app-universal-release-unsigned.apk","browser_download_url":"https://x/u.apk"}]}"""
+            }.check(),
         )
     }
 }

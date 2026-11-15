@@ -7,12 +7,26 @@ plugins {
 // 普通调试构建不传，versionName 保持固定的 0.1.0-m0，保证同一 commit 的产物可复现。
 val versionPatch = providers.gradleProperty("versionPatch").orNull
 
-// 可选 release 签名：只有显式传入 keystore 参数时才生成签名配置。
-// 不传就保持未签名（默认行为不变），避免把密钥路径与口令写进仓库。
-val keystoreFile = providers.gradleProperty("keystoreFile").orNull
-val keystorePassword = providers.gradleProperty("keystorePassword").orNull
-val keyAliasName = providers.gradleProperty("keyAlias").orNull
-val keyPasswordValue = providers.gradleProperty("keyPassword").orNull
+// 可选 release 签名：参数来源 = -P 显式传入 > 仓库根 .env（本机开发用，已 gitignore）。
+// .env 兜底的意义：一键构建脚本不传参时也不会掉回 unsigned —— 线上曾把 unsigned 包发到
+// GitHub Release，应用内「检查更新」下到手点安装，系统只能报「软件包似乎无效」。
+val envFileValue: (String) -> String? = { key ->
+    rootProject.file(".env").takeIf { it.isFile }
+        ?.readLines()
+        ?.firstOrNull { it.startsWith("$key=") }
+        ?.substringAfter('=')
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+}
+
+val keystoreFile = providers.gradleProperty("keystoreFile").orNull?.takeIf { it.isNotBlank() }
+    ?: envFileValue("AIRMIRROR_KEYSTORE")
+val keystorePassword = providers.gradleProperty("keystorePassword").orNull?.takeIf { it.isNotBlank() }
+    ?: envFileValue("AIRMIRROR_KEYSTORE_PASSWORD")
+val keyAliasName = providers.gradleProperty("keyAlias").orNull?.takeIf { it.isNotBlank() }
+    ?: envFileValue("AIRMIRROR_KEY_ALIAS")
+val keyPasswordValue = providers.gradleProperty("keyPassword").orNull?.takeIf { it.isNotBlank() }
+    ?: keystorePassword
 
 android {
     namespace = "io.github.wangnan05563.airmirror"
@@ -55,9 +69,17 @@ android {
     }
 
     buildTypes {
+        // 签名统一（2026-11-15）：debug 也用发布密钥。Android 只允许同证书的包互相覆盖安装，
+        // debug/release 各用一套证书会让「应用内在线更新」注定装不上（系统报签名不一致）。
+        // 没传/没配 keystore 时保持 AGP 默认 debug 证书，不影响纯本地调试。
+        if (signingConfigs.findByName("release") != null) {
+            getByName("debug") {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
         release {
             isMinifyEnabled = false
-            // 没传签名参数时为 null，产物仍是未签名包（与 T04396 的包体核对口径一致）
+            // 没传签名参数且 .env 无配置时为 null，产物仍是未签名包（与 T04396 的包体核对口径一致）
             signingConfig = signingConfigs.findByName("release")
         }
     }
