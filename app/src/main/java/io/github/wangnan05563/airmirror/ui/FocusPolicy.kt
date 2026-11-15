@@ -44,4 +44,8 @@ object FocusPolicy {
     /** §11.5：TV 正文 ≥24px、标题 ≥40px；手机正文 ≥14px。 */
     fun titleSp(isTv: Boolean): Float = if (isTv) Theme.TITLE_SP else Theme.PHONE_TITLE_SP
     fun bodySp(isTv: Boolean): Float = if (isTv) Theme.BODY_SP else Theme.PHONE_BODY_SP
+
+    /** 设置页分组标题：比页面标题小一档，比正文大一档，避免菜单层级靠 32sp 硬撑。 */
+    fun sectionTitleSp(isTv: Boolean): Float =
+        if (isTv) Theme.BODY_SP else Theme.SECTION_TITLE_SP
 }

@@ -1,12 +1,10 @@
 package io.github.wangnan05563.airmirror.ui
 
 import android.app.Activity
-import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Typeface
 import android.os.Bundle
 import android.view.Gravity
-import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import io.github.wangnan05563.airmirror.privacy.Diagnostics
@@ -25,10 +23,11 @@ class MainActivity : Activity() {
         val bodySp = FocusPolicy.bodySp(isTv)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
+            // 手机高长屏内容垂直居中；TV 仍按顶部对齐，避免 3 米观看时焦点区漂移。
+            gravity = if (isTv) Gravity.CENTER_HORIZONTAL or Gravity.TOP else Gravity.CENTER
             setBackgroundColor(Theme.BACKGROUND)
             val pad = Theme.dp(this@MainActivity, Theme.SPACE_XL_DP)
-            setPadding(pad, Theme.dp(this@MainActivity, 56), pad, pad)
+            setPadding(pad, Theme.dp(this@MainActivity, if (isTv) Theme.SPACE_XXL_DP else Theme.SPACE_XL_DP), pad, pad)
         }
         root.addView(TextView(this).apply {
             text = "AirMirror"
@@ -44,14 +43,14 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER
             setPadding(0, Theme.dp(this@MainActivity, Theme.SPACE_SM_DP), 0, Theme.dp(this@MainActivity, Theme.SPACE_XL_DP))
         })
-        // 两个入口按钮：统一用 MaterialButton（开源库 UI），并留出 16dp 间距
+        // 两个入口按钮：统一用 MaterialButton（开源库 UI），上下各留 24dp
         // —— 改造前无间距，两个胶囊直接粘在一起（用户 2026-11-15 截图反馈）。
         root.addView(
             UiKit.button(this, "投到其他设备", UiKit.Kind.Primary).apply {
                 setOnClickListener { startActivity(Intent(this@MainActivity, SenderActivity::class.java)) }
                 A11y.describe(this, A11yCopy.mainSend())
             },
-            UiKit.fullWidth(this, Theme.SPACE_MD_DP, Theme.SPACE_LG_DP),
+            UiKit.fullWidth(this, Theme.SPACE_XL_DP, Theme.SPACE_XL_DP),
         )
         root.addView(
             UiKit.button(this, "接收别人投来的画面").apply {
@@ -82,7 +81,7 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER
             setPadding(0, Theme.dp(this@MainActivity, Theme.SPACE_MD_DP), 0, 0)
             setOnClickListener {
-                AlertDialog.Builder(this@MainActivity)
+                UiKit.dialog(this@MainActivity)
                     .setTitle("数据边界")
                     .setMessage(PRIVACY_NOTE)
                     .setPositiveButton("知道了", null)

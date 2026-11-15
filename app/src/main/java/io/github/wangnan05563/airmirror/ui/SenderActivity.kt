@@ -1,7 +1,6 @@
 package io.github.wangnan05563.airmirror.ui
 
 import android.app.Activity
-import android.app.AlertDialog
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -15,6 +14,7 @@ import android.os.Looper
 import android.provider.Settings
 import android.text.InputFilter
 import android.text.InputType
+import android.text.TextUtils
 import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
@@ -301,7 +301,7 @@ class SenderActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             visibility = View.GONE
-            setBackgroundColor(Theme.SURFACE)
+            UiKit.surface(this, color = Theme.SURFACE_ELEVATED, elevationDp = 2)
             val inset = Theme.dp(this@SenderActivity, Theme.SPACE_SM_DP)
             setPadding(inset, inset, inset, inset)
         }
@@ -368,7 +368,7 @@ class SenderActivity : Activity() {
         takeoverBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(Theme.SURFACE)
+            UiKit.surface(this, color = Theme.SURFACE_ELEVATED, elevationDp = 1)
             visibility = View.GONE
             val gap = Theme.dp(this@SenderActivity, Theme.SPACE_SM_DP)
             setPadding(gap, gap, gap, gap)
@@ -425,7 +425,7 @@ class SenderActivity : Activity() {
         setTextSize(TypedValue.COMPLEX_UNIT_SP, FocusPolicy.bodySp(isTv))
         setTextColor(Theme.TEXT_PRIMARY)
         setHintTextColor(StatusColors.offlineText())
-        setBackgroundColor(Theme.SURFACE)
+        UiKit.inset(this, color = Theme.SURFACE_ELEVATED)
         setPadding(Theme.dp(this@SenderActivity, Theme.SPACE_MD_DP), Theme.dp(this@SenderActivity, 6), Theme.dp(this@SenderActivity, Theme.SPACE_MD_DP), Theme.dp(this@SenderActivity, 6))
         A11y.describe(this, if (label == "投屏码") A11yCopy.codeInputLabel() else A11yCopy.addressInputLabel())
     }
@@ -538,7 +538,11 @@ class SenderActivity : Activity() {
         val actions = DeviceCardPolicy.actions(card)
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(if (row.online) Theme.SURFACE else Theme.BACKGROUND)
+            if (row.online) {
+                UiKit.surface(this, color = Theme.SURFACE_ELEVATED, elevationDp = 2)
+            } else {
+                setBackgroundColor(Theme.BACKGROUND)
+            }
             val gap = Theme.dp(this@SenderActivity, Theme.SPACE_MD_DP)
             setPadding(gap, gap, gap, gap)
             addView(deviceHeader(row, card, usable, actions), matchWidth())
@@ -688,7 +692,7 @@ class SenderActivity : Activity() {
         val gap = Theme.dp(this, Theme.SPACE_SM_DP)
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Theme.SURFACE)
+            UiKit.surface(this, color = Theme.SURFACE_ELEVATED, elevationDp = 2)
             setPadding(gap, gap, gap, gap)
             visibility = View.GONE
         }
@@ -705,13 +709,15 @@ class SenderActivity : Activity() {
         }
         card.addView(diagnosisNextStep, matchWidth())
         val buttons = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
+            orientation = LinearLayout.VERTICAL
             setPadding(0, gap, 0, 0)
         }
-        for (action in EmptyDiagnosis.ACTIONS) {
+        for ((index, action) in EmptyDiagnosis.ACTIONS.withIndex()) {
             buttons.addView(UiKit.button(this).apply {
                 text = ErrorNotice.actionLabel(action)
                 setTextColor(Theme.ACCENT)
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
                 minimumHeight = Theme.dp(this@SenderActivity, 48)
                 A11y.describe(this, when (action) {
                     ErrorNotice.Action.RETRY_DISCOVERY -> A11yCopy.diagnosisRetry()
@@ -720,7 +726,12 @@ class SenderActivity : Activity() {
                     else -> ErrorNotice.actionLabel(action)
                 })
                 setOnClickListener { onDiagnosisAction(action) }
-            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            }, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                Theme.dp(this@SenderActivity, 48),
+            ).apply {
+                if (index > 0) topMargin = gap
+            })
         }
         card.addView(buttons, matchWidth())
         return card
@@ -995,7 +1006,7 @@ class SenderActivity : Activity() {
         )
         if (askable.isEmpty()) {
             // 系统已经不再询问：再摆出「继续申请」就是骗人，这里只说明用途与后果并给设置入口
-            AlertDialog.Builder(this)
+            UiKit.dialog(this)
                 .setTitle("权限已在系统里关掉")
                 .setMessage(RuntimePermission.blockedMessage(blocked))
                 .setPositiveButton("去设置") { _, _ -> openPermissionSettings() }
@@ -1006,7 +1017,7 @@ class SenderActivity : Activity() {
         }
         val body = RuntimePermission.explain(askable) +
             if (blocked.isEmpty()) "" else "\n\n" + RuntimePermission.blockedMessage(blocked)
-        AlertDialog.Builder(this)
+        UiKit.dialog(this)
             .setTitle(title)
             .setMessage(body)
             .setPositiveButton("继续申请") { _, _ -> onAsk(askable) }
@@ -1209,7 +1220,7 @@ class SenderActivity : Activity() {
             setSingleLine()
             setTextColor(Theme.TEXT_PRIMARY)
         }
-        AlertDialog.Builder(this)
+        UiKit.dialog(this)
             .setTitle("跨网信令服务")
             .setMessage("留空则不启用跨网。信令只交换建连信息，画面仍点对点直连、不经服务器。")
             .setView(input)
@@ -1273,12 +1284,20 @@ class SenderActivity : Activity() {
 
     private fun promptUpdate(release: ReleaseInfo) {
         val notes = release.notes.take(400).ifBlank { "该版本没有填写更新说明。" }
-        AlertDialog.Builder(this)
+        val dialog = UiKit.dialog(this)
             .setTitle("发现新版本 ${release.tag}")
             .setMessage(notes)
             .setPositiveButton("下载并安装") { _, _ -> downloadUpdate(release) }
             .setNegativeButton("稍后", null)
-            .show()
+            .create()
+        dialog.setOnShowListener {
+            dialog.findViewById<TextView>(android.R.id.message)?.setTextSize(
+                TypedValue.COMPLEX_UNIT_SP,
+                Theme.PHONE_BODY_SP,
+            )
+            UiKit.styleDialogButtons(dialog)
+        }
+        dialog.show()
     }
 
     private fun downloadUpdate(release: ReleaseInfo) {
@@ -1319,7 +1338,7 @@ class SenderActivity : Activity() {
                 return
             }
             ApkSignatureState.Mismatch -> {
-                AlertDialog.Builder(this)
+                UiKit.dialog(this)
                     .setTitle("需要先卸载旧版本")
                     .setMessage("更新包的签名与当前安装的版本不同，Android 不允许直接覆盖安装。卸载当前版本后再点「检查更新」下载安装即可（本地数据会一并清除）。")
                     .setPositiveButton("去卸载") { _, _ ->
@@ -1333,7 +1352,7 @@ class SenderActivity : Activity() {
             ApkSignatureState.Match -> Unit
         }
         if (ApkInstaller.needsInstallPermission(this)) {
-            AlertDialog.Builder(this)
+            UiKit.dialog(this)
                 .setTitle("还需要一步授权")
                 .setMessage("系统要求你为本应用单独允许「安装未知应用」，之后才能完成更新。")
                 .setPositiveButton("去设置") { _, _ -> openInstallSettings() }

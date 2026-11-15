@@ -28,7 +28,10 @@ class EmptyDiagnosisGuardTest {
     @Test
     fun `诊断卡由固定三动作循环渲染`() {
         val s = sender()
-        assertTrue("按钮要遍历 EmptyDiagnosis.ACTIONS", s.contains("for (action in EmptyDiagnosis.ACTIONS)"))
+        assertTrue(
+            "按钮要遍历 EmptyDiagnosis.ACTIONS",
+            s.contains("for ((index, action) in EmptyDiagnosis.ACTIONS.withIndex())"),
+        )
         assertTrue("按钮文案走统一出口", s.contains("text = ErrorNotice.actionLabel(action)"))
         assertTrue("按钮触控高度 ≥48dp", s.contains("minimumHeight = Theme.dp(this@SenderActivity, 48)"))
     }

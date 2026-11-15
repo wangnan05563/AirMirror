@@ -44,9 +44,9 @@ class UiConsistencyGuardTest {
     }
 
     @Test
-    fun `主入口两个按钮之间留 16dp`() {
+    fun `主入口两个按钮之间留 24dp`() {
         val src = ui("MainActivity.kt")
-        assertTrue("投到其他设备按钮未设置下间距", src.contains("UiKit.fullWidth(this, Theme.SPACE_MD_DP, Theme.SPACE_LG_DP)"))
+        assertTrue("投到其他设备按钮未设置下间距", src.contains("UiKit.fullWidth(this, Theme.SPACE_XL_DP, Theme.SPACE_XL_DP)"))
         assertTrue("接收按钮未设置底部留边", src.contains("UiKit.fullWidth(this, 0, Theme.SPACE_XL_DP)"))
     }
 
@@ -65,5 +65,27 @@ class UiConsistencyGuardTest {
         assertEquals("手机标题必须走同一令牌", Theme.PHONE_TITLE_SP, FocusPolicy.titleSp(false), 0.0001f)
         assertEquals("发送端标题已并入手机标题", Theme.PHONE_TITLE_SP, Theme.SENDER_TITLE_SP, 0.0001f)
         assertTrue("按钮字号令牌缺失", Theme.PHONE_BUTTON_SP >= 16f)
+    }
+
+    @Test
+    fun `诊断卡三动作纵向全宽且不换行`() {
+        val src = ui("SenderActivity.kt")
+        assertTrue("诊断卡按钮未改纵向", src.contains("orientation = LinearLayout.VERTICAL"))
+        assertTrue("诊断卡按钮未限制单行", src.contains("maxLines = 1") && src.contains("TextUtils.TruncateAt.END"))
+    }
+
+    @Test
+    fun `设置面板使用全屏遮罩`() {
+        val src = ui("ReceiverActivity.kt")
+        assertTrue("设置面板未包全屏 overlay", src.contains("buildSettingsOverlay()"))
+        assertTrue("设置面板未切换遮罩可见性", src.contains("settingsOverlay.visibility = View.VISIBLE"))
+    }
+
+    @Test
+    fun `弹窗统一走 Material 品牌主题`() {
+        for (page in pages) {
+            assertFalse("$page 仍有平台 AlertDialog", ui(page).contains("AlertDialog.Builder("))
+        }
+        assertTrue("UiKit 未提供统一对话框", ui("UiKit.kt").contains("MaterialAlertDialogBuilder"))
     }
 }

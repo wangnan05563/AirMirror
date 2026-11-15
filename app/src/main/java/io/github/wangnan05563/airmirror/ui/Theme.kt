@@ -23,12 +23,18 @@ object Theme {
     const val SURFACE_ALPHA_90 = 0xE612314F.toInt()
     /** 分隔线 / 内嵌块：20% 面。 */
     const val DIVIDER = 0x3312314F.toInt()
+    /** 抬升面：用于设置卡、诊断卡等需要从页面上“浮起来”的容器。 */
+    const val SURFACE_ELEVATED = 0xFF1A3D61.toInt()
+    /** 低对比描边：圆角卡片在深色背景上的柔和边界，不靠高亮描边抢注意力。 */
+    const val SURFACE_STROKE = 0x3317C3B2.toInt()
     /** 二维码底保持纯白：扫码可靠性优先，不着色。 */
     const val QR_BACKGROUND = 0xFFFFFFFF.toInt()
 
     const val TITLE_SP = 40f
     const val BODY_SP = 24f
     const val PHONE_BODY_SP = 14f
+    /** 分组标题（设置页“隐私”等）独立于页面标题，避免小标题也用 32sp。 */
+    const val SECTION_TITLE_SP = 18f
     /** 手机页标题（TV 走 TITLE_SP）；发送端页标题与设备名行各有固定字号。 */
     const val PHONE_TITLE_SP = 32f
     /**
@@ -43,6 +49,10 @@ object Theme {
     const val BUTTON_SP = 24f
     /** 按钮圆角：贴近冻结视觉的胶囊感，又不至于像系统默认那样看不出边界。 */
     const val RADIUS_BUTTON_DP = 14
+    /** 卡片/面板统一 16dp，内嵌块 12dp，对话框 24dp（T05759 P1）。 */
+    const val RADIUS_CARD_DP = 16
+    const val RADIUS_INSET_DP = 12
+    const val RADIUS_DIALOG_DP = 24
 
     /** 6 位投屏码要在倒计时环内单行放下，再大就会拆成两截。 */
     const val CODE_SP = 36f

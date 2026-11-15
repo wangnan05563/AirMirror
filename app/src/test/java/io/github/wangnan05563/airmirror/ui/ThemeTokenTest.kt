@@ -29,6 +29,8 @@ class ThemeTokenTest {
         assertEquals(0xE612314F.toInt(), Theme.SURFACE_ALPHA_90)
         assertEquals(0x3312314F.toInt(), Theme.DIVIDER)
         assertEquals(0xFFFFFFFF.toInt(), Theme.QR_BACKGROUND)
+        assertEquals(0xFF1A3D61.toInt(), Theme.SURFACE_ELEVATED)
+        assertEquals(0x3317C3B2.toInt(), Theme.SURFACE_STROKE)
     }
 
     @Test
@@ -42,6 +44,7 @@ class ThemeTokenTest {
         assertEquals(32f, Theme.SENDER_TITLE_SP, 0.0001f)
         assertEquals(Theme.PHONE_TITLE_SP, Theme.SENDER_TITLE_SP, 0.0001f)
         assertEquals(18f, Theme.DEVICE_NAME_SP, 0.0001f)
+        assertEquals(18f, Theme.SECTION_TITLE_SP, 0.0001f)
         assertEquals(16f, Theme.PHONE_BUTTON_SP, 0.0001f)
         assertEquals(24f, Theme.BUTTON_SP, 0.0001f)
         assertTrue(Theme.BODY_SP >= 24f)
@@ -71,6 +74,10 @@ class ThemeTokenTest {
     @Test
     fun `圆角与留边刻度取值固定`() {
         assertEquals(6, Theme.RADIUS_FOCUS_DP)
+        assertEquals(14, Theme.RADIUS_BUTTON_DP)
+        assertEquals(16, Theme.RADIUS_CARD_DP)
+        assertEquals(12, Theme.RADIUS_INSET_DP)
+        assertEquals(24, Theme.RADIUS_DIALOG_DP)
         assertEquals(4, Theme.SPACE_XS_DP)
         assertEquals(8, Theme.SPACE_SM_DP)
         assertEquals(12, Theme.SPACE_MD_DP)

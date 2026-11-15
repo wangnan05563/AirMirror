@@ -1,7 +1,6 @@
 package io.github.wangnan05563.airmirror.ui
 
 import android.app.Activity
-import android.app.AlertDialog
 import android.graphics.Bitmap
 import android.os.Build
 import android.os.Bundle
@@ -88,6 +87,8 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     private lateinit var cornerHint: TextView
     private lateinit var settingsPanel: LinearLayout
     private lateinit var settingsScroller: ScrollView
+    /** 全屏设置遮罩：盖住底层设备名与状态栏内容，320dpi 不再从顶部穿透。 */
+    private lateinit var settingsOverlay: FrameLayout
     private lateinit var settingsEntry: TextView
     /** 投屏中盖在画面上接长按：ScrollView 会吃掉落在画面上的触摸，根布局收不到长按。 */
     private lateinit var longPressCatcher: View
@@ -282,11 +283,8 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             Gravity.BOTTOM,
         ))
         // 画质档位行加上来后面板比屏幕高，套一层滚动容器：角标开关和「完成」不能永远够不着
-        root.addView(buildSettingsScroller(), FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            Gravity.CENTER,
-        ).apply { setMargins(Theme.dp(this@ReceiverActivity, Theme.SPACE_XXL_DP), 0, Theme.dp(this@ReceiverActivity, Theme.SPACE_XXL_DP), 0) })
+        // T05759 P0：整块设置做成全屏 overlay，顶部不再露出底层设备名。
+        root.addView(buildSettingsOverlay(), fullScreen())
         // 首启三步引导覆盖在最上层（FrameLayout 后 add 的盖在先 add 的之上）
         root.addView(buildOnboarding(), fullScreen())
         root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> refitVideo() }
@@ -618,7 +616,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             text = "显示设置"
             textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.ACCENT)
-            setBackgroundColor(Theme.BACKGROUND_ALPHA_80)
+            UiKit.inset(this, color = Theme.BACKGROUND_ALPHA_80)
             setPadding(
                 Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP), Theme.dp(this@ReceiverActivity, 10),
                 Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP), Theme.dp(this@ReceiverActivity, 10),
@@ -671,6 +669,20 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         surfaceView.layoutParams = params
     }
 
+    private fun buildSettingsOverlay(): FrameLayout {
+        val scroller = buildSettingsScroller()
+        settingsOverlay = FrameLayout(this).apply {
+            // 完全不透明：320dpi 下底层设备名/状态栏内容不会再从顶部露出。
+            setBackgroundColor(Theme.BACKGROUND)
+            visibility = View.GONE
+            addView(scroller, FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+            ))
+        }
+        return settingsOverlay
+    }
+
     private fun buildSettingsScroller(): ScrollView {
         val panel = buildSettingsPanel()
         settingsScroller = ScrollView(this).apply {
@@ -685,7 +697,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         settingsPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Theme.BACKGROUND)
-            setPadding(Theme.dp(this@ReceiverActivity, Theme.SPACE_XL_DP), Theme.dp(this@ReceiverActivity, 20), Theme.dp(this@ReceiverActivity, Theme.SPACE_XL_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP))
+            setPadding(Theme.dp(this@ReceiverActivity, Theme.SPACE_XL_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_XL_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_XL_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP))
         }
         settingsPanel.addView(TextView(this).apply {
             text = "显示设置"
@@ -788,7 +800,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         ))
         settingsPanel.addView(TextView(this).apply {
             text = "隐私"
-            textSize = FocusPolicy.titleSp(isTv)
+            textSize = FocusPolicy.sectionTitleSp(isTv)
             setTextColor(Theme.TEXT_PRIMARY)
             setPadding(0, Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP), 0, Theme.dp(this@ReceiverActivity, Theme.SPACE_SM_DP))
         }, matchWidth())
@@ -949,7 +961,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             setSingleLine()
             setTextColor(Theme.TEXT_PRIMARY)
         }
-        AlertDialog.Builder(this)
+        UiKit.dialog(this)
             .setTitle("跨网信令服务")
             .setMessage("留空则不启用跨网。信令只交换建连信息，画面仍点对点直连、不经服务器。")
             .setView(input)
@@ -972,7 +984,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             showCornerHint("崩溃日志已关闭并清除")
             return
         }
-        AlertDialog.Builder(this)
+        UiKit.dialog(this)
             .setTitle("开启崩溃日志？")
             .setMessage("只在本机记录崩溃堆栈与设备型号，不含画面、文件名和地址；不上传，7 天后自动清除。可随时关闭并清除。")
             .setPositiveButton("开启") { _, _ ->
@@ -986,7 +998,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
 
     /** PRD FS-11「用户清理缓存：二次确认；清空后不影响已授权设备」。 */
     private fun clearLocalData() {
-        AlertDialog.Builder(this)
+        UiKit.dialog(this)
             .setTitle("清除本地日志与缓存？")
             .setMessage("删除本机崩溃日志与临时缓存；已授权设备、投屏码和显示设置不受影响。")
             .setPositiveButton("清除") { _, _ ->
@@ -1001,6 +1013,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     private fun showSettings() {
         diagnostics.purge()
         refreshSettings()
+        settingsOverlay.visibility = View.VISIBLE
         settingsScroller.visibility = View.VISIBLE
         // 覆盖层隔离（设计 §8.1）：底页与设置入口退出无障碍树，焦点落到当前选中模式行（§8.3）
         A11y.hideSubtree(waiting)
@@ -1014,6 +1027,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
 
     private fun hideSettings() {
         settingsScroller.visibility = View.GONE
+        settingsOverlay.visibility = View.GONE
         A11y.showSubtree(waiting)
         A11y.showSubtree(settingsEntry)
         settingsEntry.requestFocus()
@@ -1027,7 +1041,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             return
         }
         if (mode.needsConfirm) {
-            AlertDialog.Builder(this)
+            UiKit.dialog(this)
                 .setTitle("使用拉伸？")
                 .setMessage("拉伸会让画面变形，之后可以随时改回完整显示。")
                 .setPositiveButton("确定") { _, _ -> applyMode(mode) }
@@ -1063,7 +1077,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         promptBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(Theme.SURFACE_ALPHA_90)
+            UiKit.surface(this, color = Theme.SURFACE_ALPHA_90, elevationDp = 1)
             visibility = View.GONE
             setPadding(Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP))
         }
@@ -1096,7 +1110,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         endBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(Theme.SURFACE_ALPHA_90)
+            UiKit.surface(this, color = Theme.SURFACE_ALPHA_90, elevationDp = 1)
             visibility = View.GONE
             setPadding(Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP))
         }
@@ -1204,7 +1218,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setBackgroundColor(Theme.SURFACE)
+            UiKit.surface(this, color = Theme.SURFACE_ELEVATED, elevationDp = 2)
             setPadding(Theme.dp(this@ReceiverActivity, Theme.SPACE_XXL_DP), Theme.dp(this@ReceiverActivity, 28), Theme.dp(this@ReceiverActivity, Theme.SPACE_XXL_DP), Theme.dp(this@ReceiverActivity, 28))
         }
         onboardStepHint = TextView(this).apply { textSize = FocusPolicy.bodySp(isTv); setTextColor(Theme.TEXT_SECONDARY); gravity = Gravity.CENTER }
@@ -1223,7 +1237,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_PRIMARY)
             setHintTextColor(Theme.TEXT_SECONDARY)
-            setBackgroundColor(Theme.BACKGROUND)
+            UiKit.inset(this, color = Theme.BACKGROUND)
             hint = "设备名"
             gravity = Gravity.CENTER
             visibility = View.GONE
@@ -1576,6 +1590,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             waiting.visibility = View.VISIBLE
             promptBar.visibility = View.GONE
             settingsScroller.visibility = View.GONE
+            settingsOverlay.visibility = View.GONE
             main.removeCallbacks(hideNotice)
             main.removeCallbacks(hideCornerHint)
             noticeOverlay.visibility = View.GONE

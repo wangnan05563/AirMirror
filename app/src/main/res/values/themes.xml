@@ -34,4 +34,18 @@
         <item name="android:textColor">@color/airmirror_text_primary</item>
         <item name="cornerRadius">14dp</item>
     </style>
+
+    <!-- T05759 P1：对话框统一 24dp 圆角、SURFACE 面，按钮继续走 Material Components。 -->
+    <style name="ThemeOverlay.AirMirror.Dialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
+        <item name="colorSurface">@color/airmirror_surface</item>
+        <item name="colorOnSurface">@color/airmirror_text_primary</item>
+        <item name="colorPrimary">@color/airmirror_accent</item>
+        <item name="colorOnPrimary">@color/airmirror_background</item>
+        <item name="shapeAppearanceOverlay">@style/ShapeAppearance.AirMirror.Dialog</item>
+        <item name="materialButtonStyle">@style/Widget.AirMirror.Button</item>
+    </style>
+
+    <style name="ShapeAppearance.AirMirror.Dialog" parent="ShapeAppearance.Material3.Corner.Large">
+        <item name="cornerSize">24dp</item>
+    </style>
 </resources>

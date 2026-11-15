@@ -3,9 +3,14 @@ package io.github.wangnan05563.airmirror.ui
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
+import android.view.View
 import android.widget.LinearLayout
+import androidx.appcompat.app.AlertDialog
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import io.github.wangnan05563.airmirror.R
 
 /**
  * 全站控件工厂（2026-11-15 用户口径）。
@@ -57,6 +62,56 @@ object UiKit {
                 }
             }
         }
+    }
+
+    /**
+     * 统一圆角面：卡片 16dp、内嵌块 12dp。深色底上只加 1dp 低对比描边，
+     * 不使用高亮边框；抬升用极轻的 elevation，低版本自动退化为纯色圆角。
+     */
+    fun surface(
+        view: View,
+        radiusDp: Int = Theme.RADIUS_CARD_DP,
+        color: Int = Theme.SURFACE_ELEVATED,
+        elevationDp: Int = 2,
+        stroke: Boolean = true,
+    ) {
+        val context = view.context
+        val radius = Theme.dp(context, radiusDp).toFloat()
+        view.background = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = radius
+            setColor(color)
+            if (stroke) setStroke(Theme.dp(context, 1), Theme.SURFACE_STROKE)
+        }
+        view.elevation = Theme.dp(context, elevationDp).toFloat()
+    }
+
+    /** 输入框/内嵌块：比卡片低一层，圆角 12dp，不抬升。 */
+    fun inset(view: View, color: Int = Theme.BACKGROUND) {
+        val context = view.context
+        view.background = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = Theme.dp(context, Theme.RADIUS_INSET_DP).toFloat()
+            setColor(color)
+            setStroke(Theme.dp(context, 1), Theme.SURFACE_STROKE)
+        }
+        view.elevation = 0f
+    }
+
+    /** 全站对话框统一走 Material Components，并套 24dp 圆角的品牌主题。 */
+    fun dialog(context: Context): MaterialAlertDialogBuilder =
+        MaterialAlertDialogBuilder(context, R.style.ThemeOverlay_AirMirror_Dialog)
+
+    /** 弹窗按钮的“稍后 Ghost / 主行动 Primary”形态；非 MaterialButton 的系统按钮保持默认。 */
+    fun styleDialogButtons(dialog: AlertDialog) {
+        val positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE) as? MaterialButton ?: return
+        positive.backgroundTintList = ColorStateList.valueOf(Theme.ACCENT)
+        positive.setTextColor(Theme.BACKGROUND)
+        positive.cornerRadius = Theme.dp(dialog.context, Theme.RADIUS_BUTTON_DP)
+        val negative = dialog.getButton(AlertDialog.BUTTON_NEGATIVE) as? MaterialButton
+        negative?.backgroundTintList = ColorStateList.valueOf(Color.TRANSPARENT)
+        negative?.setTextColor(Theme.TEXT_SECONDARY)
+        negative?.cornerRadius = Theme.dp(dialog.context, Theme.RADIUS_BUTTON_DP)
     }
 
     /** 按钮通用布局参数：整行铺满 + 指定上下间距，避免像改造前那样两个按钮贴在一起。 */
