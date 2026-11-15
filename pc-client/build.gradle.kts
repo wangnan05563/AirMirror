@@ -20,6 +20,15 @@ application {
     mainClass.set("io.github.wangnan05563.airmirror.pc.Main")
 }
 
+tasks.named<Sync>("installDist") {
+    from(providers.gradleProperty("airmirrorFfmpegDir").map { file(it) }) {
+        into("ffmpeg")
+    }
+}
+
 tasks.withType<Test>().configureEach {
     useJUnit()
+    providers.gradleProperty("airmirrorFfmpeg").orNull?.let {
+        systemProperty("airmirror.ffmpeg", it)
+    }
 }

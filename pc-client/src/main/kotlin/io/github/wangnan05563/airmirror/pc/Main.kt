@@ -30,9 +30,9 @@ class PcSenderFrame : JFrame("AirMirror PC 发送端") {
     private val nameField = JTextField("AirMirror PC", 12)
     private val presetBox = JComboBox(
         arrayOf(
+            Preset("1920x1080 @ 30fps", 1920, 1080, 30),
+            Preset("1280x720 @ 30fps", 1280, 720, 30),
             Preset("960x540 @ 15fps", 960, 540, 15),
-            Preset("1280x720 @ 10fps", 1280, 720, 10),
-            Preset("640x360 @ 20fps", 640, 360, 20),
         ),
     )
     private val startButton = JButton("开始投屏")
@@ -133,7 +133,8 @@ class PcSenderFrame : JFrame("AirMirror PC 发送端") {
             onStats = { stats ->
                 SwingUtilities.invokeLater {
                     statsLabel.text = "帧=${stats.frames}  ${"%.1f".format(stats.fps)}fps  " +
-                        "编码=${stats.encodeMs}ms  ${"%.1f".format(stats.bytes / 1024.0 / 1024.0)}MB"
+                        (if (stats.encodeMs > 0) "编码=${stats.encodeMs}ms  " else "编码=原生  ") +
+                        "${"%.1f".format(stats.bytes / 1024.0 / 1024.0)}MB"
                 }
             },
         )
@@ -167,12 +168,13 @@ object Main {
         val host = options["host"] ?: error("--host required")
         val port = options["port"]?.toIntOrNull() ?: 41523
         val code = options["code"] ?: error("--code required")
-        val width = options["width"]?.toIntOrNull() ?: 960
-        val height = options["height"]?.toIntOrNull() ?: 540
-        val fps = options["fps"]?.toIntOrNull() ?: 15
+        val width = options["width"]?.toIntOrNull() ?: 1920
+        val height = options["height"]?.toIntOrNull() ?: 1080
+        val fps = options["fps"]?.toIntOrNull() ?: 30
+        val bitrate = options["bitrate"]?.toIntOrNull() ?: 8000
         val name = options["name"] ?: "AirMirror PC"
         val sender = SenderEngine(
-            SenderEngine.Config(host, port, code, name, width, height, fps),
+            SenderEngine.Config(host, port, code, name, width, height, fps, bitrate),
             onStatus = { println("[status] $it") },
             onStats = { println("[stats] frames=${it.frames} fps=${"%.1f".format(it.fps)} encode=${it.encodeMs}ms") },
         )

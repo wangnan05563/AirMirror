@@ -22,9 +22,14 @@ class SenderEngineTest {
     fun sendsConfigThenKeyFrameToFakeReceiver() {
         assumeFalse("needs a desktop session for AWT Robot", GraphicsEnvironment.isHeadless())
         val code = "246810"
+        val useFfmpeg = System.getProperty("airmirror.ffmpeg")?.let { java.io.File(it).isFile } == true
+        val width = if (useFfmpeg) 1920 else 320
+        val height = if (useFfmpeg) 1080 else 180
+        val fps = if (useFfmpeg) 30 else 5
         val server = ServerSocket(0)
         val gotConfig = CountDownLatch(1)
         val gotKeyFrame = CountDownLatch(1)
+        val frames = java.util.concurrent.atomic.AtomicInteger()
         val failure = AtomicReference<Throwable>()
 
         val receiver = Thread {
@@ -79,7 +84,7 @@ class SenderEngineTest {
                         ),
                     )
 
-                    while (gotKeyFrame.count > 0) {
+                    while (true) {
                         val frame = Protocol.read(socket.getInputStream()) ?: break
                         val plain = frame.copy(
                             flags = frame.flags and Protocol.Flags.ENCRYPTED.inv(),
@@ -88,6 +93,7 @@ class SenderEngineTest {
                         when (plain.type) {
                             Protocol.Type.VIDEO -> {
                                 if (plain.flags and Protocol.Flags.CONFIG != 0) gotConfig.countDown()
+                                if (plain.payload.isNotEmpty()) frames.incrementAndGet()
                                 if (plain.flags and Protocol.Flags.KEY_FRAME != 0 &&
                                     plain.payload.isNotEmpty()
                                 ) {
@@ -105,13 +111,18 @@ class SenderEngineTest {
         }.apply { isDaemon = true; start() }
 
         val sender = SenderEngine(
-            SenderEngine.Config("127.0.0.1", server.localPort, code, "PC-Test", 320, 180, 5),
+            SenderEngine.Config("127.0.0.1", server.localPort, code, "PC-Test", width, height, fps),
             onStatus = {},
         )
         try {
             sender.start()
             assertTrue("receiver did not get CONFIG frame", gotConfig.await(10, TimeUnit.SECONDS))
             assertTrue("receiver did not get IDR frame", gotKeyFrame.await(10, TimeUnit.SECONDS))
+            if (useFfmpeg) {
+                Thread.sleep(3000)
+                println("ffmpeg 1080p30 frames in 3s = ${frames.get()}")
+                assertTrue("1080p30 expected >=60 frames in 3s, got ${frames.get()}", frames.get() >= 60)
+            }
         } finally {
             sender.stop()
             server.close()
