@@ -87,17 +87,20 @@ if ($devices -notcontains $Serial) {
 Write-Host "[INFO] target device: $Serial"
 
 # Artifacts live in release\<variant>\; the Gradle output dir is only a fallback.
+# APK 名带版本号（AirMirror-<version>-<abi>-<variant>.apk），候选按通配符匹配、同组取最新构建的那个。
 $apkDir = Join-Path $root ("release\" + $push.variant)
 if (-not (Test-Path $apkDir)) {
     $apkDir = Join-Path $root ("app\build\outputs\apk\" + $push.variant)
 }
 $apk = $null
 foreach ($candidate in $push.apkCandidates) {
-    $path = Join-Path $apkDir ($candidate.Replace('{variant}', $push.variant))
-    if (Test-Path $path) { $apk = $path; break }
+    $pattern = $candidate.Replace('{variant}', $push.variant)
+    $hit = Get-ChildItem -Path $apkDir -Filter $pattern -File -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if ($hit) { $apk = $hit.FullName; break }
 }
 if (-not $apk -and (Test-Path $apkDir)) {
-    $apk = (Get-ChildItem $apkDir -Filter *.apk | Select-Object -First 1).FullName
+    $apk = (Get-ChildItem $apkDir -Filter *.apk | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
 }
 if (-not $apk) {
     Stop-WithError "no APK under $apkDir. Run the build launcher first."

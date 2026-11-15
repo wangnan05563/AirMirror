@@ -73,10 +73,15 @@ if %COUNT% GTR 1 (
 echo [INFO] target device: !SERIAL!
 
 rem --- pick APK: universal first, then per-ABI, then any ---
+rem 产物名带版本号（AirMirror-<version>-<abi>-debug.apk），这里按通配符取同组最新构建的那个
 set "APKDIR=%ROOT%\app\build\outputs\apk\debug"
-set "APK=%APKDIR%\AirMirror-universal-debug.apk"
-if not exist "!APK!" set "APK=%APKDIR%\AirMirror-arm64-v8a-debug.apk"
-if not exist "!APK!" set "APK=%APKDIR%\AirMirror-armeabi-v7a-debug.apk"
+set "APK="
+for /f "delims=" %%f in ('dir /b /a-d /o-d "%APKDIR%\*universal*.apk" 2^>nul') do set "APK=%APKDIR%\%%f"
+if not defined APK for /f "delims=" %%f in ('dir /b /a-d /o-d "%APKDIR%\*arm64-v8a*.apk" 2^>nul') do set "APK=%APKDIR%\%%f"
+if not defined APK for /f "delims=" %%f in ('dir /b /a-d /o-d "%APKDIR%\*armeabi-v7a*.apk" 2^>nul') do set "APK=%APKDIR%\%%f"
+if not defined APK (
+    for %%f in ("%APKDIR%\*.apk") do set "APK=%%~ff"
+)
 if not exist "!APK!" (
     for %%f in ("%APKDIR%\*.apk") do set "APK=%%~ff"
 )

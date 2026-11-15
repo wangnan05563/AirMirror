@@ -83,29 +83,45 @@ android {
     // T05734 重命名逻辑见下方 Project 作用域的 afterEvaluate 块（android 扩展接收者内无法调用 afterEvaluate）。
 }
 
-// T05734：构建产物 APK 文件名加 AirMirror 前缀（PRD 命名规范）。
+// T05734：构建产物 APK 文件名加 AirMirror 前缀 + 版本号（PRD 命名规范）。
 // abi splits 下每个 ABI 一个输出，默认名为 app-<abi>-<variant>.apk（universal 为 app-universal-<variant>.apk），
-// 统一替换为 AirMirror- 前缀；已带前缀则跳过，避免重复前缀。
-// 实现：在每个 variant 的 package* 任务收尾时，对 build/outputs/apk/<variant>/ 下的 app-*.apk
+// 统一改名为 AirMirror-<versionName>-<abi>-<variant>.apk：
+//   debug            -> AirMirror-0.1.0-m0-universal-debug.apk（保留 debug 标记，便于与本机 release 包区分）
+//   release 未签名   -> AirMirror-0.1.0-m0-universal-release-unsigned.apk（保留 AGP 的签名状态标识）
+// 版本号取 android.defaultConfig.versionName，与包内 BuildConfig/系统「应用信息」显示的版本一致。
+// 实现：在 assemble 生命周期任务收尾时，对 build/outputs/apk/<variant>/ 下的 app-*.apk
 // 做纯文件重命名。这样绕开 variant.outputs 集合在 Kotlin DSL 下的 all/forEach 重载歧义，
 // 且 push-apk.cmd / 配置里的 AirMirror-*.apk 命名能直接命中。
+val apkVersionLabel = android.defaultConfig.versionName ?: "0.1.0-m0"
+
 afterEvaluate {
     // T05734：在 assemble 生命周期任务收尾时，把 build/outputs/apk/<variant>/ 下的
-    // app-<abi>-<variant>.apk 重命名为 AirMirror-<abi>-<variant>.apk（universal 同理）。
+    // app-<abi>-<variant>.apk 改名为 AirMirror-<versionName>-<abi>-<variant>.apk（universal 同理）。
     // 挂在 assemble* 上而非具体 package* 任务，可覆盖 abi splits + universal 的全部产出，
     // 且一定在所有打包动作结束、APK 落盘之后执行。
     fun renameAirMirrorApks(variantName: String) {
         val outDir = layout.buildDirectory.dir("outputs/apk/$variantName").get().asFile
+        val files = outDir.listFiles()?.filter { it.isFile && it.extension == "apk" }.orEmpty()
+        val rawApks = files.filter { it.name.startsWith("app-") }
+        // package* 为 UP-TO-DATE 时不会再产出 app-*.apk（上一轮的名字已经改掉了），
+        // 此时必须原样保留已改名的产物——先删后改会在重复构建时把唯一的产物清空。
+        if (rawApks.isEmpty()) {
+            println("[T05734] no app-*.apk under outputs/apk/$variantName (package task up-to-date), keep existing artifacts")
+            return
+        }
         val renamed = mutableListOf<String>()
-        outDir.listFiles()?.filter { it.isFile && it.name.startsWith("app-") && it.extension == "apk" }?.forEach { f ->
-            val newFile = f.parentFile.resolve("AirMirror-" + f.name.removePrefix("app-"))
-            if (!newFile.exists() && f.renameTo(newFile)) {
-                renamed.add(newFile.name)
-            }
+        rawApks.forEach { f ->
+            val tail = f.name.removePrefix("app-").removeSuffix(".apk")
+            val target = f.parentFile.resolve("AirMirror-$apkVersionLabel-$tail.apk")
+            // 同名旧产物（上一轮构建留下的）先删掉再搬，Windows 上 renameTo 不会覆盖已存在文件。
+            if (target.exists()) target.delete()
+            renamed.add(if (f.renameTo(target)) target.name else f.name)
         }
-        if (renamed.isNotEmpty()) {
-            println("[T05734] renamed APKs -> ${renamed.joinToString()}")
-        }
+        // 本轮没产出的旧式命名（如上一版不带版本号的 AirMirror-<abi>-<variant>.apk）一并清掉，
+        // 否则 build.ps1 按 *.apk 汇总时会把过期包一起拷进 release/。
+        val expected = renamed.toSet()
+        files.filter { it.name.startsWith("AirMirror-") && it.name !in expected }.forEach { it.delete() }
+        println("[T05734] APK packaged -> ${renamed.joinToString()}")
     }
     tasks.named("assembleDebug") { doLast { renameAirMirrorApks("debug") } }
     tasks.named("assembleRelease") { doLast { renameAirMirrorApks("release") } }
