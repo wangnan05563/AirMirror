@@ -42,6 +42,7 @@ class FfmpegCaptureEncoder(
     private var stderrThread: Thread? = null
     @Volatile private var lastConfig: ByteArray? = null
     @Volatile private var invalidConfig = false
+    @Volatile private var lastFrameAt = 0L
     @Volatile private var activeMode: CaptureMode = initialMode
     @Volatile private var encoderName: String = "h264_qsv"
     private val encoderCandidates = ArrayList<String>()
@@ -73,6 +74,9 @@ class FfmpegCaptureEncoder(
 
     /** 收到过短的 CONFIG（通常只有 PPS、缺 SPS）时置位，由发送端决定回退 JCodec。 */
     fun hasInvalidConfig(): Boolean = invalidConfig
+
+    /** 最近一次产生访问单元的时间；0 表示启动后还没出帧。 */
+    fun lastFrameNanos(): Long = lastFrameAt
 
     private fun runLoop() {
         var fallbackTried = false
@@ -237,6 +241,7 @@ class FfmpegCaptureEncoder(
 
     private fun emit(unit: AnnexB.AccessUnit) {
         val config = unit.config
+        lastFrameAt = System.nanoTime()
         val changed = config != null && !config.contentEquals(lastConfig ?: ByteArray(0))
         if (changed) lastConfig = config
         // h264_mf 在部分机器上只输出 8B PPS、不输出 SPS，真实接收端会报

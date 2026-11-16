@@ -178,9 +178,15 @@ class SenderEngine(
         )
         ffmpegEncoder = encoder
         encoder.start()
+        val startedAt = System.nanoTime()
+        val noFrameTimeoutNs = 5_000_000_000L
         while (running.get() && !sessionFailed.get()) {
             if (encoder.hasInvalidConfig()) return false
             if (!encoder.isAlive()) return false
+            if (encoder.lastFrameNanos() == 0L && System.nanoTime() - startedAt >= noFrameTimeoutNs) {
+                onStatus("FFmpeg 5 秒无帧，回退 JCodec")
+                return false
+            }
             Thread.sleep(100)
         }
         return true
