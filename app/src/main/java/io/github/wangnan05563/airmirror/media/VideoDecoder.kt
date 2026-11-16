@@ -117,6 +117,9 @@ class VideoDecoder(private val surface: Surface) {
     fun decode(data: ByteArray, ptsUs: Long) {
         if (released) return
         val decoder = codec ?: return
+        // 先抽一次输出。输入队列满时 dequeueInputBuffer 会返回 -1；若此时直接
+        // return，输出缓冲同样没人释放，输入/输出互相等待，画面会永久停住。
+        drain(decoder)
         val index = decoder.dequeueInputBuffer(10_000)
         if (index < 0) return
         val buffer = inputBuffer(decoder, index)
