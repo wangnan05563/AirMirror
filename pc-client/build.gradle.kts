@@ -21,8 +21,10 @@ application {
 }
 
 tasks.named<Sync>("installDist") {
-    from(providers.gradleProperty("airmirrorFfmpegDir").map { file(it) }) {
-        into("ffmpeg")
+    // 未传 FFmpeg 目录时不应读取无值 provider：否则 installDist 直接失败，
+    // 连 AWT + JCodec 的无 FFmpeg 兜底都打不出来。
+    providers.gradleProperty("airmirrorFfmpegDir").orNull?.let { dir ->
+        from(file(dir)) { into("ffmpeg") }
     }
 }
 

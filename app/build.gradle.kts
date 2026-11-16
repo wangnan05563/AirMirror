@@ -7,6 +7,18 @@ plugins {
 // 普通调试构建不传，versionName 保持固定的 0.1.0-m0，保证同一 commit 的产物可复现。
 val versionPatch = providers.gradleProperty("versionPatch").orNull
 
+// 在线更新覆盖安装要求 versionCode 单调递增：仅改 versionName 时系统会把同版本/低版本包
+// 当成不可安装。把 patch 的 YYYYMMDD-NNN 压成 6 位日期 + 3 位序号（如 20261116-006
+// -> 261116006），既保留日期递增，又保证不超过 Android 的 2,100,000,000 上限。
+val versionCodeFromPatch = versionPatch
+    ?.split('-')
+    ?.takeIf { it.size == 2 }
+    ?.let { parts ->
+        val date = parts[0].takeLast(6).toIntOrNull()
+        val seq = parts[1].toIntOrNull()
+        if (date != null && seq != null) date * 1000 + seq else 1
+    } ?: 1
+
 // 可选 release 签名：参数来源 = -P 显式传入 > 仓库根 .env（本机开发用，已 gitignore）。
 // .env 兜底的意义：一键构建脚本不传参时也不会掉回 unsigned —— 线上曾把 unsigned 包发到
 // GitHub Release，应用内「检查更新」下到手点安装，系统只能报「软件包似乎无效」。
@@ -38,7 +50,7 @@ android {
         // 以启用 View.setAccessibilityTraversalBefore/After 修正无障碍遍历顺序。
         minSdk = 22
         targetSdk = 35
-        versionCode = 1
+        versionCode = versionCodeFromPatch
         versionName = if (versionPatch.isNullOrBlank()) "0.1.0-m0" else "0.1.0-m0.$versionPatch"
     }
 

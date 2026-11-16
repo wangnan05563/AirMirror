@@ -41,6 +41,7 @@ class FfmpegCaptureEncoder(
     private var worker: Thread? = null
     private var stderrThread: Thread? = null
     @Volatile private var lastConfig: ByteArray? = null
+    @Volatile private var invalidConfig = false
     @Volatile private var activeMode: CaptureMode = initialMode
     @Volatile private var encoderName: String = "h264_qsv"
     private val encoderCandidates = ArrayList<String>()
@@ -69,6 +70,9 @@ class FfmpegCaptureEncoder(
     }
 
     fun isAlive(): Boolean = running.get()
+
+    /** 收到过短的 CONFIG（通常只有 PPS、缺 SPS）时置位，由发送端决定回退 JCodec。 */
+    fun hasInvalidConfig(): Boolean = invalidConfig
 
     private fun runLoop() {
         var fallbackTried = false
@@ -235,6 +239,12 @@ class FfmpegCaptureEncoder(
         val config = unit.config
         val changed = config != null && !config.contentEquals(lastConfig ?: ByteArray(0))
         if (changed) lastConfig = config
+        // h264_mf 在部分机器上只输出 8B PPS、不输出 SPS，真实接收端会报
+        // decoder unusable 并丢掉后续所有帧。此时切回 JCodec，不能把坏码流继续发给对端。
+        if (config != null && config.size < 16 && !invalidConfig) {
+            invalidConfig = true
+            onError("FFmpeg 配置不完整（${config.size}B，缺 SPS），回退 JCodec")
+        }
         onFrame(
             Encoded(
                 config = if (config != null && (changed || unit.keyFrame)) config else null,

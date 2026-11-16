@@ -103,7 +103,12 @@ class SenderEngine(
             startReader(conn, gen)
             val ffmpeg = FfmpegLocator.resolve()
             if (ffmpeg != null) {
-                runFfmpeg(conn, ffmpeg)
+                val ok = runFfmpeg(conn, ffmpeg)
+                if (!ok && running.get() && !sessionFailed.get()) {
+                    runCatching { ffmpegEncoder?.stop() }
+                    ffmpegEncoder = null
+                    runLegacy(conn)
+                }
             } else {
                 runLegacy(conn)
             }
@@ -121,7 +126,7 @@ class SenderEngine(
         }
     }
 
-    private fun runFfmpeg(conn: PcConnection, ffmpeg: java.io.File) {
+    private fun runFfmpeg(conn: PcConnection, ffmpeg: java.io.File): Boolean {
         val cfg = config
         onStatus("FFmpeg 原生采集：${ffmpeg.absolutePath}")
         val start = System.nanoTime()
@@ -174,11 +179,11 @@ class SenderEngine(
         ffmpegEncoder = encoder
         encoder.start()
         while (running.get() && !sessionFailed.get()) {
-            if (!encoder.isAlive()) {
-                throw IOException("FFmpeg 编码器已退出")
-            }
+            if (encoder.hasInvalidConfig()) return false
+            if (!encoder.isAlive()) return false
             Thread.sleep(100)
         }
+        return true
     }
 
     private fun runLegacy(conn: PcConnection) {

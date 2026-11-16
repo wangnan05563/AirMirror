@@ -70,6 +70,8 @@ $env:JAVA_HOME = '<你的 JDK 17 目录>'
 
 App 内「检查更新」会查询内置仓库的 GitHub Release；安装新版本时由系统弹「未知来源」授权，App 不自批。
 
+版本号约定：`versionName` 是对外展示的可读版本；`versionCode` 由 `versionPatch`（`YYYYMMDD-NNN`）派生为「日期后 6 位 × 1000 + 序号」，例如 `20261116-009 -> 261116009`，保证单调递增。在线更新覆盖安装必须提升 `versionCode`，只改 `versionName` 会被系统当成不可安装；debug 包保留 `-debug` 标记，不为了“正式感”去掉它。
+
 一键发布（两条凭据通道，任选其一，都只从环境变量读取）：
 
 - `gh` 已 `gh auth login`；或
@@ -83,7 +85,16 @@ $env:GITHUB_TOKEN = '<your token>'   # 仅无 gh 时需要；不要写进仓库
 
 脚本在前置检查全部通过后才写远端：缺凭据、工作区有未提交改动、产物不全或 tag 已存在时当场失败，不会留下「本地有 tag、远端没 Release」的半成品。REST 通道先建草稿 Release、传完资产再转正，任何一步失败都会回滚本次创建的远端 tag 与草稿。工作区检查是为了让 Release 里的包能从 tag 原样重建——`-DryRun` 只读，允许脏工作区。现有产物若带 `-unsigned` 会显式警告（未签名包安装会被系统拒绝）。
 
-产物汇总在 `release/debug/`（`AirMirror-<版本>-universal-debug.apk` 为全 ABI 包，如 `AirMirror-0.1.0-m0-universal-debug.apk`，版本号取 `versionName`、debug 标记保留；构建脚本从 Gradle 输出目录复制过来，删掉 `release/` 即可彻底清理）。装到已连接的设备并拉起接收端：
+所有可重复构建文件都收敛在 `release/`：Gradle 的中间产物在 `release/build/<module>/`，项目缓存与 Kotlin 持久化目录在 `release/.gradle`、`release/kotlin`，SonarScanner 工作目录在 `release/scannerwork`，可直接安装的包汇总在 `release/debug/`（`AirMirror-<版本>-universal-debug.apk` 为全 ABI 包，如 `AirMirror-0.1.0-m0-universal-debug.apk`，版本号取 `versionName`、debug 标记保留；构建脚本从 `release/build/app/outputs/apk/debug` 复制过来）和 `release/release/`（签名后的 `-universal-release.apk`）。删掉整个 `release/` 即可彻底清理，下一次构建自动重建；版本号序列状态单独放在 `.build-state/`，不随清理重置。
+
+清理时先停掉 Gradle daemon（Windows 下 daemon 可能占用 `release/.gradle`），再删目录：
+
+```powershell
+.\gradlew.bat --stop
+Remove-Item -LiteralPath .\release -Recurse -Force
+```
+
+装到已连接的设备并拉起接收端：
 
 ```cmd
 scripts\push-apk.cmd                       :: 单台设备
