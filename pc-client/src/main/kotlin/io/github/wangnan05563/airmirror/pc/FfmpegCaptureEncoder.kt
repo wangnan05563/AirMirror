@@ -242,22 +242,37 @@ class FfmpegCaptureEncoder(
     private fun emit(unit: AnnexB.AccessUnit) {
         val config = unit.config
         lastFrameAt = System.nanoTime()
-        val changed = config != null && !config.contentEquals(lastConfig ?: ByteArray(0))
-        if (changed) lastConfig = config
-        // h264_mf 在部分机器上只输出 8B PPS、不输出 SPS，真实接收端会报
-        // decoder unusable 并丢掉后续所有帧。此时切回 JCodec，不能把坏码流继续发给对端。
-        if (config != null && config.size < 16 && !invalidConfig) {
-            invalidConfig = true
-            onError("FFmpeg 配置不完整（${config.size}B，缺 SPS），回退 JCodec")
+        val hasGoodConfig = config != null && config.size >= 16
+        // h264_mf 在部分机器上会先给完整 SPS/PPS，随后关键帧又只给 8B PPS。
+        // 此时对端已经用完整配置初始化成功，后续短配置必须忽略；只有在从未拿到
+        // 完整配置时才把短配置视为致命错误并回退 JCodec。
+        if (config != null && config.size < 16) {
+            if (lastConfig == null && !invalidConfig) {
+                invalidConfig = true
+                onError("FFmpeg 配置不完整（${config.size}B，缺 SPS），回退 JCodec")
+            }
         }
+        val changed = hasGoodConfig && !config!!.contentEquals(lastConfig ?: ByteArray(0))
+        if (changed) lastConfig = config
         onFrame(
             Encoded(
-                config = if (config != null && (changed || unit.keyFrame)) config else null,
+                config = if (hasGoodConfig && changed) packConfig(config!!) else null,
                 payload = unit.payload,
                 keyFrame = unit.keyFrame,
             ),
             System.nanoTime() / 1000,
         )
+    }
+
+    /** 对端 CONFIG 格式为「width(u16)+height(u16)+Annex-B SPS/PPS」，不能只发裸配置。 */
+    private fun packConfig(annexB: ByteArray): ByteArray {
+        val out = java.io.ByteArrayOutputStream(annexB.size + 4)
+        out.write((width shr 8) and 0xFF)
+        out.write(width and 0xFF)
+        out.write((height shr 8) and 0xFF)
+        out.write(height and 0xFF)
+        out.write(annexB)
+        return out.toByteArray()
     }
 
     private fun readStderrTail(process: Process): String {

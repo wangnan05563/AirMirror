@@ -54,7 +54,7 @@ class H264VideoEncoder(
         val nals = splitAnnexB(data)
         val sps = nals.firstOrNull { it.type == 7 }?.bytes
         val pps = nals.firstOrNull { it.type == 8 }?.bytes
-        val config = if (sps != null && pps != null) sps + pps else null
+        val config = if (sps != null && pps != null) packConfig(sps + pps) else null
         val out = java.io.ByteArrayOutputStream()
         for (nal in nals) {
             if (nal.type != 7 && nal.type != 8) out.write(nal.bytes)
@@ -71,6 +71,20 @@ class H264VideoEncoder(
 
     fun reset() {
         lastConfig = null
+    }
+
+    /**
+     * 对端 `H264.unpackConfig` 的格式是「width(u16) + height(u16) + Annex-B SPS/PPS」；
+     * 只发裸 SPS/PPS 会被对端把前 4 字节当成宽高，解码器配置成错误尺寸后永远不输出画面。
+     */
+    private fun packConfig(annexB: ByteArray): ByteArray {
+        val out = java.io.ByteArrayOutputStream(annexB.size + 4)
+        out.write((width shr 8) and 0xFF)
+        out.write(width and 0xFF)
+        out.write((height shr 8) and 0xFF)
+        out.write(height and 0xFF)
+        out.write(annexB)
+        return out.toByteArray()
     }
 
     private fun splitAnnexB(data: ByteArray): List<Nal> {
