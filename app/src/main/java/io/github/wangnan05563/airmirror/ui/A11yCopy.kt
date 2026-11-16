@@ -22,6 +22,16 @@ object A11yCopy {
 
     fun mainPrivacy(): String = "查看完整说明，打开数据边界说明"
 
+    fun aboutEntry(): String = "关于 AirMirror，打开版本与开源声明"
+
+    // ───────────────────────── 关于页 ─────────────────────────
+
+    fun aboutBack(): String = "返回，关闭关于页"
+
+    fun aboutNotice(): String = "查看开源声明，查看第三方组件与许可证"
+
+    fun aboutProject(): String = "打开 GitHub 项目主页"
+
     // ───────────────────────── 发送端 ─────────────────────────
 
     fun pause(paused: Boolean): String = if (paused) "继续投屏，当前已暂停" else "暂停投屏，当前正在投"

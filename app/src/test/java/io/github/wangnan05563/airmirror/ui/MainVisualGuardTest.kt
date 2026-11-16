@@ -30,7 +30,9 @@ class MainVisualGuardTest {
     fun `主视觉区恰好三件 设备名 投屏码 二维码`() {
         val src = receiver()
         assertEquals("主视觉区只能有 3 个 addView", 3, src.split("mainArea.addView(").size - 1)
-        assertTrue("缺设备名", src.contains("mainArea.addView(deviceNameText"))
+        assertTrue("缺设备名行", src.contains("mainArea.addView(nameRow"))
+        assertTrue("设备名仍在主视觉行内", src.contains("nameRow.addView(deviceNameText"))
+        assertTrue("设备名旁缺品牌标记", src.contains("BrandMarkView(this)"))
         assertTrue("缺投屏码槽", src.contains("mainArea.addView(codeSlot"))
         assertTrue("缺二维码", src.contains("mainArea.addView(qrView"))
         assertTrue("主视觉区要挂到待连接页", src.contains("waiting.addView(mainArea"))

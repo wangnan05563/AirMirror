@@ -30,22 +30,25 @@ class AccessibilityManifestTest {
 
     /**
      * 设计基线 34（Main 3 / Sender 11 / Receiver 20）之后的两次产品改动各新增一个接线点：
-     * UX-01 空态诊断卡（Sender +1）、UI-02 次要入口折叠（Receiver +1），因此当前为 36。
+     * UX-01 空态诊断卡（Sender +1）、UI-02 次要入口折叠（Receiver +1），因此为 36；
+     * UI-07 关于页入口（Main +1）与 About 页返回/开源声明/项目主页（+3），当前为 40。
      */
     @Test
     fun `点击接线点数量与无障碍决策表一致`() {
-        assertEquals(3, countOf(source("MainActivity.kt"), "setOnClickListener"))
+        assertEquals(4, countOf(source("MainActivity.kt"), "setOnClickListener"))
         assertEquals(12, countOf(source("SenderActivity.kt"), "setOnClickListener"))
         assertEquals(21, countOf(source("ReceiverActivity.kt"), "setOnClickListener"))
+        assertEquals(3, countOf(source("AboutActivity.kt"), "setOnClickListener"))
         assertEquals(1, countOf(source("ReceiverActivity.kt"), "setOnLongClickListener"))
     }
 
     @Test
     fun `每个点击接线点都配了可访问名`() {
         mapOf(
-            "MainActivity.kt" to 3,
+            "MainActivity.kt" to 4,
             "SenderActivity.kt" to 12,
             "ReceiverActivity.kt" to 21,
+            "AboutActivity.kt" to 3,
         ).forEach { (file, sites) ->
             val describes = countOf(source(file), "A11y.describe(")
             assertTrue("$file 描述接线 $describes < 接线点 $sites", describes >= sites)

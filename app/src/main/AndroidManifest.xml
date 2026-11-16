@@ -52,6 +52,12 @@
             android:screenOrientation="unspecified" />
 
         <activity
+            android:name=".ui.AboutActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:exported="false"
+            android:screenOrientation="unspecified" />
+
+        <activity
             android:name=".ui.ReceiverActivity"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:exported="false"

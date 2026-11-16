@@ -335,10 +335,31 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             // 下方，整行保持居中；长设备名最多两行，不会被按钮盖住，也不会把二维码挤歪。
             maxLines = 2
             ellipsize = TextUtils.TruncateAt.END
+            // 品牌标记占掉左侧固定宽度，文字最大宽度要扣掉它，否则长名字会顶出屏幕
+            maxWidth = resources.displayMetrics.widthPixels - Theme.dp(this@ReceiverActivity, 88)
             // setLetterSpacing 是 API 21：接收端硬下限 19，4.4 上不能在这里崩
             if (Build.VERSION.SDK_INT >= 21) letterSpacing = 0.02f
         }
-        mainArea.addView(deviceNameText, matchWidth().apply {
+        // UI-07：设备名旁加 24dp 单色青绿线性标记；平台 Canvas 绘制，不新增位图。
+        val nameRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        nameRow.addView(
+            BrandMarkView(this).apply { A11y.decorative(this) },
+            LinearLayout.LayoutParams(
+                Theme.dp(this@ReceiverActivity, Theme.SPACE_XL_DP),
+                Theme.dp(this@ReceiverActivity, Theme.SPACE_XL_DP),
+            ).apply { marginEnd = Theme.dp(this@ReceiverActivity, Theme.SPACE_SM_DP) },
+        )
+        nameRow.addView(deviceNameText, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+        ))
+        mainArea.addView(nameRow, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+        ).apply {
             topMargin = Theme.dp(this@ReceiverActivity, 44)
         })
 
