@@ -16,6 +16,10 @@ rem   2) 自动从仓库根 .env 载入 GH_TOKEN（若存在且环境未设置），用于 GitHub REST
 rem      发布；不硬编码、不回显任何 Token。
 rem   3) 不自动 git commit（沿用 release.ps1「干净工作树」安全约束）。
 rem   4) 命令行参数原样透传（如 -DryRun / -SkipBuild / -Tag xxx）。
+rem  v3 优化（签名转发）：
+rem   5) 从 .env 读取 AIRMIRROR_KEYSTORE / AIRMIRROR_KEYSTORE_PASSWORD /
+rem      AIRMIRROR_KEY_ALIAS，自动追加 -KeystoreFile/-KeystorePassword/-KeyAlias
+rem      给 release.ps1，一键发布直接产出签名包；密码不回显、不入日志。
 rem
 rem  用法：
 rem    双击 一键发布.bat                （自动打包 + 自动 tag + 发布）
@@ -43,6 +47,26 @@ if defined GH_TOKEN (echo [OK]   已从 .env 载入 GitHub Token) else (
     )
 )
 
+rem --- 0b. 从 .env 载入 release 签名凭据（环境已设置则优先；密码只进参数、不回显）---
+if not defined AIRMIRROR_KEYSTORE (
+    for /f "tokens=1,* delims==" %%a in ('findstr /i "^AIRMIRROR_KEYSTORE=" "%ENV_FILE%" 2^>nul') do set "AIRMIRROR_KEYSTORE=%%b"
+)
+if not defined AIRMIRROR_KEYSTORE_PASSWORD (
+    for /f "tokens=1,* delims==" %%a in ('findstr /i "^AIRMIRROR_KEYSTORE_PASSWORD=" "%ENV_FILE%" 2^>nul') do set "AIRMIRROR_KEYSTORE_PASSWORD=%%b"
+)
+if not defined AIRMIRROR_KEY_ALIAS (
+    for /f "tokens=1,* delims==" %%a in ('findstr /i "^AIRMIRROR_KEY_ALIAS=" "%ENV_FILE%" 2^>nul') do set "AIRMIRROR_KEY_ALIAS=%%b"
+)
+set "SIGN_ARGS="
+set "SIGN_MASK="
+if defined AIRMIRROR_KEYSTORE if defined AIRMIRROR_KEYSTORE_PASSWORD if defined AIRMIRROR_KEY_ALIAS (
+    set "SIGN_ARGS=-KeystoreFile !AIRMIRROR_KEYSTORE! -KeystorePassword !AIRMIRROR_KEYSTORE_PASSWORD! -KeyAlias !AIRMIRROR_KEY_ALIAS!"
+    set "SIGN_MASK=-KeystoreFile !AIRMIRROR_KEYSTORE! -KeystorePassword *** -KeyAlias !AIRMIRROR_KEY_ALIAS!"
+    echo [OK]   已从 .env 载入 release 签名配置（alias !AIRMIRROR_KEY_ALIAS!）
+) else (
+    echo [WARN] .env 签名三要素不全（AIRMIRROR_KEYSTORE / _PASSWORD / _KEY_ALIAS），将产出 unsigned 包。
+)
+
 rem --- 1. 环境检测 ---
 where git >nul 2>nul
 if errorlevel 1 (
@@ -68,10 +92,10 @@ if not errorlevel 1 (
 set "EXTRA=%*"
 
 echo.
-echo [INFO] 调用：powershell -NoProfile -ExecutionPolicy Bypass -File "%RELEASE_PS%" !EXTRA!
+echo [INFO] 调用：powershell -NoProfile -ExecutionPolicy Bypass -File "%RELEASE_PS%" !EXTRA! !SIGN_MASK!
 echo.
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%RELEASE_PS%" !EXTRA!
+powershell -NoProfile -ExecutionPolicy Bypass -File "%RELEASE_PS%" !EXTRA! !SIGN_ARGS!
 set "CODE=%ERRORLEVEL%"
 
 if not "%CODE%"=="0" (
