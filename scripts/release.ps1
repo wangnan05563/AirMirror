@@ -188,9 +188,10 @@ $existing = (& git -C $root tag --list $Tag) -join ''
 if ($existing.Trim().Length -gt 0) { Fail "tag $Tag 已存在；换一个 patch 号或用 -Tag 指定。" }
 Ok 'tag 未被占用'
 
-if ([string]::IsNullOrWhiteSpace($Notes)) {
-    $Notes = "AirMirror $Tag`n`n包含本次构建的三种 ABI 安装包：armeabi-v7a、arm64-v8a、universal。"
-}
+$headSha = ((& git -C $root rev-parse HEAD) -join '').Trim()
+$recordScript = Join-Path $root 'scripts\release-record.ps1'
+if (-not (Test-Path $recordScript)) { Fail "缺少发布记录生成器：$recordScript" }
+$apkPaths = @($apks | ForEach-Object { $_.FullName })
 
 Step '发布计划'
 Write-Host "   git tag $Tag"
@@ -205,6 +206,26 @@ if ($DryRun) {
     Step 'DryRun 结束（未做任何写入）'
     exit 0
 }
+
+Step '生成发布记录'
+$recordArgs = @{
+    Root      = $root
+    Tag       = $Tag
+    Repo      = $repo
+    Branch    = $branch
+    Commit    = $headSha
+    Artifacts = $apkPaths
+    Notes     = $Notes
+}
+$record = & $recordScript @recordArgs
+if (-not $record -or -not (Test-Path -LiteralPath ([string]$record.Markdown))) {
+    Fail '发布记录生成失败：未得到 Markdown 记录文件。'
+}
+$recordMd = [string]$record.Markdown
+$recordJson = [string]$record.Json
+$Notes = Get-Content -LiteralPath $recordMd -Raw -Encoding UTF8
+Ok "发布记录：$recordMd"
+Ok "机器可读记录：$recordJson"
 
 Step '打本地 tag'
 & git -C $root tag $Tag
@@ -241,3 +262,5 @@ if ($useRest) {
 
 Step '完成'
 Ok "Release：https://github.com/$repo/releases/tag/$Tag"
+Ok "发布记录：$recordMd"
+Ok "机器可读记录：$recordJson"
