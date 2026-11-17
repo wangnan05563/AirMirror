@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Adaptive-icon foreground for API 26+. Coordinates are the 512-unit brand
+  artwork scaled by 0.18 into the 108dp adaptive-icon viewport (safe zone 66dp).
+  Keep the legacy mipmap PNGs for API 22-25.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- left screen (source, accent) -->
+    <path
+        android:pathData="M22.7,35.7 h27.7 v27.7 h-27.7 z"
+        android:fillColor="#00000000"
+        android:strokeColor="#17C3B2"
+        android:strokeWidth="3.24" />
+
+    <!-- right screen (target, white) -->
+    <path
+        android:pathData="M57.6,44.8 h27.7 v27.7 h-27.7 z"
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3.24" />
+
+    <!-- mirror arrow -->
+    <path
+        android:pathData="M51.3,54 h5.4"
+        android:fillColor="#00000000"
+        android:strokeColor="#17C3B2"
+        android:strokeWidth="3.24"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M54.5,50.9 L57.1,54 L54.5,57.1"
+        android:fillColor="#00000000"
+        android:strokeColor="#17C3B2"
+        android:strokeWidth="3.24"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>

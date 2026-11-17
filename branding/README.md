@@ -8,7 +8,8 @@
 | `logo-512.png` / `logo-192.png` / `logo-48.png` | 位图主标（透明背景） |
 | `logo.ico` | Windows 图标（16/32/48/64/128/256 多尺寸） |
 | `social-preview-1280x640.png` | GitHub 仓库 Social Preview |
-| `app/src/main/res/mipmap-*/ic_launcher.png` | Android 启动图标（mdpi 48 → xxxhdpi 192） |
+| `app/src/main/res/mipmap-*/ic_launcher.png` / `ic_launcher_round.png` | Android 旧式启动图标（API 22–25，mdpi 48 → xxxhdpi 192） |
+| `app/src/main/res/mipmap-anydpi-v26/ic_launcher*.xml` | Android 8+ 自适应图标（背景色 + 矢量前景 + 单色蒙版） |
 
 ## 配色（与 `ui/Theme.kt` 同源）
 
@@ -22,7 +23,7 @@
 
 ## 使用规范
 
-- 图标直接引用 `@mipmap/ic_launcher`（已写入 AndroidManifest）。
+- 图标优先引用 `@mipmap/ic_launcher`；系统会优先使用 API 26+ 的 adaptive icon，旧系统回退到位图 PNG。`android:roundIcon` 指向同一套 `ic_launcher_round`。
 - 社交预览图上传到 GitHub 仓库 Settings → Social preview。
 - 禁止：拉伸变形、改配色、叠加文字、加阴影/外发光、把两个屏幕拆开单独使用。
 
