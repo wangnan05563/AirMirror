@@ -1,4 +1,4 @@
-# AirMirror build entry (Windows / PowerShell 5+).
+﻿# AirMirror build entry (Windows / PowerShell 5+).
 # Detects each dependency one by one, stops on the first failure, then runs
 # unit tests + assemble. Android SDK path comes from ANDROID_HOME/ANDROID_SDK_ROOT
 # or local.properties (sdk.dir), matching how Gradle itself resolves it.
@@ -8,6 +8,7 @@ param(
     [switch]$Online,
     [switch]$SkipTests,
     [switch]$Patch,
+    [string]$VersionPatch = '',
     [string]$KeystoreFile = '',
     [string]$KeystorePassword = '',
     [string]$KeyAlias = '',
@@ -17,6 +18,14 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $variant = if ($Release) { 'release' } else { 'debug' }
+if ($Patch -and $VersionPatch) {
+    Write-Host "[FAIL] -Patch 与 -VersionPatch 只能选一个。" -ForegroundColor Red
+    exit 1
+}
+if ($VersionPatch -and $VersionPatch -notmatch '^\d{8}-\d{3}$') {
+    Write-Host "[FAIL] -VersionPatch 必须形如 YYYYMMDD-NNN：$VersionPatch" -ForegroundColor Red
+    exit 1
+}
 
 function Stop-WithError([string]$message) {
     Write-Host "[FAIL] $message" -ForegroundColor Red
@@ -46,6 +55,18 @@ function New-PatchVersion {
     $patchNumber = '{0}-{1:D3}' -f $today, $seq
     Set-Content -Path (Join-Path $buildDir 'patch.txt') -Value $patchNumber -Encoding UTF8
     return $patchNumber
+}
+
+function Set-PatchVersion([string]$patchNumber) {
+    # Explicit release tag path: keep the daily sequence in sync so the next
+    # one-click build cannot reuse an already-published patch by accident.
+    $buildDir = Join-Path $root '.build-state'
+    if (-not (Test-Path $buildDir)) { New-Item -ItemType Directory -Path $buildDir | Out-Null }
+    $date = $patchNumber.Substring(0, 8)
+    $seq = [int]$patchNumber.Substring(9)
+    @{ date = $date; seq = $seq } | ConvertTo-Json -Compress |
+        Set-Content -Path (Join-Path $buildDir 'patch-sequence.json') -Encoding UTF8
+    Set-Content -Path (Join-Path $buildDir 'patch.txt') -Value $patchNumber -Encoding UTF8
 }
 
 Write-Host "AirMirror build ($variant)"
@@ -136,6 +157,10 @@ if ($Patch) {
     $patchNumber = New-PatchVersion
     Write-Host "[INFO] patch version: $patchNumber" -ForegroundColor Cyan
     $gradleArgs += "-PversionPatch=$patchNumber"
+} elseif ($VersionPatch) {
+    # 发布脚本在 -Tag 已指定时传精确 patch，保证 APK versionName 与 tag 一致。
+    Write-Host "[INFO] explicit version patch: $VersionPatch" -ForegroundColor Cyan
+    $gradleArgs += "-PversionPatch=$VersionPatch"
 }
 if (-not $Online) { $gradleArgs += '--offline' }
 if (-not $SkipTests) { $gradleArgs += $(if ($Release) { 'testReleaseUnitTest' } else { 'testDebugUnitTest' }) }
@@ -179,6 +204,10 @@ try {
     }
     if ($gradleExit -ne 0) {
         Stop-WithError "Gradle failed (exit $gradleExit)."
+    }
+    if ($VersionPatch) {
+        Set-PatchVersion $VersionPatch
+        Write-Host "[INFO] patch state synced: $VersionPatch" -ForegroundColor Cyan
     }
 } finally {
     Pop-Location

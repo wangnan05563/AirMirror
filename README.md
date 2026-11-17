@@ -85,6 +85,8 @@ $env:GITHUB_TOKEN = '<your token>'   # 仅无 gh 时需要；不要写进仓库
 
 脚本在前置检查全部通过后才写远端：缺凭据、工作区有未提交改动、产物不全或 tag 已存在时当场失败，不会留下「本地有 tag、远端没 Release」的半成品。REST 通道先建草稿 Release、传完资产再转正，任何一步失败都会回滚本次创建的远端 tag 与草稿。工作区检查是为了让 Release 里的包能从 tag 原样重建——`-DryRun` 只读，允许脏工作区。现有产物若带 `-unsigned` 会显式警告（未签名包安装会被系统拒绝）。
 
+发布与构建已联动：显式 `-Tag v0.1.0-m0.20261118-003` 时，构建会使用 tag 尾部的 `20261118-003` 作为 `versionPatch`，保证 APK 的 `versionName` 与 tag 一致；脚本在发布前用 `aapt dump badging` 复核，不一致直接失败。`-SkipBuild` 复用已有产物时会同时校验版本号，并要求 APK 修改时间不早于 `HEAD`（否则不是当前提交构建的包，拒绝发布）；`-SkipTests` 可把跳过单测的意图传给构建。构建脚本的 `-VersionPatch` 成功后会把该 patch 同步回 `.build-state/`，避免下一次自动构建又生成一个已发布号。
+
 所有可重复构建文件都收敛在 `release/`：Gradle 的中间产物在 `release/build/<module>/`，项目缓存与 Kotlin 持久化目录在 `release/.gradle`、`release/kotlin`，SonarScanner 工作目录在 `release/scannerwork`，可直接安装的包汇总在 `release/debug/`（`AirMirror-<版本>-universal-debug.apk` 为全 ABI 包，如 `AirMirror-0.1.0-m0-universal-debug.apk`，版本号取 `versionName`、debug 标记保留；构建脚本从 `release/build/app/outputs/apk/debug` 复制过来）和 `release/release/`（签名后的 `-universal-release.apk`）。删掉整个 `release/` 即可彻底清理，下一次构建自动重建；版本号序列状态单独放在 `.build-state/`，不随清理重置。
 
 清理时先停掉 Gradle daemon（Windows 下 daemon 可能占用 `release/.gradle`），再删目录：

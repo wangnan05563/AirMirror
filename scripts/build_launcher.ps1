@@ -7,6 +7,7 @@ param(
     [switch]$Online,
     [switch]$SkipTests,
     [switch]$Patch,
+    [string]$VersionPatch = '',
     [string]$KeystoreFile = '',
     [string]$KeystorePassword = '',
     [string]$KeyAlias = '',
@@ -24,7 +25,7 @@ function Stop-WithError([string]$message) {
 
 if ($Help) {
     Write-Host 'Android build launcher'
-    Write-Host 'Usage: <launcher>.bat [-Release] [-Patch] [-Online] [-SkipTests]'
+    Write-Host 'Usage: <launcher>.bat [-Release] [-Patch | -VersionPatch YYYYMMDD-NNN] [-Online] [-SkipTests]'
     Write-Host '       [-KeystoreFile <jks> -KeystorePassword <pwd> -KeyAlias <alias> [-KeyPassword <pwd>]]'
     Write-Host 'JDK candidates and version range come from scripts/android-tools.config.json.'
     exit 0
@@ -83,6 +84,7 @@ $forward = @{}
 foreach ($name in @('Release', 'Online', 'SkipTests', 'Patch')) {
     if ($PSBoundParameters.ContainsKey($name)) { $forward[$name] = $true }
 }
+if ($PSBoundParameters.ContainsKey('VersionPatch')) { $forward['VersionPatch'] = $VersionPatch }
 foreach ($name in @('KeystoreFile', 'KeystorePassword', 'KeyAlias', 'KeyPassword')) {
     if ($PSBoundParameters.ContainsKey($name)) { $forward[$name] = $PSBoundParameters[$name] }
 }

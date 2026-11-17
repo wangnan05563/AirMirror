@@ -17,10 +17,15 @@
     只打印将要执行的命令，不做任何写入。用于在没有凭据的机器上验证流程。
 
 .PARAMETER Tag
-    显式指定 tag（如 v0.1.0-m0.20261106-001）。缺省时按 .build-state/patch.txt 生成。
+    显式指定 tag（如 v0.1.0-m0.20261106-001）。指定 tag 时构建会使用 tag 尾部的
+    YYYYMMDD-NNN 作为 versionPatch，保证 APK versionName 与 tag 一致。缺省时按
+    .build-state/patch.txt 生成。
 
 .PARAMETER SkipBuild
     复用已有产物，不重新构建。
+
+.PARAMETER SkipTests
+    传给构建脚本，跳过 JVM 单测（仅建议在已单独跑过测试时使用）。
 
 .PARAMETER Notes
     Release 说明正文。缺省用本次 tag 与产物清单生成一段简短说明。
@@ -35,6 +40,7 @@ param(
     [switch]$DryRun,
     [string]$Tag = '',
     [switch]$SkipBuild,
+    [switch]$SkipTests,
     [string]$Notes = '',
     [string]$KeystoreFile = '',
     [string]$KeystorePassword = '',
@@ -52,6 +58,48 @@ function Warn([string]$text) { Write-Host "   !!  $text" -ForegroundColor Yellow
 function Fail([string]$text) {
     Write-Host "   XX  $text" -ForegroundColor Red
     exit 1
+}
+function Get-DotEnvValue([string]$key) {
+    $envPath = Join-Path $root '.env'
+    if (-not (Test-Path -LiteralPath $envPath)) { return '' }
+    $line = Get-Content -LiteralPath $envPath -Encoding UTF8 |
+        Where-Object { $_ -match ("^" + [regex]::Escape($key) + "=") } |
+        Select-Object -First 1
+    if (-not $line) { return '' }
+    return $line.Substring($key.Length + 1).Trim()
+}
+function Get-AaptExe {
+    $sdk = $env:ANDROID_HOME
+    if (-not $sdk) { $sdk = $env:ANDROID_SDK_ROOT }
+    if (-not $sdk) {
+        $props = Join-Path $root 'local.properties'
+        if (Test-Path -LiteralPath $props) {
+            $line = Get-Content -LiteralPath $props |
+                Where-Object { $_ -match '^sdk\.dir=' } |
+                Select-Object -First 1
+            if ($line) { $sdk = $line.Substring(8).Replace('\:', ':').Replace('\\', '\') }
+        }
+    }
+    if (-not $sdk -or -not (Test-Path -LiteralPath $sdk)) { return '' }
+    $buildTools = Join-Path $sdk 'build-tools'
+    if (-not (Test-Path -LiteralPath $buildTools)) { return '' }
+    $dirs = @(Get-ChildItem -LiteralPath $buildTools -Directory | Sort-Object Name -Descending)
+    foreach ($dir in $dirs) {
+        $aapt = Join-Path $dir.FullName 'aapt.exe'
+        if (Test-Path -LiteralPath $aapt) { return $aapt }
+    }
+    return ''
+}
+function Get-ApkVersionName([string]$apkPath, [string]$aaptExe) {
+    $out = & $aaptExe dump badging $apkPath 2>$null
+    $text = ($out | Out-String)
+    $match = [regex]::Match($text, "versionName='([^']+)'")
+    if ($match.Success) { return $match.Groups[1].Value }
+    return ''
+}
+function Get-PatchFromTag([string]$value) {
+    if ($value -match '\.(\d{8}-\d{3})$') { return $Matches[1] }
+    return ''
 }
 
 $git = Get-Command git -ErrorAction SilentlyContinue
@@ -81,7 +129,14 @@ if ($signingRequested) {
     if (-not (Test-Path $KeystoreFile)) { Fail "keystore 不存在：$KeystoreFile" }
     Ok "release 签名：$KeystoreFile（alias $KeyAlias）"
 } elseif (-not $SkipBuild) {
-    Warn '未传签名参数：将产出 unsigned 包，安装会被系统拒绝。'
+    $envKeystore = Get-DotEnvValue 'AIRMIRROR_KEYSTORE'
+    $envPassword = Get-DotEnvValue 'AIRMIRROR_KEYSTORE_PASSWORD'
+    $envAlias = Get-DotEnvValue 'AIRMIRROR_KEY_ALIAS'
+    if ($envKeystore -and $envPassword -and $envAlias) {
+        Ok "构建会读取 .env 的 release 签名配置（alias $envAlias）"
+    } else {
+        Warn '未传签名参数且 .env 缺少签名三要素：将产出 unsigned 包，安装会被系统拒绝。'
+    }
 }
 
 if ($gh) {
@@ -117,6 +172,16 @@ if ($dirty.Trim().Length -gt 0) {
 $branch = ((& git -C $root rev-parse --abbrev-ref HEAD) -join '').Trim()
 if ($branch -ne 'main') { Warn "当前分支是 $branch，不是 main。" }
 
+$tagPatch = Get-PatchFromTag $Tag
+if (-not [string]::IsNullOrWhiteSpace($Tag)) {
+    if (-not $tagPatch) {
+        Fail "构建发布时 -Tag 必须带 YYYYMMDD-NNN 后缀，才能与 APK versionName 对齐：$Tag"
+    }
+    $existingEarly = (& git -C $root tag --list $Tag) -join ''
+    if ($existingEarly.Trim().Length -gt 0) { Fail "tag $Tag 已存在；换一个 patch 号或用 -Tag 指定。" }
+    Ok "tag = $Tag（versionPatch=$tagPatch）"
+}
+
 if (-not $DryRun -and -not $gh -and -not $hasToken) {
     Fail '缺少 GitHub 凭据：请安装 gh 并执行 gh auth login，或设置 GITHUB_TOKEN 后重试（-DryRun 可只验证流程）。'
 }
@@ -125,13 +190,25 @@ Step '构建'
 if ($SkipBuild) {
     Ok '按 -SkipBuild 跳过构建'
 } elseif ($DryRun) {
-    $plan = '将执行：scripts\build_launcher.ps1 -Release -Patch（自动选 17-22 JDK）'
-    if ($signingRequested) { $plan += '（含 release 签名）' }
+    $plan = if ($tagPatch) {
+        "将执行：scripts\build_launcher.ps1 -Release -VersionPatch $tagPatch"
+    } else {
+        '将执行：scripts\build_launcher.ps1 -Release -Patch'
+    }
+    $plan += '（自动选 17-22 JDK）'
+    if ($SkipTests) { $plan += '，跳过单测' }
+    if ($signingRequested) { $plan += '（含 release 签名参数）' }
     Ok $plan
 } else {
     # 用哈希表展开（而非数组展开）：PowerShell 5.1 对 [switch] 参数的数组展开不会绑定，
     # 会把 '-Release -Patch' 整体塞进第一个 [string] 参数，导致构建误判为签名+debug。
-    $buildParams = @{ Release = $true; Patch = $true }
+    $buildParams = @{ Release = $true }
+    if ($tagPatch) {
+        $buildParams['VersionPatch'] = $tagPatch
+    } else {
+        $buildParams['Patch'] = $true
+    }
+    if ($SkipTests) { $buildParams['SkipTests'] = $true }
     if ($signingRequested) {
         $buildParams['KeystoreFile'] = $KeystoreFile
         $buildParams['KeystorePassword'] = $KeystorePassword
@@ -149,12 +226,15 @@ if ([string]::IsNullOrWhiteSpace($Tag)) {
     if (-not (Test-Path $patchFile)) {
         Fail "缺少 .build-state\patch.txt：请先执行 scripts\build.ps1 -Release -Patch，或用 -Tag 指定 tag。"
     }
-    $patch = (Get-Content $patchFile -Raw).Trim()
-    if ([string]::IsNullOrWhiteSpace($patch)) { Fail '.build-state\patch.txt 为空。' }
-    $Tag = "v0.1.0-m0.$patch"
+    $tagPatch = (Get-Content $patchFile -Raw).Trim()
+    if ([string]::IsNullOrWhiteSpace($tagPatch)) { Fail '.build-state\patch.txt 为空。' }
+    $Tag = "v0.1.0-m0.$tagPatch"
+    Ok "tag = $Tag（versionPatch=$tagPatch）"
 }
-if ($Tag -notmatch '^v\d+\.\d+\.\d+') { Fail "tag 不符合约定（应以 v 开头并带语义版本）：$Tag" }
-Ok "tag = $Tag"
+if ($Tag -notmatch '^v\d+\.\d+\.\d+' -or -not $tagPatch) {
+    Fail "tag 不符合约定（应为 v<semver>.<YYYYMMDD-NNN>）：$Tag"
+}
+$expectedVersionName = $Tag.Substring(1)
 
 # 优先取 build.ps1 汇总的 release\release\；Gradle 原始目录只作回退。
 $apkDir = Join-Path $root 'release\release'
@@ -165,6 +245,10 @@ $apks = @()
 if (Test-Path $apkDir) {
     $apks = @(Get-ChildItem $apkDir -Filter '*.apk' | Sort-Object Name)
 }
+# 只取与本次 patch 匹配的包，避免 reuse 目录里历史包干扰版本/新鲜度校验。
+if ($tagPatch) {
+    $apks = @($apks | Where-Object { $_.Name -like "*$tagPatch*" })
+}
 if ($apks.Count -eq 0) {
     if ($DryRun) {
         Warn "产物目录暂无 APK（DryRun 允许）：$apkDir"
@@ -172,13 +256,45 @@ if ($apks.Count -eq 0) {
         Fail "没有找到 release APK：$apkDir"
     }
 } else {
+    $aaptExe = Get-AaptExe
+    if (-not $aaptExe) {
+        if ($DryRun) {
+            Warn '未找到 aapt，DryRun 跳过 APK versionName 校验。'
+        } else {
+            Fail '未找到 aapt（Android SDK build-tools），无法校验 APK versionName 与 tag 是否一致。'
+        }
+    }
     foreach ($apk in $apks) {
         Ok ("{0} ({1:N0} B)" -f $apk.Name, $apk.Length)
+        if ($aaptExe) {
+            $apkVersion = Get-ApkVersionName $apk.FullName $aaptExe
+            if (-not $apkVersion) {
+                Fail "无法读取 APK versionName：$($apk.Name)"
+            }
+            if ($apkVersion -ne $expectedVersionName) {
+                Fail "APK versionName=$apkVersion 与 tag=$Tag（期望 $expectedVersionName）不一致；请重新构建或用匹配的 -Tag。"
+            }
+            Ok "versionName=$apkVersion"
+        }
         if ($apk.Name -like '*unsigned*') {
             if ($signingRequested) {
                 Fail "已传签名参数但产物仍是未签名包：$($apk.Name)（签名未生效，检查 keystore/alias/口令）。"
             }
             Warn "$($apk.Name) 未签名，安装会被系统拒绝；请按 README 传 -KeystoreFile 重新构建。"
+        }
+    }
+    if ($SkipBuild) {
+        $headEpochText = ((& git -C $root show -s --format=%ct HEAD) -join '').Trim()
+        if ($headEpochText -match '^\d+$') {
+            $headTime = [DateTimeOffset]::FromUnixTimeSeconds([int64]$headEpochText).UtcDateTime
+            foreach ($apk in $apks) {
+                if ($apk.LastWriteTimeUtc -lt $headTime) {
+                    $apkStamp = $apk.LastWriteTimeUtc.ToString('u')
+                    $headStamp = $headTime.ToString('u')
+                    $msg = "复用产物早于 HEAD 提交（APK $apkStamp，HEAD $headStamp）：不是当前提交构建的包，不能发布。"
+                    if ($DryRun) { Warn $msg } else { Fail $msg }
+                }
+            }
         }
     }
 }
