@@ -177,6 +177,9 @@ if (-not [string]::IsNullOrWhiteSpace($Tag)) {
     if (-not $tagPatch) {
         Fail "构建发布时 -Tag 必须带 YYYYMMDD-NNN 后缀，才能与 APK versionName 对齐：$Tag"
     }
+    if ($Tag -notmatch '^v0\.1\.0-m0\.\d{8}-\d{3}$') {
+        Fail "tag 必须符合当前 versionName 约定 v0.1.0-m0.YYYYMMDD-NNN（build.gradle.kts 固定为 0.1.0-m0）：$Tag"
+    }
     $existingEarly = (& git -C $root tag --list $Tag) -join ''
     if ($existingEarly.Trim().Length -gt 0) { Fail "tag $Tag 已存在；换一个 patch 号或用 -Tag 指定。" }
     Ok "tag = $Tag（versionPatch=$tagPatch）"
@@ -231,8 +234,8 @@ if ([string]::IsNullOrWhiteSpace($Tag)) {
     $Tag = "v0.1.0-m0.$tagPatch"
     Ok "tag = $Tag（versionPatch=$tagPatch）"
 }
-if ($Tag -notmatch '^v\d+\.\d+\.\d+' -or -not $tagPatch) {
-    Fail "tag 不符合约定（应为 v<semver>.<YYYYMMDD-NNN>）：$Tag"
+if ($Tag -notmatch '^v0\.1\.0-m0\.\d{8}-\d{3}$' -or -not $tagPatch) {
+    Fail "tag 不符合约定（应为 v0.1.0-m0.<YYYYMMDD-NNN>）：$Tag"
 }
 $expectedVersionName = $Tag.Substring(1)
 
