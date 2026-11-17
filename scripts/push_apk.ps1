@@ -86,24 +86,31 @@ if ($devices -notcontains $Serial) {
 }
 Write-Host "[INFO] target device: $Serial"
 
-# Artifacts live in release\<variant>\; the Gradle output dir is only a fallback.
-# APK 名带版本号（AirMirror-<version>-<abi>-<variant>.apk），候选按通配符匹配、同组取最新构建的那个。
-$apkDir = Join-Path $root ("release\" + $push.variant)
-if (-not (Test-Path $apkDir)) {
-    $apkDir = Join-Path $root ("app\build\outputs\apk\" + $push.variant)
-}
+# Gradle writes to release\build\app\outputs\apk\<variant>\; build.ps1 then copies
+# the same files into release\<variant>\. Search the copy first, then the raw output,
+# so a run that stopped between assemble and copy still finds the fresh APK.
+# APK names carry the version (AirMirror-<version>-<abi>-<variant>.apk); candidates are
+# matched by wildcard and the newest build in the same group wins.
+$apkDirs = @(
+    (Join-Path $root ("release\" + $push.variant)),
+    (Join-Path $root ("release\build\app\outputs\apk\" + $push.variant))
+)
 $apk = $null
-foreach ($candidate in $push.apkCandidates) {
-    $pattern = $candidate.Replace('{variant}', $push.variant)
-    $hit = Get-ChildItem -Path $apkDir -Filter $pattern -File -ErrorAction SilentlyContinue |
+foreach ($dir in $apkDirs) {
+    if (-not (Test-Path -LiteralPath $dir)) { continue }
+    foreach ($candidate in $push.apkCandidates) {
+        $pattern = $candidate.Replace('{variant}', $push.variant)
+        $hit = Get-ChildItem -LiteralPath $dir -Filter $pattern -File -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if ($hit) { $apk = $hit.FullName; break }
+    }
+    if ($apk) { break }
+    $hit = Get-ChildItem -LiteralPath $dir -Filter *.apk -File -ErrorAction SilentlyContinue |
         Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if ($hit) { $apk = $hit.FullName; break }
 }
-if (-not $apk -and (Test-Path $apkDir)) {
-    $apk = (Get-ChildItem $apkDir -Filter *.apk | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
-}
 if (-not $apk) {
-    Stop-WithError "no APK under $apkDir. Run the build launcher first."
+    Stop-WithError ("no APK under " + ($apkDirs -join ' or ') + ". Run the build launcher first.")
 }
 Write-Host "[INFO] apk: $apk"
 

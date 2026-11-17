@@ -17,7 +17,7 @@
     只打印将要执行的命令，不做任何写入。用于在没有凭据的机器上验证流程。
 
 .PARAMETER Tag
-    显式指定 tag（如 v0.1.0-m0.20261106-001）。缺省时按 build/patch.txt 生成。
+    显式指定 tag（如 v0.1.0-m0.20261106-001）。缺省时按 .build-state/patch.txt 生成。
 
 .PARAMETER SkipBuild
     复用已有产物，不重新构建。
@@ -144,13 +144,13 @@ if ($SkipBuild) {
 }
 
 Step '确定版本与产物'
-$patchFile = Join-Path $root 'build\patch.txt'
+$patchFile = Join-Path $root '.build-state\patch.txt'
 if ([string]::IsNullOrWhiteSpace($Tag)) {
     if (-not (Test-Path $patchFile)) {
-        Fail "缺少 build\patch.txt：请先执行 scripts\build.ps1 -Release -Patch，或用 -Tag 指定 tag。"
+        Fail "缺少 .build-state\patch.txt：请先执行 scripts\build.ps1 -Release -Patch，或用 -Tag 指定 tag。"
     }
     $patch = (Get-Content $patchFile -Raw).Trim()
-    if ([string]::IsNullOrWhiteSpace($patch)) { Fail 'build\patch.txt 为空。' }
+    if ([string]::IsNullOrWhiteSpace($patch)) { Fail '.build-state\patch.txt 为空。' }
     $Tag = "v0.1.0-m0.$patch"
 }
 if ($Tag -notmatch '^v\d+\.\d+\.\d+') { Fail "tag 不符合约定（应以 v 开头并带语义版本）：$Tag" }
@@ -159,7 +159,7 @@ Ok "tag = $Tag"
 # 优先取 build.ps1 汇总的 release\release\；Gradle 原始目录只作回退。
 $apkDir = Join-Path $root 'release\release'
 if (-not (Test-Path $apkDir)) {
-    $apkDir = Join-Path $root 'app\build\outputs\apk\release'
+    $apkDir = Join-Path $root 'release\build\app\outputs\apk\release'
 }
 $apks = @()
 if (Test-Path $apkDir) {

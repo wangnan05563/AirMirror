@@ -74,7 +74,10 @@ echo [INFO] target device: !SERIAL!
 
 rem --- pick APK: universal first, then per-ABI, then any ---
 rem 产物名带版本号（AirMirror-<version>-<abi>-debug.apk），这里按通配符取同组最新构建的那个
-set "APKDIR=%ROOT%\app\build\outputs\apk\debug"
+rem Gradle 输出在 release\build\app\outputs\apk\debug，build.ps1 会再拷一份到 release\debug；
+rem 优先用汇总目录，没有包时回退到 Gradle 原始输出。
+set "APKDIR=%ROOT%\release\debug"
+if not exist "!APKDIR!\*.apk" set "APKDIR=%ROOT%\release\build\app\outputs\apk\debug"
 set "APK="
 for /f "delims=" %%f in ('dir /b /a-d /o-d "%APKDIR%\*universal*.apk" 2^>nul') do set "APK=%APKDIR%\%%f"
 if not defined APK for /f "delims=" %%f in ('dir /b /a-d /o-d "%APKDIR%\*arm64-v8a*.apk" 2^>nul') do set "APK=%APKDIR%\%%f"

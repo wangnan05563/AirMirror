@@ -11,7 +11,7 @@ rem  编码：GBK（无 BOM）。cmd.exe 在中文 Windows 默认 GBK 代码页下读取批处理
 rem  最稳；UTF-8（含 BOM）会被按 GBK 误读，3 字节汉字错位触发 > < & 把行拆断。
 rem
 rem  v2 优化（T05716）：
-rem   1) 无需输入 tag：release.ps1 自动用 build\patch.txt 生成 tag，全程无交互。
+rem   1) 无需输入 tag：release.ps1 自动用 .build-state\patch.txt 生成 tag，全程无交互。
 rem   2) 自动从仓库根 .env 载入 GH_TOKEN（若存在且环境未设置），用于 GitHub REST
 rem      发布；不硬编码、不回显任何 Token。
 rem   3) 不自动 git commit（沿用 release.ps1「干净工作树」安全约束）。

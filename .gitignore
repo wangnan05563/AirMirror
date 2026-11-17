@@ -24,8 +24,11 @@ $RECYCLE.BIN/
 *~
 
 # ---- Android / Gradle 构建产物 ----
-# 构建产物汇总目录：build.ps1 每次重建，删掉即可彻底清理（不进版本库）
+# 构建产物唯一根目录：Gradle 输出写进 release/build/，APK 汇总到 release/debug|release/；
+# 删掉 release/ 即可彻底清理，下一次构建自动重建（不进版本库）
 release/
+# 版本号序列等非产物状态：不能随 release/ 清理，否则 patch 号会重复
+.build-state/
 .gradle/
 build/
 app/build/

@@ -28,9 +28,11 @@ function Write-Check([string]$name, [string]$detail) {
 }
 
 # Android has no package.json: keep the daily-sequence patch suffix in versionName.
-# The sequence state lives under build/ (git-ignored), so plain builds stay reproducible.
+# The sequence state lives under .build-state/ (git-ignored), so plain builds stay reproducible.
 function New-PatchVersion {
-    $buildDir = Join-Path $root 'build'
+    # Version state, not build output: keep it in .build-state/ so wiping release/
+    # never resets the daily patch sequence (duplicate tags would fail).
+    $buildDir = Join-Path $root '.build-state'
     if (-not (Test-Path $buildDir)) { New-Item -ItemType Directory -Path $buildDir | Out-Null }
     $seqFile = Join-Path $buildDir 'patch-sequence.json'
     $today = Get-Date -Format 'yyyyMMdd'
@@ -183,9 +185,10 @@ try {
 }
 
 # 6. Collect the produced packages into release\<variant>\ - the single artifact root.
-#    release\ is disposable: delete it and the next build recreates the whole set.
+#    Gradle itself writes under release/build/app (see root build.gradle.kts), so
+#    release/ is the only tree that has to be cleaned.
 #    Cleaning runs after Gradle succeeds, so a failed build never destroys the last good set.
-$apkDir = Join-Path $root ("app\build\outputs\apk\" + $variant)
+$apkDir = Join-Path $root ("release\build\app\outputs\apk\" + $variant)
 if (-not (Test-Path $apkDir)) {
     Stop-WithError "No APK directory at $apkDir."
 }
