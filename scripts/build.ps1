@@ -205,10 +205,6 @@ try {
     if ($gradleExit -ne 0) {
         Stop-WithError "Gradle failed (exit $gradleExit)."
     }
-    if ($VersionPatch) {
-        Set-PatchVersion $VersionPatch
-        Write-Host "[INFO] patch state synced: $VersionPatch" -ForegroundColor Cyan
-    }
 } finally {
     Pop-Location
 }
@@ -236,6 +232,10 @@ foreach ($apk in $apks) {
 $apks = @(Get-ChildItem $releaseDir -Filter *.apk | Sort-Object Name)
 if ($apks.Count -eq 0) {
     Stop-WithError "APK copy into $releaseDir failed."
+}
+if ($VersionPatch) {
+    Set-PatchVersion $VersionPatch
+    Write-Host "[INFO] patch state synced: $VersionPatch" -ForegroundColor Cyan
 }
 Write-Host "APK (release dir):"
 foreach ($apk in $apks) {
