@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.text.InputFilter
 import android.text.TextUtils
 import android.util.Log
 import android.view.Gravity
@@ -13,6 +14,7 @@ import android.view.SurfaceHolder
 import android.view.View
 import android.view.SurfaceView
 import android.view.WindowManager
+import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
@@ -20,6 +22,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import io.github.wangnan05563.airmirror.R
 import io.github.wangnan05563.airmirror.crossnet.SignalingSettings
 import io.github.wangnan05563.airmirror.device.DisplayFit
@@ -31,6 +34,7 @@ import io.github.wangnan05563.airmirror.device.GateReport
 import io.github.wangnan05563.airmirror.device.Grade
 import io.github.wangnan05563.airmirror.device.QualityTier
 import io.github.wangnan05563.airmirror.device.QualityTiers
+import io.github.wangnan05563.airmirror.pairing.AccessMode
 import io.github.wangnan05563.airmirror.pairing.CastCode
 import io.github.wangnan05563.airmirror.pairing.DeviceStore
 import io.github.wangnan05563.airmirror.pairing.Pairing
@@ -116,6 +120,11 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     private lateinit var diagnostics: Diagnostics
     private lateinit var diagnosticsRow: TextView
     private lateinit var clearDataRow: TextView
+    /** T06113 访问控制：三档模式与信任设备列表；列表内容随关闭/改名/撤销动态重建。 */
+    private val accessModeRows = LinkedHashMap<AccessMode, TextView>()
+    private lateinit var trustSummary: TextView
+    private lateinit var trustContainer: LinearLayout
+    private lateinit var clearTrustRow: TextView
     /** 首启三步引导（PRD §1.2）：覆盖在待连接页之上的全屏卡片；非首启时整块 GONE。 */
     private lateinit var onboarding: FrameLayout
     private lateinit var onboardStepHint: TextView
@@ -833,6 +842,50 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             LinearLayout.LayoutParams.MATCH_PARENT,
             Theme.dp(this@ReceiverActivity, 1),
         ))
+        // T06113：访问控制放在隐私之前——它决定“谁能上屏”，比日志清理更靠前。
+        settingsPanel.addView(sectionLabel("访问控制"))
+        settingsPanel.addView(TextView(this).apply {
+            text = "新设备如何获得投屏权限；已信任设备 30 天内使用可免确认"
+            textSize = FocusPolicy.bodySp(isTv)
+            setTextColor(Theme.TEXT_SECONDARY)
+            setPadding(0, 0, 0, Theme.dp(this@ReceiverActivity, Theme.SPACE_SM_DP))
+        }, matchWidth())
+        for (mode in AccessMode.entries) {
+            val row = TextView(this).apply {
+                textSize = FocusPolicy.bodySp(isTv)
+                setPadding(0, Theme.dp(this@ReceiverActivity, Theme.SPACE_SM_DP), 0, Theme.dp(this@ReceiverActivity, Theme.SPACE_SM_DP))
+                setOnClickListener { chooseAccessMode(mode) }
+                UiKit.touchTarget(this)
+            }
+            accessModeRows[mode] = row
+            settingsPanel.addView(row, matchWidth())
+        }
+        settingsPanel.addView(TextView(this).apply {
+            text = "信任列表"
+            textSize = FocusPolicy.sectionTitleSp(isTv)
+            setTextColor(Theme.TEXT_PRIMARY)
+            setPadding(0, Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP), 0, Theme.dp(this@ReceiverActivity, Theme.SPACE_XS_DP))
+        }, matchWidth())
+        trustSummary = TextView(this).apply {
+            textSize = FocusPolicy.bodySp(isTv)
+            setTextColor(Theme.TEXT_SECONDARY)
+            setPadding(0, 0, 0, Theme.dp(this@ReceiverActivity, Theme.SPACE_SM_DP))
+        }
+        settingsPanel.addView(trustSummary, matchWidth())
+        trustContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        settingsPanel.addView(trustContainer, matchWidth())
+        clearTrustRow = TextView(this).apply {
+            textSize = FocusPolicy.bodySp(isTv)
+            setTextColor(Theme.TEXT_PRIMARY)
+            setPadding(0, Theme.dp(this@ReceiverActivity, 10), 0, Theme.dp(this@ReceiverActivity, 10))
+            setOnClickListener { confirmClearTrust() }
+            UiKit.touchTarget(this)
+        }
+        settingsPanel.addView(clearTrustRow, matchWidth())
+        settingsPanel.addView(divider(), LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            Theme.dp(this@ReceiverActivity, 1),
+        ))
         settingsPanel.addView(TextView(this).apply {
             text = "隐私"
             textSize = FocusPolicy.sectionTitleSp(isTv)
@@ -921,6 +974,8 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         refreshToggleRows()
         refreshSignalingRow()
         refreshQualityRows()
+        refreshAccessRows()
+        refreshTrustRows()
         refreshMaintenanceRows()
         // 画质档位行是探完能力后动态 addView 的，刷新时再扫一次树；不抢当前焦点
         TvFocus.applyTree(settingsPanel, requestInitialFocus = false)
@@ -934,6 +989,205 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             A11y.describe(row, A11yCopy.mode(mode.label, mode.hint, mode == displayMode))
             A11y.switchRow(row, mode == displayMode)
         }
+    }
+
+    /** T06113：三档访问模式；选中态与读屏开关状态共用同一个落盘值。 */
+    private fun refreshAccessRows() {
+        val current = store.accessMode()
+        for ((mode, row) in accessModeRows) {
+            row.text = "${if (mode == current) "●" else "○"} ${mode.label}\n${mode.hint}"
+            row.setTextColor(if (mode == current) Theme.ACCENT else Theme.TEXT_SECONDARY)
+            A11y.describe(row, A11yCopy.accessMode(mode.label, mode.hint, mode == current))
+            A11y.switchRow(row, mode == current)
+        }
+    }
+
+    private fun chooseAccessMode(mode: AccessMode) {
+        val current = store.accessMode()
+        if (mode == current) {
+            showCornerHint("当前访问模式：${mode.label}")
+            return
+        }
+        store.saveAccessMode(mode)
+        refreshSettings()
+        Log.i(TAG, "access mode -> ${mode.name}")
+        showCornerHint("访问模式已切换为${mode.label}")
+    }
+
+    /** 信任列表每次重建：撤销/改名/过期都会改变条目数，复用旧行只会留下幽灵设备。 */
+    private fun refreshTrustRows() {
+        val now = System.currentTimeMillis()
+        // 打开设置页只读列表，不触发新授权；prune 只剪掉已过 30 天的活动会话与静默期。
+        pairing.trust.prune()
+        val devices = pairing.trust.trusted()
+        val active = pairing.trust.active()
+        trustSummary.text = TrustUiPolicy.summary(devices.size)
+        A11y.describe(
+            trustSummary,
+            if (devices.isEmpty()) A11yCopy.trustEmpty() else A11yCopy.trustCount(devices.size),
+        )
+        trustContainer.removeAllViews()
+        for (device in devices) {
+            val casting = active == device.fingerprint
+            val last = TrustUiPolicy.lastUsedLabel(device.lastUsedAt, now)
+            val row = TextView(this).apply {
+                text = TrustUiPolicy.rowText(device, now, casting)
+                textSize = FocusPolicy.bodySp(isTv)
+                setTextColor(if (casting) Theme.ACCENT else Theme.TEXT_PRIMARY)
+                setPadding(
+                    Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP),
+                    Theme.dp(this@ReceiverActivity, Theme.SPACE_SM_DP),
+                    Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP),
+                    Theme.dp(this@ReceiverActivity, Theme.SPACE_SM_DP),
+                )
+                UiKit.surface(this, radiusDp = Theme.RADIUS_INSET_DP, elevationDp = 0)
+                UiKit.touchTarget(this)
+                setOnClickListener { showTrustDetails(device.fingerprint) }
+            }
+            A11y.describe(row, A11yCopy.trustedDevice(device.name, last, casting))
+            trustContainer.addView(row, matchWidth().apply {
+                bottomMargin = Theme.dp(this@ReceiverActivity, Theme.SPACE_XS_DP)
+            })
+        }
+        clearTrustRow.text = "清除全部信任设备（${devices.size} 台）"
+        A11y.describe(clearTrustRow, A11yCopy.trustClear(devices.size))
+        clearTrustRow.visibility = if (devices.isEmpty()) View.GONE else View.VISIBLE
+    }
+
+    private fun showTrustDetails(fingerprint: String) {
+        val now = System.currentTimeMillis()
+        val device = pairing.trust.trusted().firstOrNull { it.fingerprint == fingerprint }
+        if (device == null) {
+            refreshSettings()
+            showCornerHint("该设备已不在信任列表")
+            return
+        }
+        val casting = pairing.trust.active() == fingerprint
+        val last = TrustUiPolicy.lastUsedLabel(device.lastUsedAt, now)
+        val dialog = UiKit.dialog(this)
+            .setTitle("设备详情")
+            .setMessage(TrustUiPolicy.detailMessage(device, now, casting))
+            .setPositiveButton("改名", null)
+            .setNegativeButton("撤销", null)
+            .setNeutralButton("关闭", null)
+            .create()
+        dialog.setOnShowListener {
+            UiKit.styleDialogButtons(dialog)
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                dialog.dismiss()
+                showRenameTrust(fingerprint, device.name)
+            }
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener {
+                dialog.dismiss()
+                confirmRevokeTrust(fingerprint, device.name)
+            }
+            A11y.announce(
+                dialog.window!!.decorView,
+                A11yCopy.trustDetail(device.name, last),
+                "trust-detail-$fingerprint",
+            )
+        }
+        dialog.show()
+    }
+
+    private fun showRenameTrust(fingerprint: String, currentName: String) {
+        val input = EditText(this).apply {
+            setText(currentName)
+            setSelectAllOnFocus(true)
+            setSingleLine()
+            imeOptions = EditorInfo.IME_ACTION_DONE
+            filters = arrayOf(InputFilter.LengthFilter(TrustUiPolicy.MAX_NAME))
+            setTextColor(Theme.TEXT_PRIMARY)
+            hint = "设备名称"
+        }
+        UiKit.inset(input, Theme.SURFACE)
+        input.setPadding(
+            Theme.dp(this, Theme.SPACE_MD_DP), Theme.dp(this, Theme.SPACE_SM_DP),
+            Theme.dp(this, Theme.SPACE_MD_DP), Theme.dp(this, Theme.SPACE_SM_DP),
+        )
+        val dialog = UiKit.dialog(this)
+            .setTitle("重命名设备")
+            .setMessage("只改这台设备在列表里的显示名，不影响指纹与信任状态。")
+            .setView(input)
+            .setPositiveButton("保存", null)
+            .setNegativeButton("取消", null)
+            .create()
+        dialog.setOnShowListener {
+            UiKit.styleDialogButtons(dialog)
+            input.requestFocus()
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val next = TrustUiPolicy.normalizeName(input.text.toString())
+                if (next == null) {
+                    input.error = "名字需为 1–${TrustUiPolicy.MAX_NAME} 个字"
+                    return@setOnClickListener
+                }
+                if (!pairing.renameTrusted(fingerprint, next)) {
+                    input.error = "设备已不在信任列表"
+                    refreshSettings()
+                    return@setOnClickListener
+                }
+                dialog.dismiss()
+                refreshSettings()
+                showCornerHint("已重命名为「$next」")
+                A11y.announce(settingsPanel, A11yCopy.trustRename(next), "trust-rename-$fingerprint")
+            }
+            input.setOnEditorActionListener { _, actionId, _ ->
+                if (actionId == EditorInfo.IME_ACTION_DONE) {
+                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+                    true
+                } else {
+                    false
+                }
+            }
+        }
+        dialog.show()
+    }
+
+    private fun confirmRevokeTrust(fingerprint: String, name: String) {
+        val casting = pairing.trust.active() == fingerprint
+        UiKit.dialog(this)
+            .setTitle("撤销对「$name」的信任？")
+            .setMessage(
+                if (casting) "撤销后，它下次连接需要重新确认；当前投屏会立即断开。"
+                else "撤销后，它下次连接需要重新确认。",
+            )
+            .setPositiveButton("撤销") { _, _ ->
+                val stopped = pairing.revokeTrusted(fingerprint)
+                if (stopped) host.endActiveSession()
+                refreshSettings()
+                showCornerHint(if (stopped) "已撤销信任并断开投屏" else "已撤销信任")
+                A11y.announce(
+                    settingsPanel,
+                    A11yCopy.trustRevoke(name),
+                    "trust-revoke-$fingerprint",
+                )
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun confirmClearTrust() {
+        val count = pairing.trust.trusted().size
+        if (count <= 0) {
+            refreshSettings()
+            return
+        }
+        UiKit.dialog(this)
+            .setTitle("清除全部信任设备？")
+            .setMessage("将清空 $count 台设备的信任记录；它们下次连接都需要重新确认。正在投屏的受信设备会立即断开。")
+            .setPositiveButton("清除") { _, _ ->
+                val stopped = pairing.clearTrusted()
+                if (stopped) host.endActiveSession()
+                refreshSettings()
+                showCornerHint(if (stopped) "已清除信任并断开投屏" else "已清除全部信任设备")
+                A11y.announce(
+                    settingsPanel,
+                    A11yCopy.trustClear(count),
+                    "trust-clear",
+                )
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     /** 三个开关行：开关值一次读出来，文案与无障碍描述都用同一个值。 */

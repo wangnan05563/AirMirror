@@ -2,6 +2,8 @@ package io.github.wangnan05563.airmirror.pairing
 
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -46,5 +48,34 @@ class PairingMigrationTest {
         pairing.clearTrusted()
         assertTrue(pairing.trust.trusted().isEmpty())
         assertEquals("# AirMirror TrustRegistry v2", store.trustedSnapshot())
+    }
+
+    @Test
+    fun renameAndRevokeArePersistedImmediately() {
+        val store = DeviceStore(ApplicationProvider.getApplicationContext())
+        val pairing = Pairing(store, now = { clock })
+        pairing.trust.allow("phone-a", "小明的手机", permanent = true)
+        pairing.persistTrusted()
+
+        assertTrue(pairing.renameTrusted("phone-a", "书房手机"))
+        assertTrue(store.trustedSnapshot().contains(PairingLink.escape("书房手机")))
+        assertEquals("书房手机", Pairing(store, now = { clock }).trust.trusted().single().name)
+        assertFalse(pairing.renameTrusted("phone-x", "不存在"))
+        assertFalse(pairing.renameTrusted("phone-a", "   "))
+        assertFalse(pairing.renameTrusted("phone-a", "超".repeat(25)))
+
+        assertFalse(pairing.revokeTrusted("phone-a"))
+        assertEquals("# AirMirror TrustRegistry v2", store.trustedSnapshot())
+        assertTrue(Pairing(store, now = { clock }).trust.trusted().isEmpty())
+    }
+
+    @Test
+    fun revokeReportsAnActiveTrustedSession() {
+        val store = DeviceStore(ApplicationProvider.getApplicationContext())
+        val pairing = Pairing(store, now = { clock })
+        pairing.trust.allow("phone-a", "小明的手机", permanent = true)
+        assertTrue(pairing.trust.acquireSession("phone-a"))
+        assertTrue(pairing.revokeTrusted("phone-a"))
+        assertNull(pairing.trust.active())
     }
 }

@@ -74,6 +74,14 @@ class DeviceStore(context: Context) {
         prefs.edit().putBoolean(KEY_AUTO_ALLOW, enabled).apply()
     }
 
+    /** 访问控制模式（T06113）：默认「每次确认」，T06114 读取同一份值接入 PIN。 */
+    fun accessMode(): AccessMode =
+        AccessMode.parse(prefs.getString(KEY_ACCESS_MODE, null))
+
+    fun saveAccessMode(mode: AccessMode) {
+        prefs.edit().putString(KEY_ACCESS_MODE, mode.name).apply()
+    }
+
     /** 显示模式按设备持久化，重启后保持（PRD FS-08 验收「设置持久」）。 */
     fun displayMode(): DisplayMode =
         DisplayMode.parse(prefs.getString(KEY_DISPLAY_MODE, null))
@@ -168,6 +176,7 @@ class DeviceStore(context: Context) {
         const val KEY_FIRST_LAUNCH = "first_launch"
         const val KEY_AUTO_ALLOW = "auto_allow"
         const val KEY_DISPLAY_MODE = "display_mode"
+        const val KEY_ACCESS_MODE = "access_mode"
         const val KEY_FOLLOW_ROTATION = "follow_rotation"
         const val KEY_PORTRAIT_LABEL = "portrait_label"
         const val KEY_AUTO_START = "auto_start"

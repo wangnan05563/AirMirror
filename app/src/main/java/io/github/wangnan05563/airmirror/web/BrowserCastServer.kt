@@ -94,9 +94,10 @@ class BrowserCastServer(
         acceptThread?.interrupt()
         acceptThread = null
         // 先断活动连接再清文件：否则正在上传的线程会把文件重新写回目录，
-        // 或者白占一条线程到 body 超时才退出
-        clients.toList().forEach { runCatching { it.close() } }
-        clients.clear()
+        // 或者白占一条线程到 body 超时才退出。synchronizedSet 的迭代必须自己持锁，
+        // 否则上传线程同时 remove 会抛 ConcurrentModificationException。
+        synchronized(clients) { clients.toList() }.forEach { runCatching { it.close() } }
+        synchronized(clients) { clients.clear() }
         dir.listFiles()?.forEach { runCatching { it.delete() } }
     }
 

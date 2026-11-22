@@ -31,10 +31,27 @@ class Pairing(
         store.saveTrustedSnapshot(trust.snapshot())
     }
 
-    /** “清除信任数据”：内存与落盘一起清空，重启后不会把旧列表读回来。 */
-    fun clearTrusted() {
-        trust.clear()
+    /** 改名并同步落盘；未知设备、空名字或超长名字返回 false，不产生半截状态。 */
+    fun renameTrusted(fingerprint: String, name: String): Boolean {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty() || trimmed.length > MAX_TRUSTED_NAME) return false
+        if (!trust.rename(fingerprint, trimmed)) return false
         persistTrusted()
+        return true
+    }
+
+    /** 撤销并同步落盘。返回 true 表示撤销时该设备正在投屏，调用方应立刻结束会话。 */
+    fun revokeTrusted(fingerprint: String): Boolean {
+        val wasActive = trust.revoke(fingerprint)
+        persistTrusted()
+        return wasActive
+    }
+
+    /** “清除信任数据”：内存与落盘一起清空，重启后不会把旧列表读回来。 */
+    fun clearTrusted(): Boolean {
+        val wasActive = trust.clear()
+        persistTrusted()
+        return wasActive
     }
 
     /** 待连接页二维码：设备标识 + 随码轮换的一次性令牌 + 同网直连所需的地址。 */
@@ -43,5 +60,7 @@ class Pairing(
 
     private companion object {
         const val DEFAULT_AUTO_ALLOW = 5_000L
+        /** 电视端展示与落盘都按同一上限，避免过长名字把设置页一行撑爆。 */
+        const val MAX_TRUSTED_NAME = 24
     }
 }

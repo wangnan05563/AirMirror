@@ -71,16 +71,40 @@ class TrustRegistry(
         if (activeSession == fingerprint) activeSession = null
     }
 
+    /**
+     * 撤销一台设备的信任。返回 true 表示撤销时它正占着活动会话，
+     * 调用方应立即结束该次投屏（PRD FR-2.0-05「1 秒内停止」）。
+     */
     @Synchronized
-    fun revoke(fingerprint: String) {
+    fun revoke(fingerprint: String): Boolean {
+        val wasActive = records.containsKey(fingerprint) && activeSession == fingerprint
         records.remove(fingerprint)
-        if (activeSession == fingerprint) activeSession = null
+        if (wasActive) activeSession = null
+        return wasActive
     }
 
-    /** 清空全部信任、静默与活动会话，供“清除信任数据”与迁移失败兜底使用。 */
+    /** 改名只改展示名，不刷新 `lastUsedAt`；未知设备或空名字返回 false。 */
     @Synchronized
-    fun clear() {
+    fun rename(fingerprint: String, name: String): Boolean {
+        val record = records[fingerprint] ?: return false
+        val next = name.trim()
+        if (next.isEmpty()) return false
+        record.name = next
+        return true
+    }
+
+    /**
+     * 清空全部信任与静默；受信活动会话一并释放，一次性访客会话保留。
+     * 返回值只表示“被清掉的活动会话原本是否属于信任列表”：一次性访客会话不应被这里误杀。
+     */
+    @Synchronized
+    fun clear(): Boolean {
+        val activeTrusted = activeSession?.let { records.containsKey(it) } == true
+        val guest = activeSession?.takeIf { !records.containsKey(it) }
         reset()
+        // 清信任列表不是“踢掉所有投屏”：一次性访客会话继续，只有受信会话交给 UI 断开。
+        if (!activeTrusted) activeSession = guest
+        return activeTrusted
     }
 
     /** 同一时刻仅一个活动会话：已被别的设备占用时返回 false。 */

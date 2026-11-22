@@ -91,6 +91,28 @@ object A11yCopy {
     fun mode(label: String, hint: String, selected: Boolean): String =
         "显示模式：${clip(label, 8)}，${selected(selected)}。${clip(hint, 14)}"
 
+    fun accessMode(label: String, hint: String, selected: Boolean): String =
+        "访问模式：${clip(label, 8)}，${selected(selected)}。${clip(hint, 14)}"
+
+    fun trustedDevice(name: String, lastLabel: String, casting: Boolean): String {
+        val active = if (casting) "，正在投屏" else ""
+        return "信任设备：${clip(name, 10)}，上次使用${clip(lastLabel, 8)}$active，双击查看详情"
+    }
+
+    fun trustEmpty(): String = "尚无信任设备，新设备连接需先通过访问控制"
+
+    fun trustCount(count: Int): String = "已信任 $count 台，30 天内使用可免确认"
+
+    fun trustDetail(name: String, lastLabel: String): String =
+        "设备详情：${clip(name, 8)}，上次使用${clip(lastLabel, 8)}，可改名或撤销"
+
+    fun trustRename(name: String): String = "重命名设备：${clip(name, 10)}，双击修改"
+
+    fun trustRevoke(name: String): String =
+        "撤销信任：${clip(name, 10)}，撤销后下次连接需重新确认"
+
+    fun trustClear(count: Int): String = "清除全部信任设备，共 $count 台，双击清除"
+
     fun qualityAuto(selected: Boolean): String = "画质：自动（推荐），${selected(selected)}"
 
     fun quality(tierLabel: String, width: Int, height: Int, fps: Int, selected: Boolean): String =

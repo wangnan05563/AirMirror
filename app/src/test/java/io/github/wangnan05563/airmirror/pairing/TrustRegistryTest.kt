@@ -260,6 +260,57 @@ class TrustRegistryTest {
         assertEquals(listOf("d", "c"), subject.trusted().map { it.fingerprint })
     }
 
+    @Test
+    fun renameOnlyChangesTheDisplayNameAndKeepsTheThirtyDayClock() {
+        val subject = registry()
+        subject.allow("phone-a", "小明的手机", permanent = true)
+        clock = 5 * day
+        assertTrue(subject.rename("phone-a", "  书房手机  "))
+        assertEquals("书房手机", subject.trusted().single().name)
+        assertEquals(0L, subject.trusted().single().lastUsedAt)
+        assertEquals(TrustRegistry.Verdict.TRUSTED, subject.decide("phone-a").verdict)
+    }
+
+    @Test
+    fun renameRejectsUnknownDevicesAndBlankNames() {
+        val subject = registry()
+        subject.allow("phone-a", "小明的手机", permanent = true)
+        assertFalse(subject.rename("phone-x", "新名字"))
+        assertFalse(subject.rename("phone-a", "   "))
+        assertEquals("小明的手机", subject.trusted().single().name)
+    }
+
+    @Test
+    fun revokeReportsWhetherTheRevokedDeviceHeldTheActiveSession() {
+        val subject = registry()
+        subject.allow("phone-a", "小明的手机", permanent = true)
+        subject.acquireSession("phone-a")
+        assertTrue(subject.revoke("phone-a"))
+        assertNull(subject.active())
+        assertFalse(subject.revoke("phone-a"))
+    }
+
+    @Test
+    fun clearReportsOnlyATrustedActiveSessionNotAGuestSession() {
+        val subject = registry()
+        subject.allow("phone-a", "小明的手机", permanent = true)
+        subject.allow("guest-pad", "访客平板", permanent = false)
+        subject.acquireSession("guest-pad")
+        assertFalse(subject.clear())
+        assertEquals("guest-pad", subject.active())
+        assertTrue(subject.trusted().isEmpty())
+    }
+
+    @Test
+    fun clearReportsATrustedActiveSession() {
+        val subject = registry()
+        subject.allow("phone-a", "小明的手机", permanent = true)
+        subject.acquireSession("phone-a")
+        assertTrue(subject.clear())
+        assertNull(subject.active())
+        assertTrue(subject.trusted().isEmpty())
+    }
+
     private fun registry(capacityOf: Int, autoAllowMillis: Long = 5_000L) =
         TrustRegistry(now = { clock }, capacity = capacityOf, autoAllowMillis = autoAllowMillis)
 }
