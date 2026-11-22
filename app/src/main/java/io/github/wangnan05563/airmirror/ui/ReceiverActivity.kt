@@ -56,6 +56,17 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     /** TV / 手机共用同一页面：字号按端取角色值，避免手机端沿用 40sp/24sp 的电视口径。 */
     private val isTv: Boolean by lazy { TvFocus.isTvMode(this) }
 
+    /** T06100：TV 四周 5% 安全区按实际像素算，720p/1080p/4:3 不靠固定 dp 猜。 */
+    private val safeInsets: TvLayoutSpec.SafeInsets by lazy {
+        TvLayoutSpec.safeInsets(resources.displayMetrics.widthPixels, resources.displayMetrics.heightPixels)
+    }
+
+    private fun pagePadH(baseDp: Int): Int =
+        if (isTv) maxOf(Theme.dp(this, baseDp), safeInsets.horizontal) else Theme.dp(this, baseDp)
+
+    private fun pagePadV(baseDp: Int): Int =
+        if (isTv) maxOf(Theme.dp(this, baseDp), safeInsets.vertical) else Theme.dp(this, baseDp)
+
     private lateinit var store: DeviceStore
     private lateinit var pairing: Pairing
     private lateinit var host: ReceiverHost
@@ -252,7 +263,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             FrameLayout.LayoutParams.WRAP_CONTENT,
             FrameLayout.LayoutParams.WRAP_CONTENT,
             Gravity.TOP or Gravity.CENTER_HORIZONTAL,
-        ).apply { topMargin = Theme.dp(this@ReceiverActivity, Theme.SPACE_XL_DP) })
+        ).apply { topMargin = pagePadV(Theme.SPACE_XL_DP) })
         root.addView(buildNoticeOverlay(), FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
             FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -269,8 +280,8 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             FrameLayout.LayoutParams.WRAP_CONTENT,
             Gravity.BOTTOM or Gravity.END,
         ).apply {
-            rightMargin = Theme.dp(this@ReceiverActivity, Theme.SPACE_XL_DP)
-            bottomMargin = Theme.dp(this@ReceiverActivity, Theme.SPACE_XXL_DP)
+            rightMargin = pagePadH(Theme.SPACE_XL_DP)
+            bottomMargin = pagePadV(Theme.SPACE_XXL_DP)
         })
         // 画质角标固定左下角：右下角留给竖屏/模式提示，两处同时出现会互相盖住
         root.addView(buildQualityBadge(), FrameLayout.LayoutParams(
@@ -278,16 +289,16 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             FrameLayout.LayoutParams.WRAP_CONTENT,
             Gravity.BOTTOM or Gravity.START,
         ).apply {
-            leftMargin = Theme.dp(this@ReceiverActivity, Theme.SPACE_XL_DP)
-            bottomMargin = Theme.dp(this@ReceiverActivity, Theme.SPACE_XXL_DP)
+            leftMargin = pagePadH(Theme.SPACE_XL_DP)
+            bottomMargin = pagePadV(Theme.SPACE_XXL_DP)
         })
         root.addView(buildSettingsEntry(), FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
             FrameLayout.LayoutParams.WRAP_CONTENT,
             Gravity.TOP or Gravity.END,
         ).apply {
-            rightMargin = Theme.dp(this@ReceiverActivity, 20)
-            topMargin = Theme.dp(this@ReceiverActivity, 20)
+            rightMargin = pagePadH(20)
+            topMargin = pagePadV(20)
         })
         root.addView(buildPromptBar(), FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
@@ -338,7 +349,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             // 待连接页内容短于屏幕时整体居中，避免二维码/投屏码全挤在上半屏、下半屏大片留白
             gravity = Gravity.CENTER
             setBackgroundColor(Theme.BACKGROUND)
-            setPadding(Theme.dp(this@ReceiverActivity, Theme.SPACE_XXL_DP), Theme.dp(this@ReceiverActivity, 28), Theme.dp(this@ReceiverActivity, Theme.SPACE_XXL_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_XL_DP))
+            setPadding(pagePadH(Theme.SPACE_XXL_DP), pagePadV(28), pagePadH(Theme.SPACE_XXL_DP), pagePadV(Theme.SPACE_XL_DP))
         }
         // PRD UI-02：主视觉区只保留设备名 + 投屏码（含环形倒计时）+ 二维码三件，降低 P-06 密度。
         mainArea = LinearLayout(this).apply {
@@ -381,23 +392,32 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             topMargin = Theme.dp(this@ReceiverActivity, 44)
         })
 
-        // 小屏（360dp 宽/640dp 高）上 190dp 的二维码 + 190dp 投屏码会把「更多信息」挤出首屏；
-        // 按宽度降到 156dp，二维码仍有 312px，手机可正常扫描。
-        val side = Theme.dp(this, if (resources.configuration.screenWidthDp < 380) 156 else 190)
+        // T06100：二维码/码槽按屏高 34% 收敛，720p 与 4:3 不把底部入口挤到屏幕外；
+        // 宽屏 TV 上二者并排，手机/竖屏仍上下排列，6 位码不会被挤成两截。
+        val sideBaseDp = if (resources.configuration.screenWidthDp < 380) 156 else 190
+        val side = TvLayoutSpec.qrSidePx(
+            resources.displayMetrics.widthPixels,
+            resources.displayMetrics.heightPixels,
+            Theme.dp(this, sideBaseDp),
+        )
+        val codeFontSp = TvLayoutSpec.codeSp(
+            side,
+            resources.displayMetrics.density,
+            sideBaseDp.toFloat(),
+            Theme.CODE_SP,
+        )
         qrView = ImageView(this).apply {
             setBackgroundColor(Theme.QR_BACKGROUND)
             A11y.describe(this, A11yCopy.mirrorQr())
         }
-        mainArea.addView(qrView, centeredBlock(side).apply { topMargin = Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP) })
 
-        // 投屏码单独占一行：和二维码并排时剩下的宽度放不下 6 位数字，会把码拆成两截
         // 两层同规格 TextView 叠在固定尺寸码槽里：换码时旧码淡出、新码淡入同时进行，中间不出现空白帧
         codeSlot = FrameLayout(this)
         ring = CountdownRingView(this).apply { A11y.decorative(this) }
         codeSlot.addView(ring, FrameLayout.LayoutParams(side, side))
-        codeA = TextView(this).apply { codeStyle(this) }
+        codeA = TextView(this).apply { codeStyle(this, codeFontSp) }
         codeB = TextView(this).apply {
-            codeStyle(this)
+            codeStyle(this, codeFontSp)
             alpha = 0f
             visibility = View.INVISIBLE
         }
@@ -409,7 +429,31 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         codeSlot.addView(codeB, FrameLayout.LayoutParams(codeLayerParams))
         activeCode = codeA
         inactiveCode = codeB
-        mainArea.addView(codeSlot, centeredBlock(side).apply { topMargin = Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP) })
+
+        val pairRow = TvLayoutSpec.usePairRow(isTv, resources.configuration.screenWidthDp)
+        val visualRow = LinearLayout(this).apply {
+            orientation = if (pairRow) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
+            gravity = if (pairRow) Gravity.CENTER else Gravity.CENTER_HORIZONTAL
+        }
+        if (pairRow) {
+            visualRow.addView(
+                qrView,
+                LinearLayout.LayoutParams(side, side).apply {
+                    marginEnd = Theme.dp(this@ReceiverActivity, Theme.SPACE_XL_DP)
+                },
+            )
+            visualRow.addView(codeSlot, LinearLayout.LayoutParams(side, side))
+        } else {
+            visualRow.addView(qrView, centeredBlock(side).apply {
+                topMargin = Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP)
+            })
+            visualRow.addView(codeSlot, centeredBlock(side).apply {
+                topMargin = Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP)
+            })
+        }
+        mainArea.addView(visualRow, matchWidth().apply {
+            if (pairRow) topMargin = Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP)
+        })
 
         // T06114：PIN 模式不展示 6 位码/二维码，避免双通道绕过；仅信任模式只给一句白名单说明。
         pinArea = LinearLayout(this).apply {
@@ -757,7 +801,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         settingsPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Theme.BACKGROUND)
-            setPadding(Theme.dp(this@ReceiverActivity, Theme.SPACE_XL_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_XL_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_XL_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP))
+            setPadding(pagePadH(Theme.SPACE_XL_DP), pagePadV(Theme.SPACE_XL_DP), pagePadH(Theme.SPACE_XL_DP), pagePadV(Theme.SPACE_LG_DP))
         }
         settingsPanel.addView(TextView(this).apply {
             text = "显示设置"
@@ -1729,8 +1773,8 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         onboarding.addView(card, FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER,
         ).apply {
-            leftMargin = Theme.dp(this@ReceiverActivity, sideMargin)
-            rightMargin = Theme.dp(this@ReceiverActivity, sideMargin)
+            leftMargin = pagePadH(sideMargin)
+            rightMargin = pagePadH(sideMargin)
         })
         onboardSkipAll = TextView(this).apply {
             text = "跳过全部"
@@ -1743,7 +1787,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         }
         onboarding.addView(onboardSkipAll, FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.END,
-        ).apply { rightMargin = Theme.dp(this@ReceiverActivity, 20); topMargin = Theme.dp(this@ReceiverActivity, 20) })
+        ).apply { rightMargin = pagePadH(20); topMargin = pagePadV(20) })
         return onboarding
     }
 
@@ -1896,8 +1940,8 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     }
 
     /** 两层码字必须同规格：字号、字距、行数任一不同，淡化中都会看到跳动。 */
-    private fun codeStyle(view: TextView) {
-        view.textSize = Theme.CODE_SP
+    private fun codeStyle(view: TextView, textSp: Float = Theme.CODE_SP) {
+        view.textSize = textSp
         view.setTextColor(Theme.ACCENT)
         view.gravity = Gravity.CENTER
         if (Build.VERSION.SDK_INT >= 21) view.letterSpacing = 0.02f

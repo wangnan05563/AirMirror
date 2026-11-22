@@ -26,8 +26,12 @@ class MainActivity : Activity() {
             // 手机高长屏内容垂直居中；TV 仍按顶部对齐，避免 3 米观看时焦点区漂移。
             gravity = if (isTv) Gravity.CENTER_HORIZONTAL or Gravity.TOP else Gravity.CENTER
             setBackgroundColor(Theme.BACKGROUND)
-            val pad = Theme.dp(this@MainActivity, Theme.SPACE_XL_DP)
-            setPadding(pad, Theme.dp(this@MainActivity, if (isTv) Theme.SPACE_XXL_DP else Theme.SPACE_XL_DP), pad, pad)
+            val metrics = resources.displayMetrics
+            val safe = TvLayoutSpec.safeInsets(metrics.widthPixels, metrics.heightPixels)
+            val padH = if (isTv) maxOf(Theme.dp(this@MainActivity, Theme.SPACE_XL_DP), safe.horizontal) else Theme.dp(this@MainActivity, Theme.SPACE_XL_DP)
+            val padTop = if (isTv) maxOf(Theme.dp(this@MainActivity, Theme.SPACE_XXL_DP), safe.vertical) else Theme.dp(this@MainActivity, Theme.SPACE_XL_DP)
+            val padBottom = if (isTv) maxOf(Theme.dp(this@MainActivity, Theme.SPACE_XL_DP), safe.vertical) else Theme.dp(this@MainActivity, Theme.SPACE_XL_DP)
+            setPadding(padH, padTop, padH, padBottom)
         }
         root.addView(TextView(this).apply {
             text = "AirMirror"

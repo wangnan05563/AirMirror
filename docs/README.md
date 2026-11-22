@@ -46,6 +46,7 @@
 | [AirMirror-优化PRD-v2.0-20261121.md](AirMirror-优化PRD-v2.0-20261121.md) | 39 项需求评审结论与 v2.0 优化 PRD（9 项 P0） |
 | [AirMirror-DLNA投屏优化-20261121.md](AirMirror-DLNA投屏优化-20261121.md) | 视频 App 投屏搜索/投播稳定性根因、SSDP 与协议兼容修复、APK 验证记录 |
 | [AirMirror-主题令牌结构-v2.0-20261122.md](AirMirror-主题令牌结构-v2.0-20261122.md) | 三期 T06099：Raw/Semantic/Component 三层令牌、Midnight 映射、5% 安全区、OLED 接口 |
+| [AirMirror-TV布局设计-20261123.md](AirMirror-TV布局设计-20261123.md) | 三期 T06100：TV 判定、5% 安全区、二维码/码字号自适应、1080p/720p/4:3 截图与验收 |
 | [AirMirror-PC首启安装向导设计-v2.0-20261122.md](AirMirror-PC首启安装向导设计-v2.0-20261122.md) | 三期 T06108：PC 四步向导、16 个错误态、ZIP/卸载口径与线框稿 |
 | [AirMirror-性能SLO-v2.0-20261122.md](AirMirror-性能SLO-v2.0-20261122.md) | 三期 T06116：首帧/重连/延迟/丢帧/内存/APK 增量指标、分档目标与验收矩阵 |
 | [AirMirror-跨端联调缺陷修复-20261122.md](AirMirror-跨端联调缺陷修复-20261122.md) | 三期 T06122：AP 隔离、离线接收端、码错误与 PC 握手的修复映射和回归证据 |

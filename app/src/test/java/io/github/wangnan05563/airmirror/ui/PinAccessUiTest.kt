@@ -137,7 +137,11 @@ class PinAccessUiTest {
 
     @Test
     fun ownerCanChangeThePinWithTheRemoteFriendlyKeypad() {
-        DeviceStore(ApplicationProvider.getApplicationContext<Context>()).setFirstLaunch(false)
+        DeviceStore(ApplicationProvider.getApplicationContext<Context>()).apply {
+            // 同进程测试可能继承上一条的锁定快照；改 PIN 用例从干净状态起步。
+            savePinState("")
+            setFirstLaunch(false)
+        }
         val a = setup()
         val store = field(a, "store") as DeviceStore
         val pairing = field(a, "pairing") as Pairing

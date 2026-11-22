@@ -27,14 +27,15 @@ class MainVisualGuardTest {
         File(projectRoot(), "app/src/main/java/io/github/wangnan05563/airmirror/ui/ReceiverActivity.kt").readText()
 
     @Test
-    fun `主视觉区最多四件 设备名 投屏码 二维码 PIN区`() {
+    fun `主视觉区最多三件 设备名 二维码码槽 PIN区`() {
         val src = receiver()
-        assertEquals("主视觉区只能有 4 个 addView（PIN 模式用 PIN 区替换码与二维码）", 4, src.split("mainArea.addView(").size - 1)
+        assertEquals("主视觉区只能有 3 个直接子件（二维码与码槽收进 visualRow）", 3, src.split("mainArea.addView(").size - 1)
         assertTrue("缺设备名行", src.contains("mainArea.addView(nameRow"))
         assertTrue("设备名仍在主视觉行内", src.contains("nameRow.addView(deviceNameText"))
         assertTrue("设备名旁缺品牌标记", src.contains("BrandMarkView(this)"))
-        assertTrue("缺投屏码槽", src.contains("mainArea.addView(codeSlot"))
-        assertTrue("缺二维码", src.contains("mainArea.addView(qrView"))
+        assertTrue("缺投屏码槽", src.contains("visualRow.addView(codeSlot"))
+        assertTrue("缺二维码", src.contains("visualRow.addView(qrView"))
+        assertTrue("缺视觉行挂载", src.contains("mainArea.addView(visualRow"))
         assertTrue("缺 PIN 区", src.contains("mainArea.addView(pinArea"))
         assertTrue("主视觉区要挂到待连接页", src.contains("waiting.addView(mainArea"))
     }
@@ -69,11 +70,12 @@ class MainVisualGuardTest {
     }
 
     @Test
-    fun `环形倒计时与投屏码字号保持不变`() {
+    fun `投屏码字号走 36sp 基准并按码槽收敛`() {
         val src = receiver()
         assertTrue("环形倒计时要留在码槽里", src.contains("codeSlot.addView(ring"))
-        assertTrue("投屏码字号走 36sp 令牌", src.contains("view.textSize = Theme.CODE_SP"))
-        assertEquals("投屏码必须 36sp", 36f, Theme.CODE_SP, 0f)
+        assertTrue("投屏码字号要以 36sp 为基准", src.contains("view.textSize = textSp") && src.contains("Theme.CODE_SP"))
+        assertTrue("低分辨率码槽要用 TvLayoutSpec 收敛字号", src.contains("TvLayoutSpec.codeSp("))
+        assertEquals("投屏码基准必须 36sp", 36f, Theme.CODE_SP, 0f)
         assertTrue("设备名走标题角色字号（TV 40sp / 手机 32sp）", src.contains("textSize = FocusPolicy.titleSp(isTv)"))
         assertTrue("主区正文不得小于 24sp", Theme.BODY_SP >= 24f)
     }

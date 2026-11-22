@@ -28,9 +28,18 @@ object TvFocus {
         Collections.newSetFromMap(WeakHashMap<View, Boolean>()),
     )
 
-    fun isTvMode(context: Context): Boolean =
-        (context.resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) ==
-            Configuration.UI_MODE_TYPE_TELEVISION
+    /**
+     * 电视/盒子判定：真正的 TELEVISION uiMode 优先；杂牌盒子常不报 uiMode，
+     * 再用「宽度 ≥1024px 且横向」兜底，避免 1080p 盒子落回手机 14sp 字号。
+     */
+    fun isTvMode(context: Context): Boolean {
+        val configuration = context.resources.configuration
+        val uiModeTv =
+            (configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) ==
+                Configuration.UI_MODE_TYPE_TELEVISION
+        val metrics = context.resources.displayMetrics
+        return TvLayoutSpec.isTvLayout(uiModeTv, metrics.widthPixels, metrics.heightPixels)
+    }
 
     /**
      * [requestInitialFocus] 只在一个页面首次建立时给 true；
