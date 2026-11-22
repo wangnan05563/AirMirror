@@ -38,6 +38,9 @@
     <!-- T05759 P1：对话框统一 24dp 圆角、SURFACE 面，按钮继续走 Material Components。 -->
     <style name="ThemeOverlay.AirMirror.Dialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
         <item name="colorSurface">@color/airmirror_surface</item>
+        <!-- Material3 的 AlertDialog 背景实际取 colorSurfaceContainerHigh，不补这一项就会落回默认灰紫 -->
+        <item name="colorSurfaceContainerHigh">@color/airmirror_surface</item>
+        <item name="colorSurfaceContainer">@color/airmirror_surface</item>
         <item name="colorOnSurface">@color/airmirror_text_primary</item>
         <item name="colorPrimary">@color/airmirror_accent</item>
         <item name="colorOnPrimary">@color/airmirror_background</item>

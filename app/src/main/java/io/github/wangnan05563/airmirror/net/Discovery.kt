@@ -59,7 +59,11 @@ class ServiceAdvertiser(
             override fun onUnregistrationFailed(info: NsdServiceInfo, errorCode: Int) = Unit
         }
         listener = registration
-        nsdManager.registerService(info, NsdManager.PROTOCOL_DNS_SD, registration)
+        // 与 discoverServices 同理：NSD 服务连接异常时不应让接收页起不来；
+        // 注册失败只是少一条 mDNS 广播，UDP 探测仍能发现本机。
+        runCatching {
+            nsdManager.registerService(info, NsdManager.PROTOCOL_DNS_SD, registration)
+        }.onFailure { Log.w(Nsd.TAG, "registerService failed", it) }
     }
 
     fun stop() {
@@ -127,7 +131,11 @@ class ServiceBrowser(
             override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) = Unit
         }
         discovery = listener
-        nsdManager.discoverServices(Nsd.SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, listener)
+        // 部分 ROM / 单测环境里 NSD 服务连接尚未就绪，discoverServices 可能直接抛异常；
+        // 发现失败不应拖垮整个发送页，交给 UDP 探测那条路继续兜底。
+        runCatching {
+            nsdManager.discoverServices(Nsd.SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, listener)
+        }.onFailure { Log.w(Nsd.TAG, "discoverServices failed", it) }
     }
 
     fun stop() {

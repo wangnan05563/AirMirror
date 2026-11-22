@@ -253,8 +253,9 @@ class SenderActivity : Activity() {
         crossNetRow = TextView(this).apply {
             textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_SECONDARY)
-            setPadding(Theme.dp(this@SenderActivity, Theme.SPACE_XS_DP), 0, 0, Theme.dp(this@SenderActivity, Theme.SPACE_MD_DP))
+            setPadding(Theme.dp(this@SenderActivity, Theme.SPACE_XS_DP), 0, 0, 0)
             setOnClickListener { editCrossNet() }
+            UiKit.touchTarget(this)
         }
         root.addView(crossNetRow, matchWidth())
         // PRD 通用需求「菜单新增在线更新」：内置仓库地址，不开放手填；只查 GitHub Release（Q-6）
@@ -262,8 +263,9 @@ class SenderActivity : Activity() {
             text = "检查更新"
             textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_SECONDARY)
-            setPadding(Theme.dp(this@SenderActivity, Theme.SPACE_XS_DP), 0, 0, Theme.dp(this@SenderActivity, Theme.SPACE_MD_DP))
+            setPadding(Theme.dp(this@SenderActivity, Theme.SPACE_XS_DP), 0, 0, 0)
             setOnClickListener { checkUpdate() }
+            UiKit.touchTarget(this)
             A11y.describe(this, A11yCopy.checkUpdate())
         }
         root.addView(updateRow, matchWidth())
@@ -426,6 +428,8 @@ class SenderActivity : Activity() {
         setTextColor(Theme.TEXT_PRIMARY)
         setHintTextColor(StatusColors.offlineText())
         UiKit.inset(this, color = Theme.SURFACE_ELEVATED)
+        minHeight = Theme.dp(this@SenderActivity, UiKit.TOUCH_TARGET_DP)
+        gravity = Gravity.CENTER_VERTICAL
         setPadding(Theme.dp(this@SenderActivity, Theme.SPACE_MD_DP), Theme.dp(this@SenderActivity, 6), Theme.dp(this@SenderActivity, Theme.SPACE_MD_DP), Theme.dp(this@SenderActivity, 6))
         A11y.describe(this, if (label == "投屏码") A11yCopy.codeInputLabel() else A11yCopy.addressInputLabel())
     }
@@ -708,8 +712,11 @@ class SenderActivity : Activity() {
             setPadding(0, Theme.dp(this@SenderActivity, Theme.SPACE_XS_DP), 0, 0)
         }
         card.addView(diagnosisNextStep, matchWidth())
+        // 640dp 高的机型上，三枚 48dp 竖排按钮会把「用投屏码连接」裁掉一半；
+        // 紧凑屏改横排等宽，卡片总高从约 222dp 收到约 110dp。
+        val compact = resources.configuration.screenHeightDp < 700
         val buttons = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+            orientation = if (compact) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
             setPadding(0, gap, 0, 0)
         }
         for ((index, action) in EmptyDiagnosis.ACTIONS.withIndex()) {
@@ -718,6 +725,11 @@ class SenderActivity : Activity() {
                 setTextColor(Theme.ACCENT)
                 maxLines = 1
                 ellipsize = TextUtils.TruncateAt.END
+                if (compact) {
+                    textSize = Theme.PHONE_BUTTON_COMPACT_SP
+                    setPadding(Theme.dp(this@SenderActivity, Theme.SPACE_XS_DP), 0,
+                        Theme.dp(this@SenderActivity, Theme.SPACE_XS_DP), 0)
+                }
                 minimumHeight = Theme.dp(this@SenderActivity, 48)
                 A11y.describe(this, when (action) {
                     ErrorNotice.Action.RETRY_DISCOVERY -> A11yCopy.diagnosisRetry()
@@ -726,11 +738,17 @@ class SenderActivity : Activity() {
                     else -> ErrorNotice.actionLabel(action)
                 })
                 setOnClickListener { onDiagnosisAction(action) }
-            }, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                Theme.dp(this@SenderActivity, 48),
-            ).apply {
-                if (index > 0) topMargin = gap
+            }, if (compact) {
+                LinearLayout.LayoutParams(0, Theme.dp(this@SenderActivity, 48), 1f).apply {
+                    if (index > 0) leftMargin = gap
+                }
+            } else {
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    Theme.dp(this@SenderActivity, 48),
+                ).apply {
+                    if (index > 0) topMargin = gap
+                }
             })
         }
         card.addView(buttons, matchWidth())
@@ -1246,9 +1264,15 @@ class SenderActivity : Activity() {
         val version = runCatching {
             packageManager.getPackageInfo(packageName, 0).versionName
         }.getOrNull().orEmpty()
+        val versionCode = installedVersionCode()
         val abi = deviceAbi()
         thread(name = "airmirror-update-check") {
-            val result = UpdateChecker(UrlHttpText(), version, preferAbi = abi).check()
+            val result = UpdateChecker(
+                UrlHttpText(),
+                version,
+                preferAbi = abi,
+                currentVersionCode = versionCode,
+            ).check()
             main.post {
                 if (isFinishing) return@post
                 updateBusy = false
@@ -1257,6 +1281,13 @@ class SenderActivity : Activity() {
             }
         }
     }
+
+    /** 本机 versionCode：在线更新按它判断线上包是否真的能覆盖安装（API 28 起用 long 版本）。 */
+    @Suppress("DEPRECATION")
+    private fun installedVersionCode(): Long = runCatching {
+        val info = packageManager.getPackageInfo(packageName, 0)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) info.longVersionCode else info.versionCode.toLong()
+    }.getOrDefault(0L)
 
     /** 更新检查结果落到界面：静默自检只在发现新版本时才弹框，其余提示一律不吵用户。 */
     private fun applyUpdateResult(result: UpdateResult, silent: Boolean, version: String) {
@@ -1331,6 +1362,11 @@ class SenderActivity : Activity() {
 
     /** Android 8+ 必须先由用户为本应用打开「安装未知应用」，App 不能自批。 */
     private fun installUpdate(file: File) {
+        // 版本码比本机低时 Android 必定拒绝，提前说清原因，别让系统只回一句「安装失败」。
+        if (ApkInstaller.isDowngrade(this, file)) {
+            toast("该更新包的版本低于当前已安装版本，Android 不允许覆盖安装；请等待更高版本发布")
+            return
+        }
         // 先自己判签名：系统安装器只会甩「软件包似乎无效 / 签名不一致」，用户无从下手。
         when (ApkInstaller.signatureState(this, file)) {
             ApkSignatureState.Unknown -> {

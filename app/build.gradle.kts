@@ -1,23 +1,54 @@
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
 
 // 发布构建的当天日期+序号（YYYYMMDD-NNN）由 scripts/build.ps1 -Patch 生成并传入；
-// 普通调试构建不传，versionName 保持固定的 0.1.0-m0，保证同一 commit 的产物可复现。
+// 普通调试构建不传，versionName 保持固定的 0.1.0-m0，避免版本名随构建时间漂移；
+// versionCode 仍需单调递增以保证覆盖安装，规则见下。
 val versionPatch = providers.gradleProperty("versionPatch").orNull
 
 // 在线更新覆盖安装要求 versionCode 单调递增：仅改 versionName 时系统会把同版本/低版本包
 // 当成不可安装。把 patch 的 YYYYMMDD-NNN 压成 6 位日期 + 3 位序号（如 20261116-006
 // -> 261116006），既保留日期递增，又保证不超过 Android 的 2,100,000,000 上限。
-val versionCodeFromPatch = versionPatch
-    ?.split('-')
-    ?.takeIf { it.size == 2 }
-    ?.let { parts ->
+val versionCodeOfPatch: (String) -> Int? = { patch ->
+    val parts = patch.split('-')
+    if (parts.size != 2) null else {
         val date = parts[0].takeLast(6).toIntOrNull()
         val seq = parts[1].toIntOrNull()
-        if (date != null && seq != null) date * 1000 + seq else 1
-    } ?: 1
+        if (date != null && seq != null) date * 1000 + seq else null
+    }
+}
+val versionCodeFromPatch = versionPatch?.let(versionCodeOfPatch)
+
+// 普通 debug 构建也必须有能覆盖线上/本地已装包的 versionCode：固定为 1 时，
+// 手机上装过 GitHub Release（如 261117006）或本地 -Patch 包（如 261118005），
+// 再推本地包会被系统按降级拒绝（INSTALL_FAILED_VERSION_DOWNGRADE）。
+// 取「本地 release tag」与「.build-state 最近 patch」中的最大版本码；
+// 与已装包同码允许覆盖安装，后续发布包日期/序号增加后自然更高，两个方向都能覆盖。
+val latestTaggedVersionCode: Int? = runCatching {
+    val tag = providers.exec {
+        commandLine("git", "tag", "--list", "v0.1.0-m0.*", "--sort=-v:refname")
+        isIgnoreExitValue = true
+    }.standardOutput.asText.get()
+        .lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }
+    tag?.substringAfterLast('.')?.let(versionCodeOfPatch)
+}.getOrNull()
+
+// -Patch 构建成功后会把最后一个 patch 写进 .build-state：它可能还没发布，
+// 但手机可能已经装过，调试包必须能压过它。
+val localPatchVersionCode: Int? = runCatching {
+    rootProject.file(".build-state/patch.txt")
+        .takeIf { it.isFile }
+        ?.readText()?.trim()
+        ?.let(versionCodeOfPatch)
+}.getOrNull()
+
+val plainVersionCode = listOfNotNull(latestTaggedVersionCode, localPatchVersionCode).maxOrNull()
+    ?: (LocalDate.now().format(DateTimeFormatter.ofPattern("yyMMdd")).toInt() * 1000 + 999)
 
 // 可选 release 签名：参数来源 = -P 显式传入 > 仓库根 .env（本机开发用，已 gitignore）。
 // .env 兜底的意义：一键构建脚本不传参时也不会掉回 unsigned —— 线上曾把 unsigned 包发到
@@ -50,7 +81,7 @@ android {
         // 以启用 View.setAccessibilityTraversalBefore/After 修正无障碍遍历顺序。
         minSdk = 22
         targetSdk = 35
-        versionCode = versionCodeFromPatch
+        versionCode = versionCodeFromPatch ?: plainVersionCode
         versionName = if (versionPatch.isNullOrBlank()) "0.1.0-m0" else "0.1.0-m0.$versionPatch"
     }
 
@@ -102,6 +133,9 @@ android {
     }
 
     testOptions {
+        // Robolectric 需要合并后的 manifest/res，否则主题（AppCompat）无法解析，
+        // MaterialButton 构造会直接抛「requires Theme.AppCompat」。
+        unitTests.isIncludeAndroidResources = true
         unitTests.all { test ->
             // 单测会写临时文件（下载器、上传服务）。默认 java.io.tmpdir 常在系统盘，
             // 系统盘满时会出现「磁盘空间不足」这种与被测代码无关的失败，统一指到仓库内 build 目录。
@@ -195,4 +229,7 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
     testImplementation("junit:junit:4.13.2")
+    // JVM 布局审计：不依赖模拟器就能把 Activity 量到真实像素，补触控目标/尺寸回归。
+    testImplementation("org.robolectric:robolectric:4.13")
+    testImplementation("androidx.test:core:1.6.1")
 }

@@ -79,7 +79,7 @@ class MainActivity : Activity() {
             textSize = bodySp
             setTextColor(Theme.ACCENT)
             gravity = Gravity.CENTER
-            setPadding(0, Theme.dp(this@MainActivity, Theme.SPACE_MD_DP), 0, 0)
+            UiKit.touchTarget(this)
             setOnClickListener {
                 UiKit.dialog(this@MainActivity)
                     .setTitle("数据边界")
@@ -88,7 +88,10 @@ class MainActivity : Activity() {
                     .show()
             }
             A11y.describe(this, A11yCopy.mainPrivacy())
-        })
+        }, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = Theme.dp(this@MainActivity, Theme.SPACE_MD_DP) })
         // UI-07：关于页入口放在主入口底部，版本号/许可证/开源声明集中一页；
         // 与投屏码 QR 分离，避免把扫码主路径挤出视觉中心。
         root.addView(TextView(this).apply {
@@ -96,13 +99,13 @@ class MainActivity : Activity() {
             textSize = bodySp
             setTextColor(Theme.ACCENT)
             gravity = Gravity.CENTER
-            setPadding(0, Theme.dp(this@MainActivity, Theme.SPACE_SM_DP), 0, 0)
+            UiKit.touchTarget(this)
             setOnClickListener { startActivity(Intent(this@MainActivity, AboutActivity::class.java)) }
             A11y.describe(this, A11yCopy.aboutEntry())
         }, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT,
-        ))
+        ).apply { topMargin = Theme.dp(this@MainActivity, Theme.SPACE_SM_DP) })
         setContentView(root)
         // 全站可点控件统一接遥控器焦点（含「查看完整说明」这类 TextView 入口）
         TvFocus.applyTree(root)

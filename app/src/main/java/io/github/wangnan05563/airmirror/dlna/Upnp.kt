@@ -16,6 +16,7 @@ object Upnp {
         val friendlyName: String,
         val urlBase: String,
         val modelName: String = "AirMirror",
+        val modelNumber: String = "1.0",
         val serialNumber: String = "1",
     )
 
@@ -116,6 +117,7 @@ object Upnp {
             append("<friendlyName>").append(escape(device.friendlyName)).append("</friendlyName>\n")
             append("<manufacturer>AirMirror</manufacturer>\n")
             append("<modelName>").append(escape(device.modelName)).append("</modelName>\n")
+            append("<modelNumber>").append(escape(device.modelNumber)).append("</modelNumber>\n")
             append("<serialNumber>").append(escape(device.serialNumber)).append("</serialNumber>\n")
             append("<UDN>uuid:").append(escape(device.uuid)).append("</UDN>\n")
             append("<presentationURL>").append(escape(base)).append("</presentationURL>\n")
@@ -478,9 +480,20 @@ object Upnp {
         "http-get:*:video/quicktime:*",
         "http-get:*:video/mpeg:*",
         "http-get:*:video/x-matroska:*",
+        "http-get:*:video/x-msvideo:*",
+        "http-get:*:video/3gpp:*",
+        "http-get:*:video/webm:*",
+        "http-get:*:video/mp2t:*",
+        "http-get:*:video/x-flv:*",
+        "http-get:*:application/vnd.apple.mpegurl:*",
+        "http-get:*:application/x-mpegURL:*",
         "http-get:*:audio/mpeg:*",
         "http-get:*:audio/mp4:*",
         "http-get:*:audio/x-m4a:*",
+        "http-get:*:audio/aac:*",
+        "http-get:*:audio/x-aac:*",
+        "http-get:*:audio/wav:*",
+        "http-get:*:audio/x-wav:*",
         "http-get:*:image/jpeg:*",
         "http-get:*:image/png:*",
     ).joinToString(",")

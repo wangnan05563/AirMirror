@@ -46,6 +46,10 @@ object Theme {
 
     /** 按钮文字：手机 16sp、TV 24sp（MaterialButton 统一取值，见 UiKit.button）。 */
     const val PHONE_BUTTON_SP = 16f
+    /** 窄屏（<380dp）三个按钮并排时降到 14sp，避免“上一步”在 360dp 屏折成两行。 */
+    const val PHONE_BUTTON_DENSE_SP = 14f
+    /** 诊断卡内联动作按钮在紧凑布局下用 12sp，保证单行放下。 */
+    const val PHONE_BUTTON_COMPACT_SP = 12f
     const val BUTTON_SP = 24f
     /** 按钮圆角：贴近冻结视觉的胶囊感，又不至于像系统默认那样看不出边界。 */
     const val RADIUS_BUTTON_DP = 14

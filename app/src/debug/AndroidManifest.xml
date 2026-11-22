@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- 仅 debug 包允许 adb 直接拉起发送端做联调；release 包保持不导出 -->
+    <!-- 仅 debug 包允许 adb 直接拉起发送端/接收端做联调；release 包保持不导出 -->
     <application>
         <activity
             android:name=".ui.SenderActivity"

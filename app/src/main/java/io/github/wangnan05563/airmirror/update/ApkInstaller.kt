@@ -35,6 +35,31 @@ object ApkInstaller {
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
     /**
+     * Android 只允许 versionCode 不降低的覆盖安装。更新包比本机旧时，
+     * 系统安装器只会抛 INSTALL_FAILED_VERSION_DOWNGRADE；提前拦下并说明原因。
+     */
+    @Suppress("DEPRECATION")
+    fun isDowngrade(context: Context, apk: File): Boolean {
+        val archive = runCatching {
+            context.packageManager.getPackageArchiveInfo(apk.absolutePath, 0)
+        }.getOrNull() ?: return false
+        val installed = runCatching {
+            context.packageManager.getPackageInfo(context.packageName, 0)
+        }.getOrNull() ?: return false
+        val incomingCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            archive.longVersionCode
+        } else {
+            archive.versionCode.toLong()
+        }
+        val installedCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            installed.longVersionCode
+        } else {
+            installed.versionCode.toLong()
+        }
+        return incomingCode < installedCode
+    }
+
+    /**
      * 装之前先自检：系统安装器遇到「未签名/证书不同」只会给一句「软件包似乎无效」或
      * 「与现有应用签名不一致」，用户根本不知道该干什么。这里提前判出来，换成能执行的提示。
      */

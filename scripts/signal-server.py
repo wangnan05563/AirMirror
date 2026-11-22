@@ -16,6 +16,7 @@ import argparse
 import hashlib
 import json
 import os
+import socketserver
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -86,6 +87,20 @@ def matched_message(session):
 
 def new_session_id():
     return os.urandom(SESSION_BYTES)
+
+
+class LocalThreadingHTTPServer(ThreadingHTTPServer):
+    """跳过 HTTPServer 默认的 getfqdn 反查。
+
+    离线/受限网络里 getfqdn("127.0.0.1") 可能卡住几十秒，测试就表现为
+    「服务进程活着但一直没监听」。服务端不需要 FQDN，直接用绑定地址即可。
+    """
+
+    def server_bind(self):
+        socketserver.TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name = host
+        self.server_port = port
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -189,7 +204,7 @@ def main():
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8787)
     args = parser.parse_args()
-    server = ThreadingHTTPServer((args.host, args.port), Handler)
+    server = LocalThreadingHTTPServer((args.host, args.port), Handler)
     server.daemon_threads = True
     print("AirMirror signaling on http://%s:%d (reference only)" % (args.host, args.port), flush=True)
     try:

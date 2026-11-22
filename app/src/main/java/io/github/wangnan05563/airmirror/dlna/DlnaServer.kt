@@ -2,6 +2,10 @@ package io.github.wangnan05563.airmirror.dlna
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkRequest
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -44,6 +48,11 @@ class DlnaServer(
     private var server: ServerSocket? = null
     private var responder: SsdpResponder? = null
     private var worker: Thread? = null
+
+    /** 网络切换（Wi-Fi 重连、有线 DHCP 换地址）后必须跟着换 SSDP LOCATION，否则手机读到旧地址连不上。 */
+    private val connectivity: ConnectivityManager? =
+        appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
     /**
      * 活动连接：既用于限制并发（每个请求一条线程，不设上限就是给局域网内任何人一个线程耗尽入口），
@@ -155,12 +164,26 @@ class DlnaServer(
         running = true
         val ip = localIpv4() ?: "127.0.0.1"
         val location = "http://$ip:${socket.localPort}/description.xml"
-        responder = SsdpResponder(appContext, location, "uuid:$uuid", types).also {
+        responder = SsdpResponder(
+            appContext,
+            location,
+            "uuid:$uuid",
+            types,
+            onUnavailable = { message ->
+                // 端口 1900 被电视盒自带投屏占用时，手机侧只会表现为“时有时无”，必须在大屏上说清楚。
+                onStatus(message)
+                onNotice?.invoke(message)
+            },
+            onReady = {
+                // 绑定成功（含 1900 冲突解除后的重试成功）才报“就绪”，避免先报后打脸。
+                onStatus("DLNA 就绪 · 可接收推送")
+            },
+        ).also {
             it.start()
             it.startAliveBeacon()
         }
+        watchNetwork()
         worker = thread(name = "airmirror-dlna") { acceptLoop(socket, friendlyName, ip) }
-        onStatus("DLNA 就绪 · 可接收推送")
         // 描述文件地址是 URL，按 14.4 不写日志；排查只需要端口
         Log.i(TAG, "DMR up on port ${socket.localPort}")
     }
@@ -272,11 +295,12 @@ class DlnaServer(
     private fun route(method: String, path: String, body: String, friendlyName: String, ip: String): Triple<Int, String, String>? {
         val clean = path.substringBefore('?')
         return when {
-            method == "GET" && (clean == "/description.xml" || clean == "/root.xml" || clean == "/device.xml") ->
-                Triple(
-                    200, MIME_XML,
-                    Upnp.deviceXml(Upnp.Device(uuid, friendlyName, "http://$ip:$httpPort/")),
-                )
+            method == "GET" && (clean == "/description.xml" || clean == "/root.xml" || clean == "/device.xml") -> {
+                // URLBase 必须按“请求这一刻”的本机地址生成。启动时缓存 IP 会让 Wi-Fi/有线换地址后
+                // 描述文件继续指向旧网段，控制点能搜到却打不开控制 URL，表现就是“投播总是失败”。
+                val baseIp = localIpv4() ?: ip
+                Triple(200, MIME_XML, Upnp.deviceXml(Upnp.Device(uuid, friendlyName, "http://$baseIp:$httpPort/")))
+            }
 
             method == "GET" && clean.startsWith("/scpd/") -> {
                 val serviceId = when (clean.substringAfterLast('/').removeSuffix(".xml")) {
@@ -670,7 +694,44 @@ class DlnaServer(
         out.flush()
     }
 
+    /**
+     * 监听默认网络变化。只换 SSDP 的 LOCATION 并重建组播监听，HTTP 端口与已建立的媒体流不动：
+     * 重连不应该打断正在播放的视频。
+     */
+    private fun watchNetwork() {
+        val manager = connectivity ?: return
+        if (networkCallback != null) return
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                refreshDiscovery()
+            }
+
+            override fun onLost(network: Network) {
+                refreshDiscovery()
+            }
+        }
+        networkCallback = callback
+        runCatching {
+            if (Build.VERSION.SDK_INT >= 24) {
+                manager.registerDefaultNetworkCallback(callback)
+            } else {
+                manager.registerNetworkCallback(NetworkRequest.Builder().build(), callback)
+            }
+        }.onFailure { Log.w(TAG, "network callback unavailable: ${Redactor.throwable(it)}") }
+    }
+
+    private fun refreshDiscovery() {
+        val ip = localIpv4() ?: return
+        val currentPort = httpPort
+        if (currentPort <= 0) return
+        responder?.updateLocation("http://$ip:$currentPort/description.xml")
+    }
+
     fun stop() {
+        networkCallback?.let { callback ->
+            runCatching { connectivity?.unregisterNetworkCallback(callback) }
+        }
+        networkCallback = null
         running = false
         responder?.stop()
         responder = null

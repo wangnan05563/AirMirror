@@ -111,6 +111,9 @@ class UpnpSoapTest {
         val sink = Upnp.sinkProtocols()
         assertTrue(sink.contains("http-get:*:video/mp4:*"))
         assertTrue(sink.contains("http-get:*:audio/mpeg:*"))
+        // 优酷/抖音的 HLS 源要先在 Sink 里声明，控制点才会把 m3u8 交给接收端。
+        assertTrue(sink.contains("http-get:*:application/vnd.apple.mpegurl:*"))
+        assertTrue(sink.contains("http-get:*:video/x-flv:*"))
     }
 
     @Test

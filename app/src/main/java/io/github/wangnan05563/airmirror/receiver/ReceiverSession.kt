@@ -1224,8 +1224,9 @@ class ReceiverSession(
                 out.hardAlign()
                 pacer.reset()
                 avSync.afterHardAlign()
+                // PRD FR-09 异常表：长时间偏差「不提示用户」，只做硬对齐。
+                // 旧实现每秒弹一次 3 秒浮层，浮层永远顶不掉，正是用户看到的“反复提示”。
                 Log.i(TAG, "hard align at ${driftMs}ms drift, streak=${avSync.hardAlignStreak}")
-                onNotice("$deviceName · 音画偏差过大，已重新对齐")
             }
 
             AvSync.Action.DOWNGRADE -> downgradeForAvDrift(deviceName, driftMs)
@@ -1238,17 +1239,24 @@ class ReceiverSession(
      */
     private fun downgradeForAvDrift(deviceName: String, driftMs: Int) {
         avDowngrades++
+        // 手动锁定画质是用户的明确选择（PRD FS-05）：音画降档也必须让路，
+        // 否则用户锁了 1080p60 仍会被 AV 逻辑一路压到 480p，观感只会更差。
+        val lock = qualityLock
+        if (lock != null) {
+            Log.i(TAG, "av drift ${driftMs}ms, quality locked at ${lock.label}, keep stream")
+            return
+        }
         val lower = QualityTiers.downgrade(ceiling)
         if (lower == ceiling) {
+            // 已经在最低档：继续“降”没有意义。PRD 异常表要求不提示用户，这里只记日志；
+            // 每 3 次硬对齐再弹一次“已在最低档”正是用户看到的另一条重复提示。
             Log.w(TAG, "av drift ${driftMs}ms at lowest tier ${ceiling.label}, keeping stream")
-            onNotice("$deviceName · 已在最低档，音画仍有偏差")
             return
         }
         ceiling = lower
         rebuildLadder(lower)
         sendControl(Limit.encode(ceilingOf(lower)), "av-sync ceiling ${lower.label}")
         Log.i(TAG, "av drift ${driftMs}ms -> tier ${lower.label}")
-        onNotice("$deviceName · 音画偏差过大，画质已降到 ${lower.label}")
         onStatus("$deviceName · 音画偏差过大，画质已降到 ${lower.label}")
         pacer.reset()
     }

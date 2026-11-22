@@ -24,14 +24,17 @@ class AboutActivity : Activity() {
         val bodySp = FocusPolicy.bodySp(isTv)
         val titleSp = FocusPolicy.titleSp(isTv)
         val sectionSp = FocusPolicy.sectionTitleSp(isTv)
+        val compact = resources.configuration.screenHeightDp < 700
         val pad = Theme.dp(this, Theme.SPACE_XL_DP)
+        val topPadDp = if (compact) Theme.SPACE_MD_DP else Theme.SPACE_XL_DP
+        val bottomPadDp = if (compact) Theme.SPACE_MD_DP else Theme.SPACE_XXL_DP
         val versionName = runCatching {
             packageManager.getPackageInfo(packageName, 0).versionName
         }.getOrNull().orEmpty()
 
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(pad, Theme.dp(this@AboutActivity, Theme.SPACE_XL_DP), pad, Theme.dp(this@AboutActivity, Theme.SPACE_XXL_DP))
+            setPadding(pad, Theme.dp(this@AboutActivity, topPadDp), pad, Theme.dp(this@AboutActivity, bottomPadDp))
         }
 
         val back = UiKit.button(this, "返回", UiKit.Kind.Ghost).apply {
@@ -46,7 +49,7 @@ class AboutActivity : Activity() {
         val brandRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(0, Theme.dp(this@AboutActivity, Theme.SPACE_LG_DP), 0, 0)
+            setPadding(0, Theme.dp(this@AboutActivity, if (compact) Theme.SPACE_MD_DP else Theme.SPACE_LG_DP), 0, 0)
         }
         brandRow.addView(BrandMarkView(this).apply { A11y.decorative(this) }, LinearLayout.LayoutParams(
             Theme.dp(this, Theme.SPACE_XXL_DP),
@@ -69,7 +72,8 @@ class AboutActivity : Activity() {
             textSize = bodySp
             setTextColor(Theme.TEXT_SECONDARY)
             gravity = Gravity.CENTER
-            setPadding(0, Theme.dp(this@AboutActivity, Theme.SPACE_SM_DP), 0, Theme.dp(this@AboutActivity, Theme.SPACE_XL_DP))
+            setPadding(0, Theme.dp(this@AboutActivity, Theme.SPACE_SM_DP), 0,
+                Theme.dp(this@AboutActivity, if (compact) Theme.SPACE_MD_DP else Theme.SPACE_XL_DP))
         })
 
         val versionCard = LinearLayout(this).apply {
@@ -83,16 +87,16 @@ class AboutActivity : Activity() {
         content.addView(versionCard, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT,
-        ).apply { topMargin = Theme.dp(this@AboutActivity, Theme.SPACE_LG_DP) })
+        ).apply { topMargin = Theme.dp(this@AboutActivity, if (compact) Theme.SPACE_MD_DP else Theme.SPACE_LG_DP) })
 
-        content.addView(label("许可证摘要", sectionSp, Theme.ACCENT, topDp = Theme.SPACE_XL_DP))
+        content.addView(label("许可证摘要", sectionSp, Theme.ACCENT, topDp = if (compact) Theme.SPACE_LG_DP else Theme.SPACE_XL_DP))
         content.addView(label(AboutContent.LICENSE_SUMMARY, bodySp, Theme.TEXT_SECONDARY, topDp = Theme.SPACE_SM_DP))
 
         val notice = UiKit.button(this, "查看开源声明", UiKit.Kind.Secondary).apply {
             setOnClickListener { showOpenSourceNotice() }
             A11y.describe(this, A11yCopy.aboutNotice())
         }
-        content.addView(notice, UiKit.fullWidth(this, Theme.SPACE_XL_DP, 0))
+        content.addView(notice, UiKit.fullWidth(this, if (compact) Theme.SPACE_LG_DP else Theme.SPACE_XL_DP, 0))
 
         val project = UiKit.button(this, "打开项目主页", UiKit.Kind.Ghost).apply {
             setOnClickListener { openProjectPage() }
@@ -105,7 +109,7 @@ class AboutActivity : Activity() {
             textSize = bodySp
             setTextColor(StatusColors.offlineText())
             gravity = Gravity.CENTER
-            setPadding(0, Theme.dp(this@AboutActivity, Theme.SPACE_XL_DP), 0, 0)
+            setPadding(0, Theme.dp(this@AboutActivity, if (compact) Theme.SPACE_MD_DP else Theme.SPACE_XL_DP), 0, 0)
         })
 
         val scroll = ScrollView(this).apply {

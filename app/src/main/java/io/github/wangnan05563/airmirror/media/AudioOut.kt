@@ -33,10 +33,30 @@ class AudioOut(private val spec: AudioFormat.Spec) {
     @Volatile
     private var anchorPtsUs = -1L
 
+    @Volatile
     private var anchorSamples = 0L
+
+    /**
+     * 第一次写进声卡时，声卡播放头所在的位置。
+     * 不能假设 flush() 一定把 playbackHeadPosition 归零：部分电视盒子/Audio HAL 不归零，
+     * 硬对齐后 clockUs 会把「开机以来播过的所有样本」再加一遍，算出一个越来越大的假偏差，
+     * 于是每秒硬对齐一次、三次后一路降档——用户看到的就是“反复重新对齐 + 清晰度越来越差”。
+     */
+    @Volatile
+    private var anchorHeadSamples = 0L
 
     @Volatile
     private var writtenSamples = 0L
+
+    /**
+     * 串行化「写一块 PCM + 计数/锚定」与「硬对齐/释放」。
+     * 否则 [hardAlign] 的 flush 与 pump 里正在阻塞的 write 会交错：旧 PCM 在 flush 之后落地，
+     * 播放头时钟又被旧 pts 锚定，下一次采样就是一次假偏差，正好形成「对齐→更偏→再对齐」的循环。
+     */
+    private val writeLock = Any()
+
+    @Volatile
+    private var alignGeneration = 0L
 
     private val frameBytes = AudioFormat.pcmBytes(1, spec.channels)
     private val queue = LinkedBlockingQueue<Pcm>(QUEUE_FRAMES)
@@ -124,23 +144,42 @@ class AudioOut(private val spec: AudioFormat.Spec) {
                 return
             } ?: continue
             if (released) return
-            val written = runCatching { track.write(pcm.bytes, 0, pcm.bytes.size) }.getOrDefault(0)
+            val generation = alignGeneration
+            // 写、计数、锚定必须在同一把锁里完成：硬对齐一旦插进来，旧 PCM 不能再算进新基准
+            val written = synchronized(writeLock) {
+                if (released || generation != alignGeneration) {
+                    0
+                } else {
+                    val count = runCatching {
+                        track.write(pcm.bytes, 0, pcm.bytes.size)
+                    }.getOrDefault(0)
+                    if (count > 0) {
+                        if (anchorPtsUs < 0L) {
+                            // 先写好锚点数值，最后用 volatile 的 anchorPtsUs 发布；
+                            // 否则采样线程可能看到新的 pts、旧的播放头，算出一次假偏差。
+                            anchorSamples = writtenSamples
+                            // 记录锚点时的真实播放头：flush 后归零的设备这里就是 0；
+                            // 不归零的设备也能用差值算，不会把旧样本算进新时钟。
+                            anchorHeadSamples = playedSamples()
+                            anchorPtsUs = pcm.ptsUs
+                            // 每次硬对齐都会重新锚定一次，取证看接收端的 hard align 日志；这里只报第一条，免得刷屏
+                            if (!anchoredLogged) {
+                                anchoredLogged = true
+                                Log.i(TAG, "audio playback anchored at ${pcm.ptsUs}us head=$anchorHeadSamples")
+                            }
+                        }
+                        writtenSamples += count / frameBytes
+                        playedFrames++
+                    }
+                    count
+                }
+            }
+            if (generation != alignGeneration) continue
             if (written <= 0) {
                 // 声卡一口不吞通常是被独占或设备掉了：不记就只会看到「音画偏差 0ms」这种没有结论的现象
                 if (writeRejected++ % 50 == 0L) Log.w(TAG, "audio track rejected $writeRejected writes")
                 continue
             }
-            if (anchorPtsUs < 0L) {
-                anchorPtsUs = pcm.ptsUs
-                anchorSamples = writtenSamples
-                // 每次硬对齐都会重新锚定一次，取证看接收端的 hard align 日志；这里只报第一条，免得刷屏
-                if (!anchoredLogged) {
-                    anchoredLogged = true
-                    Log.i(TAG, "audio playback anchored at ${pcm.ptsUs}us")
-                }
-            }
-            writtenSamples += written / frameBytes
-            playedFrames++
         }
     }
 
@@ -150,18 +189,23 @@ class AudioOut(private val spec: AudioFormat.Spec) {
      */
     fun levelMs(): Int {
         val queued = queue.sumOf { it.bytes.size / frameBytes }.toLong()
-        val pending = (writtenSamples - playedSamples()).coerceAtLeast(0L)
+        // 与 clockUs 同理：有些设备 flush 后播放头不归零，直接 writtenSamples - playedSamples()
+        // 会被减成 0，微调逻辑误以为缓冲见底，反而不敢追帧。
+        val playedSinceAnchor = (playedSamples() - anchorHeadSamples).coerceAtLeast(0L)
+        val pending = (writtenSamples - playedSinceAnchor).coerceAtLeast(0L)
         return ((queued + pending) * 1_000 / spec.sampleRate).toInt()
     }
 
     /**
      * 主时钟：此刻听众正听到的那一帧对应的时间戳；还没开播回 0，调用方据此判「还不能拿来对表」。
-     * `flush()` 会把声卡的播放头清零，所以硬对齐后不需要再补偿旧值。
+     * 用锚点前后的播放头差值计算，不假设 `flush()` 一定把播放头清零——部分电视盒子不会。
      */
     fun clockUs(): Long {
         val anchor = anchorPtsUs
         if (anchor < 0L) return 0L
-        return anchor + (playedSamples() - anchorSamples).coerceAtLeast(0L) * 1_000_000L / spec.sampleRate
+        // 用「播放头相对锚点的增量」，而不是假设播放头从 0 开始：
+        // 这样即使某个盒子的 flush() 不重置 playbackHeadPosition，也不会算出假偏差。
+        return anchor + (playedSamples() - anchorHeadSamples).coerceAtLeast(0L) * 1_000_000L / spec.sampleRate
     }
 
     private fun playedSamples(): Long =
@@ -191,15 +235,20 @@ class AudioOut(private val spec: AudioFormat.Spec) {
      * 清空解码队列与声卡缓冲，下一条 PCM 重新锚定时间戳。
      */
     fun hardAlign() {
-        queue.clear()
-        runCatching {
-            track.pause()
-            track.flush()
-            track.play()
+        // 与 pump 的 write/计数互斥：先等在途 write 返回，再 flush，旧 PCM 不会落到新基准里
+        synchronized(writeLock) {
+            alignGeneration++
+            queue.clear()
+            runCatching {
+                track.pause()
+                track.flush()
+                track.play()
+            }
+            anchorPtsUs = -1L
+            anchorSamples = 0L
+            anchorHeadSamples = 0L
+            writtenSamples = 0L
         }
-        anchorPtsUs = -1L
-        anchorSamples = 0L
-        writtenSamples = 0L
     }
 
     private fun newTrack(): AudioTrack {
@@ -248,9 +297,12 @@ class AudioOut(private val spec: AudioFormat.Spec) {
     fun release() {
         if (released) return
         released = true
-        queue.clear()
-        runCatching { track.stop() }
-        runCatching { track.release() }
+        synchronized(writeLock) {
+            alignGeneration++
+            queue.clear()
+            runCatching { track.stop() }
+            runCatching { track.release() }
+        }
         runCatching { codec.stop() }
         runCatching { codec.release() }
     }

@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
+import android.widget.TextView
 import android.widget.LinearLayout
 import androidx.appcompat.app.AlertDialog
 import com.google.android.material.button.MaterialButton
@@ -24,6 +25,19 @@ object UiKit {
 
     /** 按钮语义：主行动（强调色实底）、次行动（面底）、弱行动（纯文字）。 */
     enum class Kind { Primary, Secondary, Ghost }
+
+    /** Android 无障碍触控基线：可点控件高度不得低于 48dp。 */
+    const val TOUCH_TARGET_DP = 48
+
+    /**
+     * 给直接 clickable 的 TextView 补触控基线。
+     * 主入口说明/关于、发送端跨网/更新、接收端设置行都是这种写法，只设内边距不够。
+     */
+    fun touchTarget(view: TextView, minDp: Int = TOUCH_TARGET_DP) {
+        view.minHeight = Theme.dp(view.context, minDp)
+        val horizontal = view.gravity and Gravity.HORIZONTAL_GRAVITY_MASK
+        view.gravity = horizontal or Gravity.CENTER_VERTICAL
+    }
 
     fun button(
         context: Context,

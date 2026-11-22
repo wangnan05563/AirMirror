@@ -68,6 +68,23 @@ class SsdpTest {
     }
 
     @Test
+    fun ssdpAllAnswersEveryDeclaredTargetInsteadOfOneCatchAll() {
+        val targets = types + Ssdp.ROOTDEVICE + "uuid:11111111-2222-3333-4444-555555555555"
+        val replies = Ssdp.searchResponses(
+            "ssdp:all",
+            "http://192.168.1.7:41234/description.xml",
+            "uuid:11111111-2222-3333-4444-555555555555",
+            targets,
+        )
+        assertEquals(targets.size, replies.size)
+        assertTrue(replies.none { it.second.contains("ST: ssdp:all\r\n") })
+        assertTrue(replies.any { it.second.contains("ST: upnp:rootdevice\r\n") })
+        assertTrue(replies.any { it.second.contains("ST: ${Upnp.AVTRANSPORT}\r\n") })
+        assertTrue(replies.any { it.second.contains("USN: uuid:11111111-2222-3333-4444-555555555555\r\n") })
+        assertTrue(replies.any { it.second.contains("USN: uuid:11111111-2222-3333-4444-555555555555::upnp:rootdevice\r\n") })
+    }
+
+    @Test
     fun aliveAnnouncesLocationAndByebyeClearsIt() {
         val alive = Ssdp.alive(Upnp.AVTRANSPORT, "http://192.168.1.7:41234/description.xml", "uuid:x::$Upnp.AVTRANSPORT")
         assertTrue(alive.startsWith("NOTIFY * HTTP/1.1\r\n"))

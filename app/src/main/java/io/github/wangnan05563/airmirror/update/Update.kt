@@ -49,6 +49,19 @@ object UpdateVersion {
         if (text.isEmpty()) return emptyList()
         return text.split('.', '-', '_').filter { it.isNotEmpty() }
     }
+
+    /**
+     * tag 尾部的 YYYYMMDD-NNN 与构建脚本生成的 versionCode 一一对应：
+     * `v0.1.0-m0.20261117-006` -> 261117006。更新判断不能只看 versionName，
+     * 否则本地调试包（版本码可能已高于线上包）会被提示安装更旧的发布包，
+     * 系统随即以 INSTALL_FAILED_VERSION_DOWNGRADE 拒绝。
+     */
+    fun versionCodeFromTag(tag: String): Long? {
+        val match = Regex("""(\d{8})-(\d{3})$""").find(tag.trim()) ?: return null
+        val date = match.groupValues[1].takeLast(6).toLongOrNull() ?: return null
+        val seq = match.groupValues[2].toLongOrNull() ?: return null
+        return date * 1000 + seq
+    }
 }
 
 data class ReleaseInfo(
@@ -141,6 +154,7 @@ class UpdateChecker(
     private val apiUrl: String = DEFAULT_API,
     private val preferAbi: String = "",
     private val timeoutMs: Int = 8_000,
+    private val currentVersionCode: Long = 0L,
 ) {
     fun check(): UpdateResult {
         val body = try {
@@ -153,6 +167,12 @@ class UpdateChecker(
                 // 只有 unsigned 资产时给一句能对上号的提示，别让用户以为是自己网络的问题
                 if (body.contains("unsigned.apk", ignoreCase = true)) UNSIGNED_ONLY else PARSE_ERROR,
             )
+        // 安装器最终按 versionCode 判定升降级：线上包版本码不高于本机时，
+        // 即使 versionName 看起来更新也不能提示下载，否则只会换来一次安装失败。
+        val remoteCode = UpdateVersion.versionCodeFromTag(release.tag)
+        if (currentVersionCode > 0 && remoteCode != null && remoteCode <= currentVersionCode) {
+            return UpdateResult.UpToDate
+        }
         return if (UpdateVersion.isNewer(release.tag, currentVersion)) {
             UpdateResult.Available(release)
         } else {

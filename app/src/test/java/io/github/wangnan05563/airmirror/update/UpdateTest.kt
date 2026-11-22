@@ -42,6 +42,13 @@ class UpdateVersionTest {
         assertFalse(UpdateVersion.isNewer("0.1.0", ""))
         assertFalse(UpdateVersion.isNewer("   ", "0.1.0"))
     }
+
+    @Test
+    fun `release tag 能解析出与构建一致的版本码`() {
+        assertEquals(261117006L, UpdateVersion.versionCodeFromTag("v0.1.0-m0.20261117-006"))
+        assertNull(UpdateVersion.versionCodeFromTag("v0.1.0-m0"))
+        assertNull(UpdateVersion.versionCodeFromTag("not-a-release"))
+    }
 }
 
 class ReleaseParserTest {
@@ -104,12 +111,17 @@ class ReleaseParserTest {
 class UpdateCheckerTest {
 
     // body 放在最后，调用处才能用尾随 lambda
-    private fun checker(current: String = "0.1.0-m0", body: () -> String): UpdateChecker =
+    private fun checker(
+        current: String = "0.1.0-m0",
+        currentCode: Long = 0L,
+        body: () -> String,
+    ): UpdateChecker =
         UpdateChecker(
             fetch = object : HttpText {
                 override fun get(url: String, timeoutMs: Int): String = body()
             },
             currentVersion = current,
+            currentVersionCode = currentCode,
         )
 
     @Test
@@ -151,5 +163,21 @@ class UpdateCheckerTest {
                 """{"tag_name":"v0.1.0-m0.20261113-001","assets":[{"name":"app-universal-release-unsigned.apk","browser_download_url":"https://x/u.apk"}]}"""
             }.check(),
         )
+    }
+
+    @Test
+    fun `线上包版本码更低时即使版本名更新也报告已最新`() {
+        val result = checker(currentCode = 261117007L) {
+            """{"tag_name":"v0.1.0-m0.20261117-006","assets":[{"name":"AirMirror-universal-release.apk","browser_download_url":"https://x/u.apk"}]}"""
+        }.check()
+        assertEquals(UpdateResult.UpToDate, result)
+    }
+
+    @Test
+    fun `线上包版本码更高时正常提示更新`() {
+        val result = checker(currentCode = 261117006L) {
+            """{"tag_name":"v0.1.0-m0.20261117-007","assets":[{"name":"AirMirror-universal-release.apk","browser_download_url":"https://x/u.apk"}]}"""
+        }.check()
+        assertTrue(result is UpdateResult.Available)
     }
 }

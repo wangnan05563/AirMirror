@@ -42,6 +42,9 @@
 | [AirMirror-专项范围边界确认-20261109.md](AirMirror-专项范围边界确认-20261109.md) | 体验专项的范围边界与不做清单 |
 | [AirMirror-体验指标验证方案-20261109.md](AirMirror-体验指标验证方案-20261109.md) | 体验指标的度量与验证方案 |
 | [AirMirror-竞品调研数据清洗-20261109.md](AirMirror-竞品调研数据清洗-20261109.md) | 竞品调研数据的清洗口径与可复核性说明 |
+| [AirMirror-GitHub竞品调研与优化需求-20261121.md](AirMirror-GitHub竞品调研与优化需求-20261121.md) | GitHub 同款产品复核、能力矩阵与 39 项优化需求（CX/FE/UI/TH/EN） |
+| [AirMirror-优化PRD-v2.0-20261121.md](AirMirror-优化PRD-v2.0-20261121.md) | 39 项需求评审结论与 v2.0 优化 PRD（9 项 P0） |
+| [AirMirror-DLNA投屏优化-20261121.md](AirMirror-DLNA投屏优化-20261121.md) | 视频 App 投屏搜索/投播稳定性根因、SSDP 与协议兼容修复、APK 验证记录 |
 
 ## 代码质量
 

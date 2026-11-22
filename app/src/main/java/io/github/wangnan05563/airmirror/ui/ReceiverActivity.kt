@@ -318,7 +318,8 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     private fun buildWaitingPage(): LinearLayout {
         waiting = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
+            // 待连接页内容短于屏幕时整体居中，避免二维码/投屏码全挤在上半屏、下半屏大片留白
+            gravity = Gravity.CENTER
             setBackgroundColor(Theme.BACKGROUND)
             setPadding(Theme.dp(this@ReceiverActivity, Theme.SPACE_XXL_DP), Theme.dp(this@ReceiverActivity, 28), Theme.dp(this@ReceiverActivity, Theme.SPACE_XXL_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_XL_DP))
         }
@@ -363,7 +364,9 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             topMargin = Theme.dp(this@ReceiverActivity, 44)
         })
 
-        val side = Theme.dp(this, 190)
+        // 小屏（360dp 宽/640dp 高）上 190dp 的二维码 + 190dp 投屏码会把「更多信息」挤出首屏；
+        // 按宽度降到 156dp，二维码仍有 312px，手机可正常扫描。
+        val side = Theme.dp(this, if (resources.configuration.screenWidthDp < 380) 156 else 190)
         qrView = ImageView(this).apply {
             setBackgroundColor(Theme.QR_BACKGROUND)
             A11y.describe(this, A11yCopy.mirrorQr())
@@ -401,6 +404,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             A11y.describe(this, A11yCopy.moreInfo(false))
             setPadding(0, Theme.dp(this@ReceiverActivity, Theme.SPACE_SM_DP), 0, Theme.dp(this@ReceiverActivity, Theme.SPACE_SM_DP))
             setOnClickListener { toggleMoreInfo() }
+            UiKit.touchTarget(this)
         }
         waiting.addView(moreInfoToggle, matchWidth().apply { topMargin = Theme.dp(this@ReceiverActivity, Theme.SPACE_XL_DP) })
 
@@ -643,6 +647,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
                 Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP), Theme.dp(this@ReceiverActivity, 10),
             )
             setOnClickListener { showSettings() }
+            UiKit.touchTarget(this)
             A11y.describe(this, A11yCopy.settingsEntry(false))
         }
         return settingsEntry
@@ -724,13 +729,15 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             text = "显示设置"
             textSize = FocusPolicy.titleSp(isTv)
             setTextColor(Theme.TEXT_PRIMARY)
-            setPadding(0, 0, 0, Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP))
+            setPadding(0, 0, 0, Theme.dp(this@ReceiverActivity, Theme.SPACE_SM_DP))
         })
+        settingsPanel.addView(sectionLabel("显示模式"))
         for (mode in DisplayMode.entries) {
             val row = TextView(this).apply {
                 textSize = FocusPolicy.bodySp(isTv)
                 setPadding(0, Theme.dp(this@ReceiverActivity, 10), 0, Theme.dp(this@ReceiverActivity, 10))
                 setOnClickListener { chooseMode(mode) }
+                UiKit.touchTarget(this)
             }
             modeRows[mode] = row
             settingsPanel.addView(row, matchWidth())
@@ -741,6 +748,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_PRIMARY)
             setPadding(0, Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP), 0, Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP))
+            UiKit.touchTarget(this)
             setOnClickListener {
                 followRotation = !followRotation
                 store.saveFollowRotation(followRotation)
@@ -754,11 +762,13 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
                 refitVideo()
             }
         }
+        settingsPanel.addView(sectionLabel("显示行为"))
         settingsPanel.addView(rotationRow, matchWidth())
         labelRow = TextView(this).apply {
             textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_PRIMARY)
             setPadding(0, 0, 0, Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP))
+            UiKit.touchTarget(this)
             setOnClickListener {
                 portraitLabel = !portraitLabel
                 store.savePortraitLabel(portraitLabel)
@@ -770,6 +780,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_PRIMARY)
             setPadding(0, 0, 0, Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP))
+            UiKit.touchTarget(this)
             setOnClickListener {
                 store.saveAutoStartEnabled(!store.autoStartEnabled())
                 refreshSettings()
@@ -782,6 +793,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             setTextColor(Theme.TEXT_PRIMARY)
             setPadding(0, Theme.dp(this@ReceiverActivity, Theme.SPACE_XS_DP), 0, Theme.dp(this@ReceiverActivity, Theme.SPACE_SM_DP))
             setOnClickListener { editSignaling() }
+            UiKit.touchTarget(this)
         }
         settingsPanel.addView(crossNetRow, matchWidth())
         settingsPanel.addView(TextView(this).apply {
@@ -796,6 +808,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         ))
         // FS-05：先把「本机最高支持哪一档、为什么没有 4K」写在档位列表上方，
         // 再列出可选档位——不可达的档位由 populateQualityRows 决定连行都不生成
+        settingsPanel.addView(sectionLabel("画质"))
         gateLine = TextView(this).apply {
             textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_SECONDARY)
@@ -808,6 +821,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_PRIMARY)
             setPadding(0, Theme.dp(this@ReceiverActivity, 10), 0, Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP))
+            UiKit.touchTarget(this)
             setOnClickListener {
                 store.saveQualityBadgeEnabled(!store.qualityBadgeEnabled())
                 refreshSettings()
@@ -837,6 +851,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             setTextColor(Theme.TEXT_PRIMARY)
             setPadding(0, Theme.dp(this@ReceiverActivity, 10), 0, Theme.dp(this@ReceiverActivity, 10))
             setOnClickListener { toggleDiagnostics() }
+            UiKit.touchTarget(this)
         }
         settingsPanel.addView(diagnosticsRow, matchWidth())
         clearDataRow = TextView(this).apply {
@@ -844,6 +859,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             setTextColor(Theme.TEXT_PRIMARY)
             setPadding(0, Theme.dp(this@ReceiverActivity, 10), 0, Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP))
             setOnClickListener { clearLocalData() }
+            UiKit.touchTarget(this)
         }
         settingsPanel.addView(clearDataRow, matchWidth())
         settingsPanel.addView(UiKit.button(this, kind = UiKit.Kind.Primary).apply {
@@ -853,6 +869,13 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         }, matchWidth())
         refreshSettings()
         return settingsPanel
+    }
+
+    private fun sectionLabel(text: String) = TextView(this).apply {
+        this.text = text
+        textSize = FocusPolicy.sectionTitleSp(isTv)
+        setTextColor(Theme.ACCENT)
+        setPadding(0, Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP), 0, Theme.dp(this@ReceiverActivity, Theme.SPACE_XS_DP))
     }
 
     private fun divider() = View(this).apply { setBackgroundColor(Theme.DIVIDER) }
@@ -872,6 +895,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
                 textSize = FocusPolicy.bodySp(isTv)
                 setPadding(0, Theme.dp(this@ReceiverActivity, 10), 0, Theme.dp(this@ReceiverActivity, 10))
                 setOnClickListener { chooseQuality(tier) }
+                UiKit.touchTarget(this)
             }
             qualityRows[tier] = row
             qualityContainer.addView(row, matchWidth())
@@ -1179,6 +1203,11 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     /** FS-09：投屏中第一次返回只提示，10 秒内不再按就自动取消，第二次才真的结束。 */
     @Deprecated("Activity's back callback; keeps the app free of AndroidX")
     override fun onBackPressed() { // NOSONAR(kotlin:S1133) 平台回调必须覆写（项目无 AndroidX），不能删除
+        // 全屏设置面板是覆盖层：返回键应关面板回待连接页，而不是把整个接收端退到主入口
+        if (::settingsOverlay.isInitialized && settingsOverlay.visibility == View.VISIBLE) {
+            hideSettings()
+            return
+        }
         if (!isCasting) {
             super.onBackPressed()
             return
@@ -1245,7 +1274,9 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         onboardStepHint = TextView(this).apply { textSize = FocusPolicy.bodySp(isTv); setTextColor(Theme.TEXT_SECONDARY); gravity = Gravity.CENTER }
         card.addView(onboardStepHint, matchWidth())
         onboardTitle = TextView(this).apply {
-            textSize = FocusPolicy.titleSp(isTv); setTextColor(Theme.TEXT_PRIMARY); gravity = Gravity.CENTER
+            // 360dp 屏上 28sp 的「允许后台运行 / 自启」会折成两行；24sp 能一行放下且不牺牲层级
+            textSize = if (resources.configuration.screenWidthDp < 380) 24f else FocusPolicy.titleSp(isTv)
+            setTextColor(Theme.TEXT_PRIMARY); gravity = Gravity.CENTER
             setPadding(0, Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP), 0, 0)
         }
         card.addView(onboardTitle, matchWidth())
@@ -1261,6 +1292,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             UiKit.inset(this, color = Theme.BACKGROUND)
             hint = "设备名"
             gravity = Gravity.CENTER
+            minimumHeight = Theme.dp(this@ReceiverActivity, 48)
             visibility = View.GONE
             A11y.describe(this, A11yCopy.onboardInputLabel())
             val p = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
@@ -1282,16 +1314,26 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         onboardSkip = UiKit.button(this, kind = UiKit.Kind.Ghost).apply { text = "跳过"; A11y.describe(this, A11yCopy.onboardingSkip()); setOnClickListener { skipOnboardingStep() } }
         onboardNext = UiKit.button(this, kind = UiKit.Kind.Primary).apply { text = "下一步"; A11y.describe(this, A11yCopy.onboardingNext(false)); setOnClickListener { advanceOrFinish() } }
         val onboardGap = Theme.dp(this@ReceiverActivity, Theme.SPACE_SM_DP)
-        row.addView(onboardBack)
-        row.addView(onboardSkip, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { leftMargin = onboardGap })
-        row.addView(onboardNext, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { leftMargin = onboardGap })
+        // 三个按钮等宽：360dp 屏上「完成」不再被挤成 40dp，触控宽度也过 48dp
+        val onboardDense = resources.configuration.screenWidthDp < 380
+        listOf(onboardBack, onboardSkip, onboardNext).forEach { b ->
+            b.setPadding(Theme.dp(this@ReceiverActivity, Theme.SPACE_SM_DP), 0, Theme.dp(this@ReceiverActivity, Theme.SPACE_SM_DP), 0)
+            // 360dp 屏三等分后每个按钮约 66dp；16sp「上一步」会折成两行，小屏降到 14sp
+            if (onboardDense) b.textSize = Theme.PHONE_BUTTON_DENSE_SP
+        }
+        row.addView(onboardBack, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        row.addView(onboardSkip, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = onboardGap })
+        row.addView(onboardNext, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = onboardGap })
         card.addView(row, matchWidth())
 
+        // 360dp 屏固定 48dp 外边距会把卡片压到 264dp，28sp 标题「允许局域网访问」会折成孤字；
+        // 小屏收到 24dp 外边距，内容宽回到 264dp，标题与输入框都有呼吸空间
+        val sideMargin = if (resources.configuration.screenWidthDp < 380) 24 else 48
         onboarding.addView(card, FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER,
         ).apply {
-            leftMargin = Theme.dp(this@ReceiverActivity, 48)
-            rightMargin = Theme.dp(this@ReceiverActivity, 48)
+            leftMargin = Theme.dp(this@ReceiverActivity, sideMargin)
+            rightMargin = Theme.dp(this@ReceiverActivity, sideMargin)
         })
         onboardSkipAll = TextView(this).apply {
             text = "跳过全部"
@@ -1300,6 +1342,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             A11y.describe(this, A11yCopy.onboardingSkipAll())
             setPadding(Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP))
             setOnClickListener { finishOnboarding(store.deviceName(Onboarding.defaultDeviceName(Build.MODEL))) }
+            UiKit.touchTarget(this)
         }
         onboarding.addView(onboardSkipAll, FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.END,
@@ -1330,7 +1373,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             }
             2 -> {
                 onboardTitle.text = "允许后台运行 / 自启"
-                onboardBody.text = "开启后电视重启会自动打开接收端，并在后台持续等待投屏。若系统拦截自启，需到厂商设置里加入白名单（PRD FS-13）。"
+                onboardBody.text = "开启后电视重启会自动打开接收端，并在后台持续等待投屏。若系统拦截自启，可到厂商设置里加入白名单。"
                 onboardInput.visibility = View.GONE
                 onboardAutoToggle.visibility = View.VISIBLE
                 refreshOnboardAutoToggle()

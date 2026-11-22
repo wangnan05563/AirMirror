@@ -80,6 +80,9 @@ object FourGates {
      * 门通了但硬解只到 1080p 时，页面上也必须写 1080p。
      */
     fun headline(ceiling: QualityTier, report: GateReport): String {
+        // OFF 档的 label 是「不支持」，直接拼成「本机最高支持 不支持」是病句；
+        // 设置页要能让用户看懂「当前投不了，原因是什么」。
+        if (!ceiling.isUsable) return "当前无法投屏"
         val base = "本机最高支持 ${ceiling.label}"
         return if (report.reaches4K) base else "$base · ${report.unmetReason()}"
     }
