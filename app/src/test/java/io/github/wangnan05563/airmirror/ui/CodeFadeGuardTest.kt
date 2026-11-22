@@ -56,14 +56,14 @@ class CodeFadeGuardTest {
     }
 
     @Test
-    fun `150ms 只允许出现在 Theme 令牌`() {
+    fun `150ms 只允许出现在主题令牌`() {
         val hits = uiDir().walkTopDown()
             .filter { it.isFile && it.extension == "kt" }
             .flatMap { file -> file.readText().lines().map { it to file.name } }
             .filter { (line, _) -> line.contains("150L") }
             .toList()
-        assertEquals("150L 应只作为 Theme.DURATION_CODE_FADE_MS 出现", 1, hits.size)
-        assertEquals("Theme.kt", hits.first().second)
+        assertEquals("150L 应只作为 MotionTokens.codeFade 出现", 1, hits.size)
+        assertEquals("ThemeTokens.kt", hits.first().second)
     }
 
     @Test

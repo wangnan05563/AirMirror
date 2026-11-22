@@ -13,10 +13,10 @@ object FocusPolicy {
 
     /** 「轻微放大」：4% 足够在 3 米外辨认，再大就会把相邻行挤出屏幕。 */
     const val FOCUSED_SCALE = 1.04f
-    const val FOCUS_ANIM_MS = Theme.DURATION_FOCUS_MS
+    val FOCUS_ANIM_MS = Theme.DURATION_FOCUS_MS
 
     /** 「连接成功 200ms 淡入」。 */
-    const val CONNECT_FADE_MS = Theme.DURATION_CONNECT_FADE_MS
+    val CONNECT_FADE_MS = Theme.DURATION_CONNECT_FADE_MS
 
     /** 放大是焦点态本身，不随动效开关取消；C 级只是把它变成瞬时切换（不做动画）。 */
     fun focusScale(animationsEnabled: Boolean, focused: Boolean): Float =

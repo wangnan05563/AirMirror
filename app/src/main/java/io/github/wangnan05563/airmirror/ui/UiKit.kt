@@ -63,16 +63,16 @@ object UiKit {
             stateListAnimator = null
             when (kind) {
                 Kind.Primary -> {
-                    backgroundTintList = ColorStateList.valueOf(Theme.ACCENT)
-                    setTextColor(Theme.BACKGROUND)
+                    backgroundTintList = ColorStateList.valueOf(Theme.component.buttonPrimaryBg)
+                    setTextColor(Theme.component.buttonPrimaryFg)
                 }
                 Kind.Secondary -> {
-                    backgroundTintList = ColorStateList.valueOf(Theme.SURFACE)
-                    setTextColor(Theme.TEXT_PRIMARY)
+                    backgroundTintList = ColorStateList.valueOf(Theme.component.buttonSecondaryBg)
+                    setTextColor(Theme.component.buttonSecondaryFg)
                 }
                 Kind.Ghost -> {
                     backgroundTintList = ColorStateList.valueOf(Color.TRANSPARENT)
-                    setTextColor(Theme.ACCENT)
+                    setTextColor(Theme.component.buttonGhostFg)
                 }
             }
         }
@@ -85,7 +85,7 @@ object UiKit {
     fun surface(
         view: View,
         radiusDp: Int = Theme.RADIUS_CARD_DP,
-        color: Int = Theme.SURFACE_ELEVATED,
+        color: Int = Theme.component.cardElevated,
         elevationDp: Int = 2,
         stroke: Boolean = true,
     ) {
@@ -95,19 +95,19 @@ object UiKit {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = radius
             setColor(color)
-            if (stroke) setStroke(Theme.dp(context, 1), Theme.SURFACE_STROKE)
+            if (stroke) setStroke(Theme.dp(context, 1), Theme.component.cardStroke)
         }
         view.elevation = Theme.dp(context, elevationDp).toFloat()
     }
 
     /** 输入框/内嵌块：比卡片低一层，圆角 12dp，不抬升。 */
-    fun inset(view: View, color: Int = Theme.BACKGROUND) {
+    fun inset(view: View, color: Int = Theme.component.insetBackground) {
         val context = view.context
         view.background = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = Theme.dp(context, Theme.RADIUS_INSET_DP).toFloat()
             setColor(color)
-            setStroke(Theme.dp(context, 1), Theme.SURFACE_STROKE)
+            setStroke(Theme.dp(context, 1), Theme.component.cardStroke)
         }
         view.elevation = 0f
     }
@@ -119,12 +119,12 @@ object UiKit {
     /** 弹窗按钮的“稍后 Ghost / 主行动 Primary”形态；非 MaterialButton 的系统按钮保持默认。 */
     fun styleDialogButtons(dialog: AlertDialog) {
         val positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE) as? MaterialButton ?: return
-        positive.backgroundTintList = ColorStateList.valueOf(Theme.ACCENT)
-        positive.setTextColor(Theme.BACKGROUND)
+        positive.backgroundTintList = ColorStateList.valueOf(Theme.component.buttonPrimaryBg)
+        positive.setTextColor(Theme.component.buttonPrimaryFg)
         positive.cornerRadius = Theme.dp(dialog.context, Theme.RADIUS_BUTTON_DP)
         val negative = dialog.getButton(AlertDialog.BUTTON_NEGATIVE) as? MaterialButton
         negative?.backgroundTintList = ColorStateList.valueOf(Color.TRANSPARENT)
-        negative?.setTextColor(Theme.TEXT_SECONDARY)
+        negative?.setTextColor(Theme.component.dialogNegativeFg)
         negative?.cornerRadius = Theme.dp(dialog.context, Theme.RADIUS_BUTTON_DP)
     }
 

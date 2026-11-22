@@ -15,6 +15,13 @@
             android:exported="true"
             tools:node="merge"
             tools:replace="android:exported" />
+
+        <!-- 仅 debug 构建可启动的主题预览页：展示 Raw/Semantic/Component 三层令牌与 5% 安全区 -->
+        <activity
+            android:name=".ui.ThemePreviewActivity"
+            android:exported="true"
+            android:screenOrientation="unspecified"
+            android:theme="@style/Theme.AirMirror" />
     </application>
 
 </manifest>

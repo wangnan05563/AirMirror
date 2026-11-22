@@ -19,8 +19,14 @@ object DeviceCardTag {
         text = tag.text
         textSize = Theme.PHONE_BODY_SP
         gravity = Gravity.CENTER
-        setTextColor(StatusColors.offlineText().takeIf { tag.kind != DeviceCardPolicy.TagKind.PROTOCOL } ?: Theme.ACCENT)
-        val padH = Theme.dp(context, 8)
+        setTextColor(
+            when (tag.kind) {
+                DeviceCardPolicy.TagKind.PROTOCOL -> Theme.component.tagProtocolFg
+                DeviceCardPolicy.TagKind.OFFLINE -> Theme.component.tagOfflineFg
+                DeviceCardPolicy.TagKind.UNSUPPORTED -> Theme.component.tagUnsupportedFg
+            },
+        )
+        val padH = Theme.dp(context, Theme.SPACE_SM_DP)
         val padV = Theme.dp(context, 3)
         setPadding(padH, padV, padH, padV)
         background = GradientDrawable().apply {
@@ -33,11 +39,11 @@ object DeviceCardTag {
         )
     }
 
-    /** 标签底色：协议用强调色的 12% 衬底，离线/不支持用更低的白色衬底，避免抢设备名。 */
+    /** 标签底色：只取组件令牌，不在本文件写色值。 */
     fun backgroundColor(kind: DeviceCardPolicy.TagKind): Int = when (kind) {
-        DeviceCardPolicy.TagKind.PROTOCOL -> 0x1F17C3B2
-        DeviceCardPolicy.TagKind.OFFLINE -> 0x1AFFFFFF
-        DeviceCardPolicy.TagKind.UNSUPPORTED -> 0x14FFFFFF
+        DeviceCardPolicy.TagKind.PROTOCOL -> Theme.component.tagProtocolBg
+        DeviceCardPolicy.TagKind.OFFLINE -> Theme.component.tagOfflineBg
+        DeviceCardPolicy.TagKind.UNSUPPORTED -> Theme.component.tagUnsupportedBg
     }
 
     fun offlineDot(context: Context): View = View(context).apply {
@@ -45,7 +51,7 @@ object DeviceCardTag {
             shape = GradientDrawable.OVAL
             setColor(StatusColors.offlineMarker())
         }
-        layoutParams = LinearLayout.LayoutParams(Theme.dp(context, 8), Theme.dp(context, 8)).apply {
+        layoutParams = LinearLayout.LayoutParams(Theme.dp(context, Theme.SPACE_SM_DP), Theme.dp(context, Theme.SPACE_SM_DP)).apply {
             rightMargin = Theme.dp(context, 6)
         }
     }

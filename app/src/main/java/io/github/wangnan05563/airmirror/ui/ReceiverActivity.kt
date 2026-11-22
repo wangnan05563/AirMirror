@@ -606,7 +606,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         overlayName = TextView(this).apply {
             textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_PRIMARY)
-            setBackgroundColor(Theme.BACKGROUND_ALPHA_80)
+            setBackgroundColor(Theme.SCRIM)
             setPadding(Theme.dp(this@ReceiverActivity, Theme.SPACE_XL_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_XL_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP))
             visibility = View.GONE
         }
@@ -663,7 +663,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         cornerHint = TextView(this).apply {
             textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_PRIMARY)
-            setBackgroundColor(Theme.BACKGROUND_ALPHA_80)
+            setBackgroundColor(Theme.SCRIM)
             setPadding(Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_SM_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_SM_DP))
             visibility = View.GONE
         }
@@ -719,7 +719,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             text = "显示设置"
             textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.ACCENT)
-            UiKit.inset(this, color = Theme.BACKGROUND_ALPHA_80)
+            UiKit.inset(this, color = Theme.SCRIM)
             setPadding(
                 Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP), Theme.dp(this@ReceiverActivity, 10),
                 Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP), Theme.dp(this@ReceiverActivity, 10),
@@ -1563,7 +1563,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         promptBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            UiKit.surface(this, color = Theme.SURFACE_ALPHA_90, elevationDp = 1)
+            UiKit.surface(this, color = Theme.PANEL, elevationDp = 1)
             visibility = View.GONE
             setPadding(Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP))
         }
@@ -1596,7 +1596,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         endBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            UiKit.surface(this, color = Theme.SURFACE_ALPHA_90, elevationDp = 1)
+            UiKit.surface(this, color = Theme.PANEL, elevationDp = 1)
             visibility = View.GONE
             setPadding(Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP), Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP))
         }
@@ -1709,7 +1709,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            UiKit.surface(this, color = Theme.SURFACE_ELEVATED, elevationDp = 2)
+            UiKit.surface(this, color = Theme.component.cardElevated, elevationDp = 2)
             setPadding(Theme.dp(this@ReceiverActivity, Theme.SPACE_XXL_DP), Theme.dp(this@ReceiverActivity, 28), Theme.dp(this@ReceiverActivity, Theme.SPACE_XXL_DP), Theme.dp(this@ReceiverActivity, 28))
         }
         onboardStepHint = TextView(this).apply { textSize = FocusPolicy.bodySp(isTv); setTextColor(Theme.TEXT_SECONDARY); gravity = Gravity.CENTER }

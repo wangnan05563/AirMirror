@@ -19,13 +19,13 @@ object StatusColors {
     const val LARGE_MIN = 3.0
 
     /** 恢复条 / 浮层底色：90% 页底，压在任意画面上；文字对比度按最差（纯白画面）验。 */
-    const val BAR_LAYER = 0xE60B1F3A.toInt()
+    val BAR_LAYER: Int get() = Theme.SCRIM_STRONG
 
     /** 投屏浮层底色：80% 页底（原 ReceiverActivity 同值，收敛到这里避免两处各写一份）。 */
-    const val OVERLAY_LAYER = 0xCC0B1F3A.toInt()
+    val OVERLAY_LAYER: Int get() = Theme.SCRIM
 
     /** 恢复条压在画面上时的最差底色：90% 深蓝叠纯白画面。 */
-    fun overVideo(layer: Int = BAR_LAYER): Int = composite(layer, 0xFFFFFFFF.toInt())
+    fun overVideo(layer: Int = BAR_LAYER): Int = composite(layer, Theme.QR_BACKGROUND)
 
     /**
      * 六态状态文字色。
@@ -35,11 +35,11 @@ object StatusColors {
      */
     fun textOf(state: CastStatus.State, highContrast: Boolean = false): Int = when (state) {
         CastStatus.State.IDLE -> secondaryText(highContrast)
-        CastStatus.State.CONNECTING -> Theme.TEXT_PRIMARY
-        CastStatus.State.CASTING -> Theme.ACCENT
-        CastStatus.State.PAUSED -> Theme.ACCENT
-        CastStatus.State.RECOVERING -> Theme.TEXT_PRIMARY
-        CastStatus.State.ERROR -> Theme.DANGER
+        CastStatus.State.CONNECTING -> Theme.component.statusRecovering
+        CastStatus.State.CASTING -> Theme.component.statusConnected
+        CastStatus.State.PAUSED -> Theme.component.statusConnected
+        CastStatus.State.RECOVERING -> Theme.component.statusRecovering
+        CastStatus.State.ERROR -> Theme.component.statusError
     }
 
     /**

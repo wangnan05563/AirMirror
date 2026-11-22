@@ -303,7 +303,7 @@ class SenderActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             visibility = View.GONE
-            UiKit.surface(this, color = Theme.SURFACE_ELEVATED, elevationDp = 2)
+            UiKit.surface(this, color = Theme.component.cardElevated, elevationDp = 2)
             val inset = Theme.dp(this@SenderActivity, Theme.SPACE_SM_DP)
             setPadding(inset, inset, inset, inset)
         }
@@ -370,7 +370,7 @@ class SenderActivity : Activity() {
         takeoverBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            UiKit.surface(this, color = Theme.SURFACE_ELEVATED, elevationDp = 1)
+            UiKit.surface(this, color = Theme.component.cardElevated, elevationDp = 1)
             visibility = View.GONE
             val gap = Theme.dp(this@SenderActivity, Theme.SPACE_SM_DP)
             setPadding(gap, gap, gap, gap)
@@ -427,7 +427,7 @@ class SenderActivity : Activity() {
         setTextSize(TypedValue.COMPLEX_UNIT_SP, FocusPolicy.bodySp(isTv))
         setTextColor(Theme.TEXT_PRIMARY)
         setHintTextColor(StatusColors.offlineText())
-        UiKit.inset(this, color = Theme.SURFACE_ELEVATED)
+        UiKit.inset(this, color = Theme.component.cardElevated)
         minHeight = Theme.dp(this@SenderActivity, UiKit.TOUCH_TARGET_DP)
         gravity = Gravity.CENTER_VERTICAL
         setPadding(Theme.dp(this@SenderActivity, Theme.SPACE_MD_DP), Theme.dp(this@SenderActivity, 6), Theme.dp(this@SenderActivity, Theme.SPACE_MD_DP), Theme.dp(this@SenderActivity, 6))
@@ -543,7 +543,7 @@ class SenderActivity : Activity() {
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             if (row.online) {
-                UiKit.surface(this, color = Theme.SURFACE_ELEVATED, elevationDp = 2)
+                UiKit.surface(this, color = Theme.component.cardElevated, elevationDp = 2)
             } else {
                 setBackgroundColor(Theme.BACKGROUND)
             }
@@ -696,7 +696,7 @@ class SenderActivity : Activity() {
         val gap = Theme.dp(this, Theme.SPACE_SM_DP)
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            UiKit.surface(this, color = Theme.SURFACE_ELEVATED, elevationDp = 2)
+            UiKit.surface(this, color = Theme.component.cardElevated, elevationDp = 2)
             setPadding(gap, gap, gap, gap)
             visibility = View.GONE
         }

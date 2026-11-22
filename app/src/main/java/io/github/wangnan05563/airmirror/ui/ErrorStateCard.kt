@@ -36,7 +36,7 @@ class ErrorStateCard @JvmOverloads constructor(
 
     init {
         orientation = VERTICAL
-        UiKit.surface(this, color = Theme.SURFACE_ELEVATED, elevationDp = 2)
+        UiKit.surface(this, color = Theme.component.emptyDiagnosisCard, elevationDp = 2)
         setPadding(gap, gap, gap, gap)
 
         val artWidth = Theme.dp(context, if (isTv) 240 else 200)

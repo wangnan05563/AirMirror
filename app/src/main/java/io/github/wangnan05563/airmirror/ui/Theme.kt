@@ -6,77 +6,78 @@ import android.graphics.Paint
 import android.graphics.RectF
 import android.view.View
 
-/** PRD §11.5 的三端统一色板与字号：深蓝底、青绿表示「已连接」，大屏正文不小于 24px。 */
+/**
+ * PRD §11.5 / REQ-008：旧常量名保留为兼容别名，真实取值在 [ThemeTokens]（Raw → Semantic → Component）。
+ *
+ * 页面与组件可以继续用旧名（它们已经指向语义令牌），新代码优先用 [Theme.component]。
+ * Theme.kt 内不再出现任何十六进制色值；改色只能改 [ThemeTokens]，并由 ThemeTokenTest 锁值。
+ */
 object Theme {
-    const val BACKGROUND = 0xFF0B1F3A.toInt()
-    const val SURFACE = 0xFF12314F.toInt()
-    const val ACCENT = 0xFF17C3B2.toInt()
-    const val TEXT_PRIMARY = 0xFFFFFFFF.toInt()
-    const val TEXT_SECONDARY = 0xB3FFFFFF.toInt()
-    const val OFFLINE = 0x4DFFFFFF.toInt()
-    const val DANGER = 0xFFFF6B6B.toInt()
 
-    /** 派生透明度色：取值与《UI 风格规范冻结》一致，令牌化不改渲染值（UI-01）。 */
-    const val BACKGROUND_ALPHA_40 = 0x660B1F3A.toInt()
-    const val BACKGROUND_ALPHA_80 = 0xCC0B1F3A.toInt()
-    const val BACKGROUND_ALPHA_90 = 0xE60B1F3A.toInt()
-    const val SURFACE_ALPHA_90 = 0xE612314F.toInt()
-    /** 分隔线 / 内嵌块：20% 面。 */
-    const val DIVIDER = 0x3312314F.toInt()
-    /** 抬升面：用于设置卡、诊断卡等需要从页面上“浮起来”的容器。 */
-    const val SURFACE_ELEVATED = 0xFF1A3D61.toInt()
-    /** 低对比描边：圆角卡片在深色背景上的柔和边界，不靠高亮描边抢注意力。 */
-    const val SURFACE_STROKE = 0x3317C3B2.toInt()
-    /** 二维码底保持纯白：扫码可靠性优先，不着色。 */
-    const val QR_BACKGROUND = 0xFFFFFFFF.toInt()
+    private val t get() = ThemeTokens.midnight
+    private val s get() = t.semantic
+    private val c get() = t.component
 
-    const val TITLE_SP = 40f
-    const val BODY_SP = 24f
-    const val PHONE_BODY_SP = 14f
-    /** 分组标题（设置页“隐私”等）独立于页面标题，避免小标题也用 32sp。 */
-    const val SECTION_TITLE_SP = 18f
-    /** 手机页标题（TV 走 TITLE_SP）；发送端页标题与设备名行各有固定字号。 */
-    const val PHONE_TITLE_SP = 32f
-    /**
-     * 2026-11-15 用户口径：各页标题必须同字号，发送端不再单独 28sp。
-     * 常量名保留给既有引用与守卫测试，新代码直接用 FocusPolicy.titleSp。
-     */
-    const val SENDER_TITLE_SP = PHONE_TITLE_SP
-    const val DEVICE_NAME_SP = 18f
+    // 语义色（旧名兼容）
+    val BACKGROUND: Int get() = s.background
+    val SURFACE: Int get() = s.surface
+    val ACCENT: Int get() = s.accent
+    val TEXT_PRIMARY: Int get() = s.textPrimary
+    val TEXT_SECONDARY: Int get() = s.textSecondary
+    val OFFLINE: Int get() = s.offline
+    val DANGER: Int get() = s.danger
 
-    /** 按钮文字：手机 16sp、TV 24sp（MaterialButton 统一取值，见 UiKit.button）。 */
-    const val PHONE_BUTTON_SP = 16f
-    /** 窄屏（<380dp）三个按钮并排时降到 14sp，避免“上一步”在 360dp 屏折成两行。 */
-    const val PHONE_BUTTON_DENSE_SP = 14f
-    /** 诊断卡内联动作按钮在紧凑布局下用 12sp，保证单行放下。 */
-    const val PHONE_BUTTON_COMPACT_SP = 12f
-    const val BUTTON_SP = 24f
-    /** 按钮圆角：贴近冻结视觉的胶囊感，又不至于像系统默认那样看不出边界。 */
-    const val RADIUS_BUTTON_DP = 14
-    /** 卡片/面板统一 16dp，内嵌块 12dp，对话框 24dp（T05759 P1）。 */
-    const val RADIUS_CARD_DP = 16
-    const val RADIUS_INSET_DP = 12
-    const val RADIUS_DIALOG_DP = 24
+    /** 派生透明度色：语义别名，旧名保留给既有调用点。 */
+    val BACKGROUND_ALPHA_40: Int get() = s.focusFill
+    val BACKGROUND_ALPHA_80: Int get() = s.scrim
+    val BACKGROUND_ALPHA_90: Int get() = s.scrimStrong
+    val SURFACE_ALPHA_90: Int get() = s.panel
+    val DIVIDER: Int get() = s.divider
+    val SURFACE_ELEVATED: Int get() = s.surfaceElevated
+    val SURFACE_STROKE: Int get() = s.surfaceStroke
+    val QR_BACKGROUND: Int get() = s.qrLight
 
-    /** 6 位投屏码要在倒计时环内单行放下，再大就会拆成两截。 */
-    const val CODE_SP = 36f
+    /** 新代码可读的语义名，避免继续用「ALPHA_80」这种外观命名。 */
+    val SCRIM: Int get() = s.scrim
+    val SCRIM_STRONG: Int get() = s.scrimStrong
+    val PANEL: Int get() = s.panel
+    val FOCUS_FILL: Int get() = s.focusFill
 
-    /** PRD UI-06：换码时旧码淡出与新码淡入同时进行，加起来仍是一次 150ms 的过渡。 */
-    const val DURATION_CODE_FADE_MS = 150L
-    /** 动效时长唯一来源；C 级由 FocusPolicy 归零，取值不变（UI-01 / 冻结规范）。 */
-    const val DURATION_FOCUS_MS = 120L
-    const val DURATION_CONNECT_FADE_MS = 200L
+    /** 组件层入口：按钮、卡片、标签、投屏码槽等按组件取色。 */
+    val component: ComponentTokens get() = c
 
-    /** 焦点描边圆角。 */
-    const val RADIUS_FOCUS_DP = 6
+    // 字阶（旧名兼容）
+    val TITLE_SP: Float get() = t.typography.display
+    val BODY_SP: Float get() = t.typography.body
+    val PHONE_BODY_SP: Float get() = t.typography.caption
+    val SECTION_TITLE_SP: Float get() = t.typography.sectionTitle
+    val PHONE_TITLE_SP: Float get() = t.typography.phoneTitle
+    val SENDER_TITLE_SP: Float get() = t.typography.senderTitle
+    val DEVICE_NAME_SP: Float get() = t.typography.deviceName
+    val PHONE_BUTTON_SP: Float get() = t.typography.phoneButton
+    val PHONE_BUTTON_DENSE_SP: Float get() = t.typography.phoneButtonDense
+    val PHONE_BUTTON_COMPACT_SP: Float get() = t.typography.phoneButtonCompact
+    val BUTTON_SP: Float get() = t.typography.tvButton
+    val CODE_SP: Float get() = t.typography.code
 
-    /** 通用留边刻度；组件专属尺寸（码槽 190dp、二维码 120dp 等）不入刻度。 */
-    const val SPACE_XS_DP = 4
-    const val SPACE_SM_DP = 8
-    const val SPACE_MD_DP = 12
-    const val SPACE_LG_DP = 16
-    const val SPACE_XL_DP = 24
-    const val SPACE_XXL_DP = 32
+    // 圆角与留边刻度
+    val RADIUS_BUTTON_DP: Int get() = t.radii.button
+    val RADIUS_CARD_DP: Int get() = t.radii.card
+    val RADIUS_INSET_DP: Int get() = t.radii.inset
+    val RADIUS_DIALOG_DP: Int get() = t.radii.dialog
+    val RADIUS_FOCUS_DP: Int get() = t.radii.focus
+
+    val SPACE_XS_DP: Int get() = t.spacing.xs
+    val SPACE_SM_DP: Int get() = t.spacing.sm
+    val SPACE_MD_DP: Int get() = t.spacing.md
+    val SPACE_LG_DP: Int get() = t.spacing.lg
+    val SPACE_XL_DP: Int get() = t.spacing.xl
+    val SPACE_XXL_DP: Int get() = t.spacing.xxl
+
+    // 动效时长唯一来源
+    val DURATION_CODE_FADE_MS: Long get() = t.motion.codeFade
+    val DURATION_FOCUS_MS: Long get() = t.motion.focus
+    val DURATION_CONNECT_FADE_MS: Long get() = t.motion.connect
 
     fun dp(context: Context, value: Int): Int = (value * context.resources.displayMetrics.density).toInt()
 }

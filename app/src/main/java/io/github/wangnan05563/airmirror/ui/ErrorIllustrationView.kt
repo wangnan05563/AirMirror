@@ -65,7 +65,7 @@ class ErrorIllustrationView(context: Context) : View(context) {
         style = Paint.Style.FILL
     }
     private val screenFill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Theme.BACKGROUND_ALPHA_80
+        color = Theme.SCRIM
         style = Paint.Style.FILL
     }
 
