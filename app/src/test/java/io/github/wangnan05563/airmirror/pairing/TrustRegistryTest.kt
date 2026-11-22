@@ -9,10 +9,13 @@ import org.junit.Test
 /**
  * FR-03 首次连接授权：可信列表长期免弹窗、上限 32 台、拒绝后 10 分钟静默、
  * 同一时刻只允许一个活动会话；扫码与投屏码属一次性授权，不入列表。
+ * T06112：可信记录 30 天未实际使用即过期，v1 快照迁移、坏版本回退每次确认。
  */
 class TrustRegistryTest {
 
     private var clock = 0L
+    private val day = 24 * 60 * 60 * 1000L
+    private val trustTtl = 30 * day
     private fun registry(autoAllowMillis: Long = 5_000L) = TrustRegistry(now = { clock }, autoAllowMillis = autoAllowMillis)
 
     @Test
@@ -150,6 +153,75 @@ class TrustRegistryTest {
     }
 
     @Test
+    fun trustedDeviceExpiresAfterThirtyDaysWithoutUse() {
+        val subject = registry()
+        subject.allow("phone-a", "小明的手机", permanent = true)
+        clock = trustTtl - 1
+        assertEquals(TrustRegistry.Verdict.TRUSTED, subject.decide("phone-a").verdict)
+        clock = trustTtl
+        assertEquals(TrustRegistry.Verdict.ASK, subject.decide("phone-a").verdict)
+        assertTrue(subject.trusted().isEmpty())
+    }
+
+    @Test
+    fun actuallyUsingATrustedDeviceRefreshesItsThirtyDayWindow() {
+        val subject = registry()
+        subject.allow("phone-a", "小明的手机", permanent = true)
+        clock = 20 * day
+        assertTrue(subject.acquireSession("phone-a"))
+        subject.releaseSession("phone-a")
+        clock = 45 * day
+        assertEquals(TrustRegistry.Verdict.TRUSTED, subject.decide("phone-a").verdict)
+        clock = 50 * day
+        assertEquals(TrustRegistry.Verdict.ASK, subject.decide("phone-a").verdict)
+    }
+
+    @Test
+    fun snapshotDropsExpiredDevicesInsteadOfResurrectingThem() {
+        val subject = registry()
+        subject.allow("phone-a", "小明的手机", permanent = true)
+        clock = trustTtl
+        val saved = subject.snapshot()
+        assertEquals("# AirMirror TrustRegistry v2", saved)
+        assertEquals(TrustRegistry.Verdict.ASK, subject.decide("phone-a").verdict)
+    }
+
+    @Test
+    fun legacySnapshotMigratesToV2AndKeepsTrust() {
+        val subject = registry()
+        assertEquals(
+            TrustRegistry.RestoreResult.MIGRATED,
+            subject.restore("phone-a\t小明的手机\t0"),
+        )
+        assertTrue(subject.snapshot().startsWith("# AirMirror TrustRegistry v2\n"))
+        assertEquals(TrustRegistry.Verdict.TRUSTED, subject.decide("phone-a").verdict)
+    }
+
+    @Test
+    fun unknownSchemaVersionClearsTrustAndFallsBackToAsk() {
+        val subject = registry()
+        subject.allow("phone-a", "小明的手机", permanent = true)
+        assertEquals(
+            TrustRegistry.RestoreResult.FAILED,
+            subject.restore("# AirMirror TrustRegistry v9\nphone-a\t小明的手机\t0"),
+        )
+        assertTrue(subject.trusted().isEmpty())
+        assertEquals(TrustRegistry.Verdict.ASK, subject.decide("phone-a").verdict)
+        assertEquals("# AirMirror TrustRegistry v2", subject.snapshot())
+    }
+
+    @Test
+    fun malformedV2SnapshotAlsoFallsBackToAsk() {
+        val subject = registry()
+        assertEquals(
+            TrustRegistry.RestoreResult.FAILED,
+            subject.restore("# AirMirror TrustRegistry v2\n这行没有分好的字段"),
+        )
+        assertTrue(subject.trusted().isEmpty())
+        assertEquals(TrustRegistry.Verdict.ASK, subject.decide("phone-a").verdict)
+    }
+
+    @Test
     fun restoreMergesInsteadOfClearingEntriesItDoesNotRecognise() {
         val subject = registry()
         subject.allow("phone-a", "小明的手机", permanent = true)
@@ -166,7 +238,7 @@ class TrustRegistryTest {
         val subject = registry()
         subject.allow("p", "坏\t名字\n第二行 = & %", permanent = true)
         val saved = subject.snapshot()
-        assertEquals(1, saved.split('\n').size)
+        assertEquals(2, saved.split('\n').size)
         val restored = registry()
         restored.restore(saved)
         assertEquals("坏\t名字\n第二行 = & %", restored.trusted().single().name)

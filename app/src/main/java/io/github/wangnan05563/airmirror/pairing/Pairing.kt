@@ -18,11 +18,23 @@ class Pairing(
     val deviceId: String = store.deviceId()
 
     init {
-        trust.restore(store.trustedSnapshot())
+        when (trust.restore(store.trustedSnapshot())) {
+            // 迁移成功或失败都立刻落一份 v2 快照：成功把旧行转成带版本头的新格式，
+            // 失败则留下空表，后续一律走“每次确认”，不会每次启动重复迁移一份坏数据。
+            TrustRegistry.RestoreResult.MIGRATED,
+            TrustRegistry.RestoreResult.FAILED -> store.saveTrustedSnapshot(trust.snapshot())
+            else -> Unit
+        }
     }
 
     fun persistTrusted() {
         store.saveTrustedSnapshot(trust.snapshot())
+    }
+
+    /** “清除信任数据”：内存与落盘一起清空，重启后不会把旧列表读回来。 */
+    fun clearTrusted() {
+        trust.clear()
+        persistTrusted()
     }
 
     /** 待连接页二维码：设备标识 + 随码轮换的一次性令牌 + 同网直连所需的地址。 */

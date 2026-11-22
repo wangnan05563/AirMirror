@@ -53,6 +53,7 @@
 | [AirMirror-PC-mDNS发现协议-v2.0-20261122.md](AirMirror-PC-mDNS发现协议-v2.0-20261122.md) | 三期 T06109：`_airmirror._tcp` 发现、记录合成、UI/CLI 入口与测试证据 |
 | [AirMirror-二维码配对-v2.0-20261122.md](AirMirror-二维码配对-v2.0-20261122.md) | 三期 T06110：TV 二维码载荷、PC 摄像头/截图扫码、最近设备记忆与取消 |
 | [AirMirror-PC安装包与首启向导-v2.0-20261122.md](AirMirror-PC安装包与首启向导-v2.0-20261122.md) | 三期 T06111：便携 ZIP、静默安装、防火墙/卸载脚本、四步首启向导与 Win10 实测 |
+| [AirMirror-TrustRegistry-v2-20261122.md](AirMirror-TrustRegistry-v2-20261122.md) | 三期 T06112：可信记录 30 天过期、v2 版本化落盘、v1 迁移与失败回退每次确认 |
 
 ## 代码质量
 
