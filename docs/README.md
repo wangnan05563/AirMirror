@@ -50,6 +50,7 @@
 | [AirMirror-性能SLO-v2.0-20261122.md](AirMirror-性能SLO-v2.0-20261122.md) | 三期 T06116：首帧/重连/延迟/丢帧/内存/APK 增量指标、分档目标与验收矩阵 |
 | [AirMirror-跨端联调缺陷修复-20261122.md](AirMirror-跨端联调缺陷修复-20261122.md) | 三期 T06122：AP 隔离、离线接收端、码错误与 PC 握手的修复映射和回归证据 |
 | [AirMirror-三期待办处理台账-20261122.md](AirMirror-三期待办处理台账-20261122.md) | 三期 35 项待办的依赖 DAG、本轮完成项、下一波与风险 |
+| [AirMirror-PC-mDNS发现协议-v2.0-20261122.md](AirMirror-PC-mDNS发现协议-v2.0-20261122.md) | 三期 T06109：`_airmirror._tcp` 发现、记录合成、UI/CLI 入口与测试证据 |
 
 ## 代码质量
 

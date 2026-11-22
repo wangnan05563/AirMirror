@@ -23,11 +23,17 @@ private data class Preset(val label: String, val width: Int, val height: Int, va
     override fun toString(): String = label
 }
 
+private data class DeviceChoice(val device: MdnsDiscovery.Device?, val label: String) {
+    override fun toString(): String = label
+}
+
 class PcSenderFrame : JFrame("AirMirror PC 发送端") {
     private val hostField = JTextField("127.0.0.1", 14)
     private val portField = JTextField("41523", 6)
     private val codeField = JTextField(6)
     private val nameField = JTextField("AirMirror PC", 12)
+    private val deviceBox = JComboBox<DeviceChoice>()
+    private val refreshButton = JButton("刷新发现")
     private val presetBox = JComboBox(
         arrayOf(
             Preset("1920x1080 @ 30fps", 1920, 1080, 30),
@@ -44,6 +50,13 @@ class PcSenderFrame : JFrame("AirMirror PC 发送端") {
         font = Font(Font.MONOSPACED, Font.PLAIN, 12)
     }
     private var engine: SenderEngine? = null
+    private val foundDevices = LinkedHashMap<String, MdnsDiscovery.Device>()
+    private var updatingDevices = false
+    private val discovery = MdnsDiscovery(
+        onFound = { device -> SwingUtilities.invokeLater { onDeviceFound(device) } },
+        onLost = { fingerprint -> SwingUtilities.invokeLater { onDeviceLost(fingerprint) } },
+        onError = { message -> appendLog("发现异常：$message") },
+    )
 
     init {
         defaultCloseOperation = WindowConstants.DISPOSE_ON_CLOSE
@@ -62,6 +75,10 @@ class PcSenderFrame : JFrame("AirMirror PC 发送端") {
             form.add(field, c)
             row++
         }
+        add("局域网设备", JPanel(BorderLayout(8, 0)).apply {
+            add(deviceBox, BorderLayout.CENTER)
+            add(refreshButton, BorderLayout.EAST)
+        })
         add("接收端 IP", hostField)
         add("端口", portField)
         add("投屏码", codeField)
@@ -86,13 +103,29 @@ class PcSenderFrame : JFrame("AirMirror PC 发送端") {
 
         startButton.addActionListener { start() }
         stopButton.addActionListener { stop() }
+        refreshButton.addActionListener {
+            statusLabel.text = "正在搜索局域网接收端…"
+            discovery.queryNow()
+        }
+        deviceBox.addActionListener {
+            if (updatingDevices) return@addActionListener
+            val device = (deviceBox.selectedItem as? DeviceChoice)?.device ?: return@addActionListener
+            hostField.text = device.host
+            portField.text = device.port.toString()
+            statusLabel.text = "已选择 ${device.name}"
+        }
         addWindowListener(object : java.awt.event.WindowAdapter() {
-            override fun windowClosing(e: java.awt.event.WindowEvent) = stop()
+            override fun windowClosing(e: java.awt.event.WindowEvent) {
+                stop()
+                discovery.close()
+            }
         })
 
+        rebuildDeviceChoices()
         pack()
         minimumSize = Dimension(560, 360)
         setLocationRelativeTo(null)
+        discovery.start()
     }
 
     private fun appendLog(line: String) {
@@ -100,6 +133,39 @@ class PcSenderFrame : JFrame("AirMirror PC 发送端") {
             logArea.append(line + "\n")
             logArea.caretPosition = logArea.document.length
         }
+    }
+
+    private fun onDeviceFound(device: MdnsDiscovery.Device) {
+        foundDevices[device.fingerprint] = device
+        appendLog("发现接收端：${device.name}  ${device.host}:${device.port}")
+        rebuildDeviceChoices()
+    }
+
+    private fun onDeviceLost(fingerprint: String) {
+        val removed = foundDevices.remove(fingerprint) ?: return
+        appendLog("接收端离线：${removed.name}")
+        rebuildDeviceChoices()
+    }
+
+    private fun rebuildDeviceChoices() {
+        val selectedFingerprint = (deviceBox.selectedItem as? DeviceChoice)?.device?.fingerprint
+        updatingDevices = true
+        deviceBox.removeAllItems()
+        val placeholder = if (foundDevices.isEmpty()) {
+            "未发现接收端，可手动输入 IP"
+        } else {
+            "选择发现的接收端（${foundDevices.size}）"
+        }
+        deviceBox.addItem(DeviceChoice(null, placeholder))
+        foundDevices.values.forEach { device ->
+            val label = "${device.name}  ${device.host}:${device.port}"
+            deviceBox.addItem(DeviceChoice(device, label))
+        }
+        selectedFingerprint?.let { foundDevices[it] }?.let { device ->
+            val label = "${device.name}  ${device.host}:${device.port}"
+            deviceBox.selectedItem = DeviceChoice(device, label)
+        }
+        updatingDevices = false
     }
 
     private fun start() {
@@ -154,11 +220,42 @@ class PcSenderFrame : JFrame("AirMirror PC 发送端") {
 object Main {
     @JvmStatic
     fun main(args: Array<String>) {
+        if (args.firstOrNull() == "--discover") {
+            runDiscovery(args.drop(1))
+            return
+        }
         if (args.isNotEmpty()) {
             runCli(args)
             return
         }
         SwingUtilities.invokeLater { PcSenderFrame().isVisible = true }
+    }
+
+    private fun runDiscovery(args: List<String>) {
+        val options = args.chunked(2).filter { it.size == 2 }.associate { it[0].removePrefix("--") to it[1] }
+        val seconds = options["seconds"]?.toLongOrNull() ?: 5L
+        val startedAt = System.nanoTime()
+        val firstMs = java.util.concurrent.atomic.AtomicLong(-1)
+        val seen = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+        val discovery = MdnsDiscovery(
+            onFound = { device ->
+                seen += device.fingerprint
+                val elapsed = (System.nanoTime() - startedAt) / 1_000_000
+                if (firstMs.compareAndSet(-1, elapsed)) {
+                    println("[found] ${device.name} ${device.host}:${device.port} fp=${device.fingerprint} first=${elapsed}ms")
+                } else {
+                    println("[found] ${device.name} ${device.host}:${device.port} fp=${device.fingerprint}")
+                }
+            },
+            onLost = { println("[lost] $it") },
+            onError = { println("[error] $it") },
+        )
+        println("mDNS 搜索 ${MdnsDiscovery.DEFAULT_SERVICE_TYPE}，最长 ${seconds}s…")
+        discovery.start()
+        Thread.sleep(seconds * 1_000)
+        discovery.stop()
+        val first = firstMs.get()
+        println("发现 ${seen.size} 台接收端；首台耗时 ${if (first < 0) "未发现" else "${first}ms"}。")
     }
 
     private fun runCli(args: Array<String>) {
