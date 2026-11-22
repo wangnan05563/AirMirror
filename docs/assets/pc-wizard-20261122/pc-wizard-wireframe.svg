@@ -1,0 +1,114 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1120" viewBox="0 0 1600 1120" font-family="Segoe UI, Microsoft YaHei, sans-serif">
+  <rect width="1600" height="1120" fill="#081827"/>
+  <text x="48" y="56" fill="#FFFFFF" font-size="28" font-weight="600">AirMirror PC · 首启安装向导（1280×800 设计稿）</text>
+  <text x="48" y="88" fill="#9FB3C8" font-size="15">Midnight 主题 · 四步：网络检查 → 防火墙 → 发现设备 → 投屏验证</text>
+
+  <!-- Panel 1: Network -->
+  <g transform="translate(48,124)">
+    <rect width="744" height="452" rx="18" fill="#0B1F3A" stroke="#3317C3B2" stroke-width="1"/>
+    <text x="32" y="48" fill="#FFFFFF" font-size="24" font-weight="600">1 · 网络检查</text>
+    <text x="32" y="78" fill="#9FB3C8" font-size="14">确认电脑已接入可发现电视的局域网</text>
+    <rect x="32" y="102" width="680" height="112" rx="14" fill="#1A3D61"/>
+    <circle cx="70" cy="158" r="20" fill="#17C3B2"/>
+    <path d="M60 158 l8 8 l14 -18" stroke="#0B1F3A" stroke-width="4" fill="none"/>
+    <text x="108" y="150" fill="#FFFFFF" font-size="19" font-weight="600">网络正常 · 192.168.50.x</text>
+    <text x="108" y="178" fill="#B3FFFFFF" font-size="14">网卡：Realtek PCIe GbE · 默认路由</text>
+    <text x="32" y="242" fill="#B3FFFFFF" font-size="14">用于投屏的网卡</text>
+    <rect x="32" y="254" width="680" height="48" rx="10" fill="#12314F" stroke="#3317C3B2"/>
+    <text x="48" y="284" fill="#FFFFFF" font-size="15">Realtek PCIe GbE（192.168.50.65）</text>
+    <path d="M684 272 l14 8 l-14 8" fill="none" stroke="#17C3B2" stroke-width="2"/>
+    <rect x="32" y="324" width="680" height="72" rx="12" fill="#12314F"/>
+    <text x="48" y="350" fill="#FFB86B" font-size="14" font-weight="600">异常态示例：仅回环</text>
+    <text x="48" y="374" fill="#B3FFFFFF" font-size="13">只找到回环地址，无法发现电视。检查网线或切换 Wi-Fi。</text>
+    <rect x="512" y="382" width="200" height="2" fill="none"/>
+    <rect x="464" y="336" width="216" height="44" rx="12" fill="#17C3B2"/>
+    <text x="514" y="363" fill="#0B1F3A" font-size="14" font-weight="600">重新检查</text>
+    <text x="32" y="432" fill="#6F8398" font-size="12">检查 ≤2 秒 · 不探测外网 · 不读取浏览记录</text>
+  </g>
+
+  <!-- Panel 2: Firewall -->
+  <g transform="translate(808,124)">
+    <rect width="744" height="452" rx="18" fill="#0B1F3A" stroke="#3317C3B2" stroke-width="1"/>
+    <text x="32" y="48" fill="#FFFFFF" font-size="24" font-weight="600">2 · 防火墙</text>
+    <text x="32" y="78" fill="#9FB3C8" font-size="14">只放行专用网络，不放行公用网络</text>
+    <rect x="32" y="102" width="680" height="112" rx="14" fill="#3A1F2A" stroke="#FF6B6B"/>
+    <circle cx="70" cy="158" r="20" fill="#FF6B6B"/>
+    <text x="64" y="164" fill="#FFFFFF" font-size="18" font-weight="700">!</text>
+    <text x="108" y="150" fill="#FFFFFF" font-size="19" font-weight="600">防火墙拦截了设备发现</text>
+    <text x="108" y="178" fill="#FFD6D6" font-size="14">运行修复脚本后重试；不会开放公用网络</text>
+    <text x="32" y="242" fill="#B3FFFFFF" font-size="14">将执行（仅专用网络）</text>
+    <rect x="32" y="254" width="680" height="92" rx="10" fill="#071424" stroke="#3317C3B2"/>
+    <text x="48" y="280" fill="#8FE3D7" font-size="13" font-family="Consolas, monospace">New-NetFirewallRule -DisplayName "AirMirror PC (TCP 41523)"</text>
+    <text x="48" y="304" fill="#8FE3D7" font-size="13" font-family="Consolas, monospace">  -Direction Inbound -Protocol TCP -LocalPort 41523 -Profile Private</text>
+    <text x="48" y="328" fill="#8FE3D7" font-size="13" font-family="Consolas, monospace">New-NetFirewallRule ... UDP 41524-41525 ...</text>
+    <rect x="32" y="364" width="212" height="48" rx="12" fill="#17C3B2"/>
+    <text x="62" y="394" fill="#0B1F3A" font-size="14" font-weight="600">以管理员运行</text>
+    <rect x="256" y="364" width="212" height="48" rx="12" fill="#1A3D61" stroke="#3317C3B2"/>
+    <text x="292" y="394" fill="#FFFFFF" font-size="14">复制脚本路径</text>
+    <text x="32" y="432" fill="#6F8398" font-size="12">幂等：先删同名规则再建 · 卸载脚本按 DisplayName 清理</text>
+  </g>
+
+  <!-- Panel 3: Discovery -->
+  <g transform="translate(48,600)">
+    <rect width="744" height="480" rx="18" fill="#0B1F3A" stroke="#3317C3B2" stroke-width="1"/>
+    <text x="32" y="48" fill="#FFFFFF" font-size="24" font-weight="600">3 · 发现设备</text>
+    <text x="32" y="78" fill="#9FB3C8" font-size="14">mDNS 优先；失败自动降级广播/手动 IP</text>
+    <rect x="32" y="98" width="680" height="76" rx="12" fill="#12314F"/>
+    <text x="48" y="126" fill="#FFFFFF" font-size="16" font-weight="600">找到 2 台设备</text>
+    <text x="48" y="150" fill="#B3FFFFFF" font-size="13">同一网络 · 已按最近使用排序 · 用时 2.1 秒</text>
+    <rect x="32" y="186" width="332" height="112" rx="14" fill="#1A3D61" stroke="#17C3B2"/>
+    <text x="48" y="216" fill="#FFFFFF" font-size="17" font-weight="600">客厅电视</text>
+    <text x="48" y="242" fill="#17C3B2" font-size="13">在线 · 4K · 最近使用</text>
+    <rect x="48" y="258" width="104" height="26" rx="8" fill="#17C3B2"/>
+    <text x="66" y="276" fill="#0B1F3A" font-size="12" font-weight="600">选择并投屏</text>
+    <rect x="380" y="186" width="332" height="112" rx="14" fill="#12314F" stroke="#3317C3B2"/>
+    <text x="396" y="216" fill="#FFFFFF" font-size="17" font-weight="600">卧室电视</text>
+    <text x="396" y="242" fill="#9FB3C8" font-size="13">离线 · 上次 11-20 20:14</text>
+    <rect x="396" y="258" width="92" height="26" rx="8" fill="#1A3D61" stroke="#3317C3B2"/>
+    <text x="414" y="276" fill="#FFFFFF" font-size="12">重试</text>
+    <rect x="32" y="314" width="680" height="104" rx="14" fill="#3A1F2A" stroke="#FF6B6B"/>
+    <text x="48" y="342" fill="#FFFFFF" font-size="16" font-weight="600">网络禁止设备互访</text>
+    <text x="48" y="366" fill="#FFD6D6" font-size="13">关闭路由器的 AP 隔离，或用投屏码连接。</text>
+    <rect x="48" y="380" width="116" height="26" rx="8" fill="#17C3B2"/>
+    <text x="64" y="398" fill="#0B1F3A" font-size="12" font-weight="600">重试发现</text>
+    <rect x="172" y="380" width="112" height="26" rx="8" fill="#1A3D61" stroke="#3317C3B2"/>
+    <text x="188" y="398" fill="#FFFFFF" font-size="12">用投屏码</text>
+    <rect x="292" y="380" width="96" height="26" rx="8" fill="#1A3D61" stroke="#3317C3B2"/>
+    <text x="308" y="398" fill="#FFFFFF" font-size="12">手动 IP</text>
+    <text x="32" y="452" fill="#6F8398" font-size="12">多台在线必须选择 · 不静默连接 · 离线卡保留 30 天记忆</text>
+  </g>
+
+  <!-- Panel 4: Cast -->
+  <g transform="translate(808,600)">
+    <rect width="744" height="480" rx="18" fill="#0B1F3A" stroke="#3317C3B2" stroke-width="1"/>
+    <text x="32" y="48" fill="#FFFFFF" font-size="24" font-weight="600">4 · 投屏验证</text>
+    <text x="32" y="78" fill="#9FB3C8" font-size="14">首帧出现 + 连续 3 秒稳定，才判定完成</text>
+    <rect x="32" y="98" width="318" height="254" rx="14" fill="#12314F" stroke="#3317C3B2"/>
+    <text x="48" y="126" fill="#FFFFFF" font-size="16" font-weight="600">在电视上确认投屏码</text>
+    <rect x="48" y="142" width="112" height="112" rx="8" fill="#FFFFFF"/>
+    <path d="M56 150 h20 v20 h-20 z M92 150 h20 v20 h-20 z M56 186 h20 v20 h-20 z M88 186 h10 v10 h-10 z M102 200 h10 v10 h-10 z" fill="#0B1F3A"/>
+    <text x="180" y="162" fill="#B3FFFFFF" font-size="12">投屏码</text>
+    <text x="180" y="206" fill="#FFFFFF" font-size="36" font-weight="700" letter-spacing="6">218866</text>
+    <text x="180" y="236" fill="#8FE3D7" font-size="12">60 秒后刷新</text>
+    <rect x="48" y="268" width="286" height="64" rx="10" fill="#071424"/>
+    <text x="60" y="292" fill="#8FE3D7" font-size="12">文字状态：已连接 · 1080p30 · 延迟 182ms</text>
+    <text x="60" y="314" fill="#8FE3D7" font-size="12">连接中… 正在等待大屏允许</text>
+    <rect x="370" y="98" width="342" height="254" rx="14" fill="#12314F"/>
+    <text x="388" y="126" fill="#FFFFFF" font-size="16" font-weight="600">投屏成功</text>
+    <rect x="388" y="142" width="306" height="128" rx="10" fill="#071424" stroke="#17C3B2"/>
+    <text x="404" y="172" fill="#17C3B2" font-size="22" font-weight="700">已连接</text>
+    <text x="404" y="202" fill="#FFFFFF" font-size="13">客厅电视 · 1920×1080 @ 30fps</text>
+    <text x="404" y="228" fill="#B3FFFFFF" font-size="13">首帧 1.8s · P95 182ms · 丢帧 0.2%</text>
+    <rect x="388" y="284" width="306" height="48" rx="12" fill="#3A1F2A" stroke="#FF6B6B"/>
+    <text x="404" y="313" fill="#FFD6D6" font-size="13">声音和画面有偏差，正在重新对齐</text>
+    <rect x="32" y="368" width="680" height="76" rx="12" fill="#12314F"/>
+    <text x="48" y="394" fill="#FFFFFF" font-size="13" font-weight="600">错误/恢复动作</text>
+    <rect x="48" y="406" width="136" height="28" rx="8" fill="#17C3B2"/>
+    <text x="68" y="425" fill="#0B1F3A" font-size="12" font-weight="600">自动恢复</text>
+    <rect x="194" y="406" width="136" height="28" rx="8" fill="#1A3D61" stroke="#3317C3B2"/>
+    <text x="214" y="425" fill="#FFFFFF" font-size="12">降低画质</text>
+    <rect x="340" y="406" width="136" height="28" rx="8" fill="#1A3D61" stroke="#3317C3B2"/>
+    <text x="360" y="425" fill="#FFFFFF" font-size="12">重新连接</text>
+    <text x="32" y="472" fill="#6F8398" font-size="12">首投 ≤2 分钟 · 错误提示 ≤2 秒 · 主提示不出现堆栈</text>
+  </g>
+</svg>
