@@ -13,6 +13,9 @@ dependencies {
     implementation(project(":protocol-core"))
     implementation("org.jcodec:jcodec:0.2.5")
     implementation("org.jcodec:jcodec-javase:0.2.5")
+    // 二维码编解码与 PC 摄像头取帧：ZXing core 为 Apache-2.0 纯 Java；webcam-capture 仅用于 PC 扫码预览。
+    implementation("com.google.zxing:core:3.5.3")
+    implementation("com.github.sarxos:webcam-capture:0.3.12")
     testImplementation("junit:junit:4.13.2")
 }
 

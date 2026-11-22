@@ -19,7 +19,9 @@ class SenderEngine(
     private val config: Config,
     private val onStatus: (String) -> Unit,
     private val onStats: (Stats) -> Unit = {},
+    private val onAuthorized: (Session) -> Unit = {},
 ) {
+    data class Session(val deviceName: String, val host: String, val port: Int)
     data class Config(
         val host: String,
         val port: Int,
@@ -98,6 +100,7 @@ class SenderEngine(
 
             val auth = conn.authorize(PcIdentity.deviceId(), cfg.code)
             if (!auth.accepted) throw IOException("投屏码被拒：${auth.reason}")
+            onAuthorized(Session(ack.deviceName, cfg.host, cfg.port))
             onStatus("已授权，开始采集 ${cfg.width}x${cfg.height}@${cfg.fps}")
 
             startReader(conn, gen)

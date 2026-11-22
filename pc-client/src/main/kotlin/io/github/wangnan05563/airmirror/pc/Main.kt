@@ -27,6 +27,10 @@ private data class DeviceChoice(val device: MdnsDiscovery.Device?, val label: St
     override fun toString(): String = label
 }
 
+private data class PairedChoice(val device: PairedDeviceStore.Device?, val label: String) {
+    override fun toString(): String = label
+}
+
 class PcSenderFrame : JFrame("AirMirror PC 发送端") {
     private val hostField = JTextField("127.0.0.1", 14)
     private val portField = JTextField("41523", 6)
@@ -34,6 +38,9 @@ class PcSenderFrame : JFrame("AirMirror PC 发送端") {
     private val nameField = JTextField("AirMirror PC", 12)
     private val deviceBox = JComboBox<DeviceChoice>()
     private val refreshButton = JButton("刷新发现")
+    private val pairedBox = JComboBox<PairedChoice>()
+    private val forgetButton = JButton("忘记设备")
+    private val scanButton = JButton("扫码配对")
     private val presetBox = JComboBox(
         arrayOf(
             Preset("1920x1080 @ 30fps", 1920, 1080, 30),
@@ -52,6 +59,11 @@ class PcSenderFrame : JFrame("AirMirror PC 发送端") {
     private var engine: SenderEngine? = null
     private val foundDevices = LinkedHashMap<String, MdnsDiscovery.Device>()
     private var updatingDevices = false
+    private val pairedStore = PairedDeviceStore()
+    private var pairedDevices: List<PairedDeviceStore.Device> = pairedStore.load()
+    private var updatingPaired = false
+    /** 扫码带出的接收端设备标识；授权成功后与地址一起写入最近设备。 */
+    private var pendingPairId = ""
     private val discovery = MdnsDiscovery(
         onFound = { device -> SwingUtilities.invokeLater { onDeviceFound(device) } },
         onLost = { fingerprint -> SwingUtilities.invokeLater { onDeviceLost(fingerprint) } },
@@ -79,6 +91,10 @@ class PcSenderFrame : JFrame("AirMirror PC 发送端") {
             add(deviceBox, BorderLayout.CENTER)
             add(refreshButton, BorderLayout.EAST)
         })
+        add("最近设备", JPanel(BorderLayout(8, 0)).apply {
+            add(pairedBox, BorderLayout.CENTER)
+            add(forgetButton, BorderLayout.EAST)
+        })
         add("接收端 IP", hostField)
         add("端口", portField)
         add("投屏码", codeField)
@@ -86,6 +102,7 @@ class PcSenderFrame : JFrame("AirMirror PC 发送端") {
         add("画质", presetBox)
 
         val actions = JPanel(FlowLayout(FlowLayout.LEFT, 8, 0))
+        actions.add(scanButton)
         actions.add(startButton)
         actions.add(stopButton)
 
@@ -103,6 +120,8 @@ class PcSenderFrame : JFrame("AirMirror PC 发送端") {
 
         startButton.addActionListener { start() }
         stopButton.addActionListener { stop() }
+        scanButton.addActionListener { scanPairing() }
+        forgetButton.addActionListener { forgetSelectedDevice() }
         refreshButton.addActionListener {
             statusLabel.text = "正在搜索局域网接收端…"
             discovery.queryNow()
@@ -114,6 +133,16 @@ class PcSenderFrame : JFrame("AirMirror PC 发送端") {
             portField.text = device.port.toString()
             statusLabel.text = "已选择 ${device.name}"
         }
+        pairedBox.addActionListener {
+            if (updatingPaired) return@addActionListener
+            val device = (pairedBox.selectedItem as? PairedChoice)?.device ?: return@addActionListener
+            hostField.text = device.host
+            portField.text = device.port.toString()
+            // 最近设备只记地址，不保存一次性令牌；连接前必须重新扫码或输入当前投屏码。
+            codeField.text = ""
+            pendingPairId = device.deviceId
+            statusLabel.text = "已选择最近设备 ${device.name}，请输入当前投屏码或扫码"
+        }
         addWindowListener(object : java.awt.event.WindowAdapter() {
             override fun windowClosing(e: java.awt.event.WindowEvent) {
                 stop()
@@ -122,8 +151,9 @@ class PcSenderFrame : JFrame("AirMirror PC 发送端") {
         })
 
         rebuildDeviceChoices()
+        rebuildPairedChoices()
         pack()
-        minimumSize = Dimension(560, 360)
+        minimumSize = Dimension(600, 400)
         setLocationRelativeTo(null)
         discovery.start()
     }
@@ -168,6 +198,62 @@ class PcSenderFrame : JFrame("AirMirror PC 发送端") {
         updatingDevices = false
     }
 
+    private fun scanPairing() {
+        QrScanDialog(this) { link -> applyPairingLink(link) }.isVisible = true
+    }
+
+    private fun applyPairingLink(link: io.github.wangnan05563.airmirror.pairing.PairingLink.Link) {
+        val host = link.host.ifBlank { hostField.text.trim() }
+        if (host.isBlank()) {
+            statusLabel.text = "二维码里没有接收端地址，请手动填写 IP"
+            return
+        }
+        hostField.text = host
+        portField.text = link.port.toString()
+        codeField.text = link.token
+        pendingPairId = link.deviceId
+        statusLabel.text = "已扫码：${link.name.ifBlank { host }}，点击开始投屏"
+        appendLog("扫码配对：${link.name.ifBlank { "未命名电视" }}  $host:${link.port}")
+    }
+
+    private fun forgetSelectedDevice() {
+        val device = (pairedBox.selectedItem as? PairedChoice)?.device
+        if (device == null) {
+            statusLabel.text = "先在最近设备里选择要忘记的电视"
+            return
+        }
+        val wasCurrent = device.host == hostField.text.trim() && device.port == portField.text.trim().toIntOrNull()
+        pairedDevices = pairedStore.forget(device)
+        if (wasCurrent) stop()
+        rebuildPairedChoices()
+        statusLabel.text = "已忘记 ${device.name}"
+        appendLog("忘记最近设备：${device.name}  ${device.host}:${device.port}")
+    }
+
+    private fun rebuildPairedChoices() {
+        val selected = (pairedBox.selectedItem as? PairedChoice)?.device
+        updatingPaired = true
+        pairedBox.removeAllItems()
+        pairedBox.addItem(
+            PairedChoice(
+                null,
+                if (pairedDevices.isEmpty()) "暂无最近设备" else "选择最近设备（${pairedDevices.size}）",
+            ),
+        )
+        pairedDevices.forEach { device ->
+            pairedBox.addItem(PairedChoice(device, "${device.name}  ${device.host}:${device.port}"))
+        }
+        selected?.let { old ->
+            pairedDevices.firstOrNull {
+                if (old.deviceId.isNotBlank() && it.deviceId.isNotBlank()) it.deviceId == old.deviceId
+                else it.host == old.host && it.port == old.port
+            }
+        }?.let { device ->
+            pairedBox.selectedItem = PairedChoice(device, "${device.name}  ${device.host}:${device.port}")
+        }
+        updatingPaired = false
+    }
+
     private fun start() {
         val host = hostField.text.trim()
         val port = portField.text.trim().toIntOrNull()
@@ -177,11 +263,12 @@ class PcSenderFrame : JFrame("AirMirror PC 发送端") {
             statusLabel.text = "请填写接收端 IP、端口和投屏码"
             return
         }
+        val pairId = pendingPairId
         startButton.isEnabled = false
         stopButton.isEnabled = true
         statusLabel.text = "连接中…"
         statsLabel.text = " "
-        appendLog("开始：$host:$port  ${preset.label}  code=$code")
+        appendLog("开始：$host:$port  ${preset.label}  ${if (code.length == 6) "code=******" else "扫码令牌"}")
         val sender = SenderEngine(
             SenderEngine.Config(
                 host = host,
@@ -201,6 +288,24 @@ class PcSenderFrame : JFrame("AirMirror PC 发送端") {
                     statsLabel.text = "帧=${stats.frames}  ${"%.1f".format(stats.fps)}fps  " +
                         (if (stats.encodeMs > 0) "编码=${stats.encodeMs}ms  " else "编码=原生  ") +
                         "${"%.1f".format(stats.bytes / 1024.0 / 1024.0)}MB"
+                }
+            },
+            onAuthorized = { session ->
+                SwingUtilities.invokeLater {
+                    val device = PairedDeviceStore.Device(
+                        deviceId = pairId,
+                        name = session.deviceName,
+                        host = session.host,
+                        port = session.port,
+                        lastUsedAt = System.currentTimeMillis(),
+                    )
+                    pairedDevices = pairedStore.remember(device)
+                    rebuildPairedChoices()
+                    pendingPairId = ""
+                    // 一次性令牌已消费，清空输入避免下次重连拿旧令牌再撞一次拒绝。
+                    codeField.text = ""
+                    statusLabel.text = "配对成功：${session.deviceName}，已加入最近设备"
+                    appendLog("配对成功并记住：${session.deviceName}  ${session.host}:${session.port}")
                 }
             },
         )
