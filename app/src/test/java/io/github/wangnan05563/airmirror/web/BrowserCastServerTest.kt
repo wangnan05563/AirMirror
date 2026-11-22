@@ -53,6 +53,20 @@ class BrowserCastServerTest {
     }
 
     @Test
+    fun `访问控制关闭时 token 页面也返回 404`() {
+        val allow = AtomicReference(false)
+        server = BrowserCastServer(
+            dir,
+            BrowserCastServer.DEFAULT_MAX_BYTES,
+            {},
+            allowed = { allow.get() },
+        ).start()
+        assertEquals(404, status(server!!.url("127.0.0.1")))
+        allow.set(true)
+        assertEquals(200, get(server!!.url("127.0.0.1")).first)
+    }
+
+    @Test
     fun `访客页文案不含词汇表禁用词`() {
         startServer()
         val page = get(server!!.url("127.0.0.1")).second

@@ -66,6 +66,12 @@ object ErrorNotice {
         CODE_USED,
         REFUSED_BY_USER,
         NO_AUTH,
+        /** T06114：PIN 模式要求先输 4 位 PIN，6 位码/扫码令牌在该模式下不生效 */
+        PIN_REQUIRED,
+        PIN_WRONG,
+        PIN_LOCKED,
+        /** T06114：仅信任设备模式拒绝白名单之外的连接 */
+        TRUSTED_ONLY,
         SESSION_BUSY,
         PERMISSION_CAPTURE,
         PERMISSION_BACKGROUND,
@@ -182,6 +188,22 @@ object ErrorNotice {
             Category.PAIRING, "这台设备未授权", "先在投屏端输入大屏上的投屏码完成配对。",
             listOf(Action.ENTER_CODE),
         ),
+        Cause.PIN_REQUIRED to Notice(
+            Category.PAIRING, "需要电视 PIN", "在电视「访问控制」里查看 4 位 PIN，回到发送端输入。",
+            listOf(Action.ENTER_CODE),
+        ),
+        Cause.PIN_WRONG to Notice(
+            Category.PAIRING, "PIN 不正确", "重新输入电视上的 4 位 PIN；连续输错 5 次会锁 60 秒。",
+            listOf(Action.RETRY_REQUEST),
+        ),
+        Cause.PIN_LOCKED to Notice(
+            Category.PAIRING, "PIN 暂时锁定", "连续输错 5 次会锁 60 秒，等倒计时结束再试。",
+            listOf(Action.RETRY_REQUEST),
+        ),
+        Cause.TRUSTED_ONLY to Notice(
+            Category.PAIRING, "仅允许信任设备", "这台设备不在电视的信任列表；先在电视添加，或切换访问模式。",
+            listOf(Action.NONE),
+        ),
         Cause.SESSION_BUSY to Notice(
             Category.SESSION, "已有设备在投屏", "同一时间只允许一路投屏，等对方结束或向大屏申请接管。",
             listOf(Action.RETRY_REQUEST),
@@ -253,6 +275,10 @@ object ErrorNotice {
 
     /** 供旧代码把已经散在外面的中文原因串归一化；认不出的回落到最通用的一条 */
     fun causeOfLegacyReason(reason: String): Cause = when {
+        reason.contains("仅允许") -> Cause.TRUSTED_ONLY
+        reason.contains("PIN") && reason.contains("锁定") -> Cause.PIN_LOCKED
+        reason.contains("PIN") && reason.contains("不正确") -> Cause.PIN_WRONG
+        reason.contains("PIN") -> Cause.PIN_REQUIRED
         reason.contains("已有设备") -> Cause.SESSION_BUSY
         reason.contains("次数过多") -> Cause.CODE_LOCKED
         reason.contains("已用过") -> Cause.CODE_USED

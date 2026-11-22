@@ -18,6 +18,7 @@ import io.github.wangnan05563.airmirror.device.DeviceProbe
 import io.github.wangnan05563.airmirror.dlna.DlnaServer
 import io.github.wangnan05563.airmirror.net.ProbeResponder
 import io.github.wangnan05563.airmirror.pairing.CastCode
+import io.github.wangnan05563.airmirror.pairing.AccessMode
 import io.github.wangnan05563.airmirror.pairing.DeviceStore
 import io.github.wangnan05563.airmirror.pairing.Pairing
 import io.github.wangnan05563.airmirror.privacy.Diagnostics
@@ -315,6 +316,8 @@ class ReceiverHost private constructor(context: Context) {
                 }
             },
             deviceName = { browserCastName },
+            // T06114：浏览器的 token 入口不能绕过访问控制；PIN/仅信任模式下直接 404。
+            allowed = { store.accessMode() == AccessMode.CONFIRM },
         )
         val started = runCatching { server.start() }.isSuccess
         if (!started) {
@@ -327,6 +330,7 @@ class ReceiverHost private constructor(context: Context) {
 
     /** 待连接页展示的访客入口；未监听时返回 null，界面不显示这一行。 */
     fun browserCastUrl(): String? {
+        if (store.accessMode() != AccessMode.CONFIRM) return null
         val server = browserCast ?: return null
         val address = runCatching { io.github.wangnan05563.airmirror.dlna.localIpv4() }.getOrNull()
             ?: return null

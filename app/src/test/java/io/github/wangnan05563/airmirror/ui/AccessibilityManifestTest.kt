@@ -34,12 +34,14 @@ class AccessibilityManifestTest {
      * UI-07 关于页入口（Main +1）与 About 页返回/开源声明/项目主页（+3），当前为 40。
      * T06113 信任中心在 Receiver 新增 8 个接线点：3 档模式行、信任行、清除全部、
      * 详情弹窗改名/撤销、重命名保存，Receiver 由 21 增至 29。
+     * T06114 PIN 锁定机制在 Receiver 新增 2 个接线点：设置页 PIN 行、PIN 数字键盘（12 键共用一处循环接线），
+     * Receiver 由 29 增至 31。
      */
     @Test
     fun `点击接线点数量与无障碍决策表一致`() {
         assertEquals(4, countOf(source("MainActivity.kt"), "setOnClickListener"))
         assertEquals(12, countOf(source("SenderActivity.kt"), "setOnClickListener"))
-        assertEquals(29, countOf(source("ReceiverActivity.kt"), "setOnClickListener"))
+        assertEquals(31, countOf(source("ReceiverActivity.kt"), "setOnClickListener"))
         assertEquals(3, countOf(source("AboutActivity.kt"), "setOnClickListener"))
         assertEquals(1, countOf(source("ReceiverActivity.kt"), "setOnLongClickListener"))
     }
@@ -49,7 +51,7 @@ class AccessibilityManifestTest {
         mapOf(
             "MainActivity.kt" to 4,
             "SenderActivity.kt" to 12,
-            "ReceiverActivity.kt" to 29,
+            "ReceiverActivity.kt" to 31,
             "AboutActivity.kt" to 3,
         ).forEach { (file, sites) ->
             val describes = countOf(source(file), "A11y.describe(")

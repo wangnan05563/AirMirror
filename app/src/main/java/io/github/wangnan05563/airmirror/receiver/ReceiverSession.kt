@@ -24,6 +24,7 @@ import io.github.wangnan05563.airmirror.net.ServiceAdvertiser
 import io.github.wangnan05563.airmirror.net.StreamConnection
 import io.github.wangnan05563.airmirror.pairing.AuthGate
 import io.github.wangnan05563.airmirror.pairing.Pairing
+import io.github.wangnan05563.airmirror.pairing.PeerMask
 import io.github.wangnan05563.airmirror.perf.AvSync
 import io.github.wangnan05563.airmirror.perf.BandwidthGauge
 import io.github.wangnan05563.airmirror.perf.LatencyLadder
@@ -780,7 +781,7 @@ class ReceiverSession(
             onStatus("$senderName 连接过于频繁，请 $secondsLeft 秒后再试")
             return null
         }
-        val verdict = pairing.gate.authorize(request.deviceId, senderName, request.credential)
+        val verdict = pairing.gate.authorize(request.deviceId, senderName, request.credential, peer)
         return when (verdict) {
             is AuthGate.Verdict.Authorized -> {
                 grant(conn, verdict.deviceName, verdict.permanent, request.deviceId, peer)
@@ -813,10 +814,18 @@ class ReceiverSession(
                     // 静默期内连输码的机会都没有（authorize 判码之前就返回了），
                     // 说「投屏码不正确」会让用户白跑一轮重新读码
                     AuthGate.Refused.NOT_TRUSTED -> "大屏已拒绝"
+                    AuthGate.Refused.PIN_REQUIRED -> "电视要求输入 4 位 PIN"
+                    AuthGate.Refused.PIN_WRONG -> "PIN 不正确"
+                    AuthGate.Refused.PIN_LOCKED -> "PIN 已锁定，${verdict.secondsLeft} 秒后可重试"
+                    AuthGate.Refused.TRUSTED_ONLY -> "仅允许已信任设备连接"
                     else -> "投屏码不正确"
                 }
                 if (verdict.reason == AuthGate.Refused.TOO_MANY_ATTEMPTS) {
                     onStatus("有设备正在尝试连接，已临时锁定投屏码")
+                }
+                if (verdict.reason == AuthGate.Refused.PIN_LOCKED) {
+                    onStatus("有设备 PIN 连续输错，已锁定 ${verdict.secondsLeft} 秒")
+                    Log.i(TAG, "pin lock engaged: peer=${PeerMask.mask(peer)} for ${verdict.secondsLeft}s")
                 }
                 refuse(conn, reason)
                 onStatus("$senderName 连接被拒绝：$reason")

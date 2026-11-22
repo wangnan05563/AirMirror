@@ -51,7 +51,7 @@ object A11yCopy {
 
     fun checkUpdate(): String = "检查更新，双击查询新版本"
 
-    fun codeConnect(): String = "用码连接，使用电视上的六位投屏码"
+    fun codeConnect(): String = "用码连接，使用电视上的投屏码或四位 PIN"
 
     fun addressConnect(): String = "直接连接，使用电视地址或配对链接"
 
@@ -73,7 +73,7 @@ object A11yCopy {
     fun cardAction(name: String, mirror: Boolean): String =
         if (mirror) "镜像屏幕到「${clip(name, 16)}」" else "推送视频到「${clip(name, 16)}」"
 
-    fun codeInputLabel(): String = "输入投屏码，六位数字"
+    fun codeInputLabel(): String = "输入投屏码或 PIN，四到六位数字"
 
     fun addressInputLabel(): String = "输入设备地址或配对链接"
 
@@ -112,6 +112,24 @@ object A11yCopy {
         "撤销信任：${clip(name, 10)}，撤销后下次连接需重新确认"
 
     fun trustClear(count: Int): String = "清除全部信任设备，共 $count 台，双击清除"
+
+    fun pinRow(pin: String): String = "电视 PIN：$pin，双击修改，可用遥控器输入"
+
+    fun pinKey(label: String): String = "PIN 键盘：${clip(label, 4)}，双击输入"
+
+    fun pinEntry(length: Int): String =
+        if (length == 0) "新 PIN：尚未输入" else "新 PIN：已输入 $length 位"
+
+    fun pinWaiting(pin: String): String = "电视 PIN：$pin，请在发送端输入"
+
+    fun pinLocked(seconds: Int, mask: String): String {
+        val source = if (mask.isBlank()) "" else "，来源 ${clip(mask, 16)}"
+        return "PIN 已锁定，$seconds 秒后可重试$source"
+    }
+
+    fun pinLockedLabel(): String = "电视 PIN 已锁定，等待倒计时结束"
+
+    fun pinTrustedOnly(): String = "仅允许已信任设备连接，新设备需先加入信任列表"
 
     fun qualityAuto(selected: Boolean): String = "画质：自动（推荐），${selected(selected)}"
 

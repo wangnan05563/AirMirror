@@ -7,8 +7,8 @@ import org.junit.Test
 import java.io.File
 
 /**
- * PRD UI-02 源码守卫：电视端待连接页主视觉区只保留「设备名 + 投屏码（环形倒计时）+ 二维码」三件；
- * 浏览器入口收进「更多信息」，设备分级与诊断摘要收进设置页；次要入口与主区间距 ≥24dp。
+ * PRD UI-02 源码守卫：电视端待连接页主视觉区只保留「设备名 + 投屏码（环形倒计时）+ 二维码」；
+ * T06114 的 PIN 模式把码与二维码替换成 4 位 PIN 区，因此静态 addView 上限为 4，两种模式不能同时露出。
  * 真机 3 米可辨与 D-pad 遍历属 R 级复验，不在本守卫范围。
  */
 class MainVisualGuardTest {
@@ -27,14 +27,15 @@ class MainVisualGuardTest {
         File(projectRoot(), "app/src/main/java/io/github/wangnan05563/airmirror/ui/ReceiverActivity.kt").readText()
 
     @Test
-    fun `主视觉区恰好三件 设备名 投屏码 二维码`() {
+    fun `主视觉区最多四件 设备名 投屏码 二维码 PIN区`() {
         val src = receiver()
-        assertEquals("主视觉区只能有 3 个 addView", 3, src.split("mainArea.addView(").size - 1)
+        assertEquals("主视觉区只能有 4 个 addView（PIN 模式用 PIN 区替换码与二维码）", 4, src.split("mainArea.addView(").size - 1)
         assertTrue("缺设备名行", src.contains("mainArea.addView(nameRow"))
         assertTrue("设备名仍在主视觉行内", src.contains("nameRow.addView(deviceNameText"))
         assertTrue("设备名旁缺品牌标记", src.contains("BrandMarkView(this)"))
         assertTrue("缺投屏码槽", src.contains("mainArea.addView(codeSlot"))
         assertTrue("缺二维码", src.contains("mainArea.addView(qrView"))
+        assertTrue("缺 PIN 区", src.contains("mainArea.addView(pinArea"))
         assertTrue("主视觉区要挂到待连接页", src.contains("waiting.addView(mainArea"))
     }
 

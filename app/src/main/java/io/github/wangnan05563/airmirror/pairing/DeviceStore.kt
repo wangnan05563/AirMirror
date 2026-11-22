@@ -82,6 +82,13 @@ class DeviceStore(context: Context) {
         prefs.edit().putString(KEY_ACCESS_MODE, mode.name).apply()
     }
 
+    /** T06114：4 位 PIN、失败次数、锁定截止与来源掩码的落盘快照；一次读写保证锁定跨重启。 */
+    fun pinState(): String = prefs.getString(KEY_PIN_STATE, "").orEmpty()
+
+    fun savePinState(snapshot: String) {
+        prefs.edit().putString(KEY_PIN_STATE, snapshot).apply()
+    }
+
     /** 显示模式按设备持久化，重启后保持（PRD FS-08 验收「设置持久」）。 */
     fun displayMode(): DisplayMode =
         DisplayMode.parse(prefs.getString(KEY_DISPLAY_MODE, null))
@@ -177,6 +184,7 @@ class DeviceStore(context: Context) {
         const val KEY_AUTO_ALLOW = "auto_allow"
         const val KEY_DISPLAY_MODE = "display_mode"
         const val KEY_ACCESS_MODE = "access_mode"
+        const val KEY_PIN_STATE = "pin_state_v1"
         const val KEY_FOLLOW_ROTATION = "follow_rotation"
         const val KEY_PORTRAIT_LABEL = "portrait_label"
         const val KEY_AUTO_START = "auto_start"

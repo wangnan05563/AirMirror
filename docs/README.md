@@ -55,6 +55,7 @@
 | [AirMirror-PC安装包与首启向导-v2.0-20261122.md](AirMirror-PC安装包与首启向导-v2.0-20261122.md) | 三期 T06111：便携 ZIP、静默安装、防火墙/卸载脚本、四步首启向导与 Win10 实测 |
 | [AirMirror-TrustRegistry-v2-20261122.md](AirMirror-TrustRegistry-v2-20261122.md) | 三期 T06112：可信记录 30 天过期、v2 版本化落盘、v1 迁移与失败回退每次确认 |
 | [AirMirror-TV信任中心-20261122.md](AirMirror-TV信任中心-20261122.md) | 三期 T06113：TV 访问控制三档开关、信任列表、改名/撤销/详情/清空与 1920×1080 截图 |
+| [AirMirror-PIN锁定机制-20261123.md](AirMirror-PIN锁定机制-20261123.md) | 三期 T06114：4 位 PIN、5 次错误锁 60 秒、锁定跨重启、IP 掩码、三模式判定与 PIN 等待页截图 |
 
 ## 代码质量
 

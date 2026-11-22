@@ -38,6 +38,7 @@ import io.github.wangnan05563.airmirror.pairing.AccessMode
 import io.github.wangnan05563.airmirror.pairing.CastCode
 import io.github.wangnan05563.airmirror.pairing.DeviceStore
 import io.github.wangnan05563.airmirror.pairing.Pairing
+import io.github.wangnan05563.airmirror.pairing.PinCode
 import io.github.wangnan05563.airmirror.privacy.Diagnostics
 import io.github.wangnan05563.airmirror.protocol.ProtocolBoundary
 import io.github.wangnan05563.airmirror.receiver.ReceiverHost
@@ -125,6 +126,13 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     private lateinit var trustSummary: TextView
     private lateinit var trustContainer: LinearLayout
     private lateinit var clearTrustRow: TextView
+    /** T06114 PIN 模式：主等待页显示 4 位 PIN 与锁定倒计时；仅信任模式复用同一块给出说明。 */
+    private lateinit var pinArea: LinearLayout
+    private lateinit var pinDisplay: TextView
+    private lateinit var pinLockText: TextView
+    private lateinit var pinSettingsRow: TextView
+    /** PIN 展示/锁定翻转才更新读屏描述，每秒倒计时不触发播报。 */
+    private var lastPinA11yKey: String? = null
     /** 首启三步引导（PRD §1.2）：覆盖在待连接页之上的全屏卡片；非首启时整块 GONE。 */
     private lateinit var onboarding: FrameLayout
     private lateinit var onboardStepHint: TextView
@@ -402,6 +410,23 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         activeCode = codeA
         inactiveCode = codeB
         mainArea.addView(codeSlot, centeredBlock(side).apply { topMargin = Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP) })
+
+        // T06114：PIN 模式不展示 6 位码/二维码，避免双通道绕过；仅信任模式只给一句白名单说明。
+        pinArea = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            visibility = View.GONE
+        }
+        pinDisplay = TextView(this).apply { codeStyle(this) }
+        pinArea.addView(pinDisplay, matchWidth())
+        pinLockText = TextView(this).apply {
+            textSize = FocusPolicy.bodySp(isTv)
+            setTextColor(StatusColors.secondaryText(highContrastUi))
+            gravity = Gravity.CENTER
+            setPadding(0, Theme.dp(this@ReceiverActivity, Theme.SPACE_SM_DP), 0, 0)
+        }
+        pinArea.addView(pinLockText, matchWidth())
+        mainArea.addView(pinArea, matchWidth().apply { topMargin = Theme.dp(this@ReceiverActivity, Theme.SPACE_LG_DP) })
         waiting.addView(mainArea, matchWidth())
 
         // PRD UI-02 / §7.3：次要入口收进「更多信息」，与主区间距 ≥24dp，不与二维码争夺视觉中心。
@@ -860,6 +885,14 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             accessModeRows[mode] = row
             settingsPanel.addView(row, matchWidth())
         }
+        pinSettingsRow = TextView(this).apply {
+            textSize = FocusPolicy.bodySp(isTv)
+            setTextColor(Theme.TEXT_PRIMARY)
+            setPadding(0, Theme.dp(this@ReceiverActivity, 10), 0, Theme.dp(this@ReceiverActivity, 10))
+            setOnClickListener { showPinEditor() }
+            UiKit.touchTarget(this)
+        }
+        settingsPanel.addView(pinSettingsRow, matchWidth())
         settingsPanel.addView(TextView(this).apply {
             text = "信任列表"
             textSize = FocusPolicy.sectionTitleSp(isTv)
@@ -975,6 +1008,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         refreshSignalingRow()
         refreshQualityRows()
         refreshAccessRows()
+        refreshPinRow()
         refreshTrustRows()
         refreshMaintenanceRows()
         // 画质档位行是探完能力后动态 addView 的，刷新时再扫一次树；不抢当前焦点
@@ -1010,8 +1044,117 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         }
         store.saveAccessMode(mode)
         refreshSettings()
+        refreshWaitingPage()
         Log.i(TAG, "access mode -> ${mode.name}")
         showCornerHint("访问模式已切换为${mode.label}")
+    }
+
+    /** 设置页 PIN 行：锁定期只显示倒计时与来源掩码，不把可用的 PIN 继续摆在设置里。 */
+    private fun refreshPinRow() {
+        val locked = pairing.pin.state() == PinCode.State.LOCKED
+        val seconds = pairing.pin.secondsLeft()
+        val pin = pairing.pin.pin()
+        pinSettingsRow.text = if (locked) {
+            "电视 PIN 已锁定 · ${seconds} 秒后可重试 · 双击修改"
+        } else {
+            "电视 PIN：$pin · 双击修改"
+        }
+        A11y.describe(
+            pinSettingsRow,
+            if (locked) A11yCopy.pinLocked(seconds, pairing.pin.peerMask()) else A11yCopy.pinRow(pin),
+        )
+        pinSettingsRow.setTextColor(if (locked) Theme.DANGER else Theme.TEXT_PRIMARY)
+    }
+
+    /**
+     * T06114：电视端 PIN 修改必须能只用遥控器完成，所以不用 EditText（软键盘在 TV 上不可靠），
+     * 给一块 0–9 数字键盘 + 清空/删除；保存按钮只有满 4 位才可用。
+     */
+    private fun showPinEditor() {
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(
+                Theme.dp(this@ReceiverActivity, Theme.SPACE_XL_DP),
+                0,
+                Theme.dp(this@ReceiverActivity, Theme.SPACE_XL_DP),
+                Theme.dp(this@ReceiverActivity, Theme.SPACE_SM_DP),
+            )
+        }
+        val entry = StringBuilder()
+        val entryText = TextView(this).apply {
+            codeStyle(this)
+            A11y.describe(this, A11yCopy.pinEntry(0))
+        }
+        content.addView(entryText, matchWidth())
+        val hint = TextView(this).apply {
+            text = "在电视上用遥控器输入新的 4 位 PIN；保存后旧 PIN 立即失效"
+            textSize = FocusPolicy.bodySp(isTv)
+            setTextColor(Theme.TEXT_SECONDARY)
+            gravity = Gravity.CENTER
+            setPadding(0, Theme.dp(this@ReceiverActivity, Theme.SPACE_SM_DP), 0, Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP))
+        }
+        content.addView(hint, matchWidth())
+
+        val keys = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "清空", "0", "删除")
+        var positive: Button? = null
+        fun render() {
+            val slots = (0 until PinCode.PIN_LENGTH).joinToString(" ") { index ->
+                if (index < entry.length) entry[index].toString() else "○"
+            }
+            entryText.text = slots
+            A11y.describe(entryText, A11yCopy.pinEntry(entry.length))
+            positive?.isEnabled = entry.length == PinCode.PIN_LENGTH
+        }
+        for (rowStart in keys.indices step 3) {
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            for (index in rowStart until minOf(rowStart + 3, keys.size)) {
+                val label = keys[index]
+                val key = TextView(this).apply {
+                    text = label
+                    textSize = FocusPolicy.titleSp(isTv)
+                    gravity = Gravity.CENTER
+                    setTextColor(Theme.TEXT_PRIMARY)
+                    UiKit.touchTarget(this)
+                    A11y.describe(this, A11yCopy.pinKey(label))
+                    setOnClickListener {
+                        when (label) {
+                            "清空" -> entry.clear()
+                            "删除" -> if (entry.isNotEmpty()) entry.deleteCharAt(entry.length - 1)
+                            else -> if (entry.length < PinCode.PIN_LENGTH) entry.append(label)
+                        }
+                        render()
+                    }
+                }
+                row.addView(key, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginEnd = Theme.dp(this@ReceiverActivity, if (index < rowStart + 2) Theme.SPACE_SM_DP else 0)
+                })
+            }
+            content.addView(row, matchWidth())
+        }
+
+        val dialog = UiKit.dialog(this)
+            .setTitle("修改电视 PIN")
+            .setView(content)
+            .setPositiveButton("保存") { _, _ ->
+                if (pairing.pin.setPin(entry.toString())) {
+                    refreshPinRow()
+                    refreshWaitingPage()
+                    showCornerHint("PIN 已更新")
+                    Log.i(TAG, "pin updated by local keypad")
+                } else {
+                    showCornerHint("PIN 需为 4 位数字")
+                }
+            }
+            .setNegativeButton("取消", null)
+            .create()
+        dialog.setOnShowListener {
+            UiKit.styleDialogButtons(dialog)
+            positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+            render()
+        }
+        dialog.show()
+        TvFocus.applyTree(content)
+        render()
     }
 
     /** 信任列表每次重建：撤销/改名/过期都会改变条目数，复用旧行只会留下幽灵设备。 */
@@ -1811,13 +1954,82 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     }
 
     private fun refreshWaitingPage() {
+        refreshPinArea()
         refreshCodePanel()
         refreshBrowserRow()
         refreshPairingQr()
     }
 
+    /**
+     * T06114：PIN 模式隐藏 6 位码与二维码；主等待页直接显示 4 位 PIN，锁定时显示倒计时。
+     * 仅信任模式只展示白名单提示，不暴露任何可输入凭据的入口。
+     */
+    private fun refreshPinArea() {
+        val mode = store.accessMode()
+        qrView.visibility = if (mode == AccessMode.CONFIRM) View.VISIBLE else View.GONE
+        if (mode == AccessMode.CONFIRM) {
+            pinArea.visibility = View.GONE
+            lastPinA11yKey = null
+            return
+        }
+        pinArea.visibility = View.VISIBLE
+        val seconds = pairing.pin.secondsLeft()
+        val mask = pairing.pin.peerMask()
+        when (mode) {
+            AccessMode.PIN -> {
+                val pin = pairing.pin.pin()
+                val locked = pairing.pin.state() == PinCode.State.LOCKED
+                pinDisplay.text = pin.toCharArray().joinToString(" ")
+                pinDisplay.setTextColor(if (locked) Theme.DANGER else Theme.ACCENT)
+                pinLockText.text = if (locked) {
+                    "已锁定 · ${seconds} 秒后可重试" + if (mask.isBlank()) "" else " · 来源 $mask"
+                } else {
+                    "在发送端输入这 4 位数字"
+                }
+                pinLockText.setTextColor(if (locked) Theme.DANGER else StatusColors.secondaryText(highContrastUi))
+                val key = "pin:$locked:$pin:$mask"
+                if (key != lastPinA11yKey) {
+                    val first = lastPinA11yKey == null
+                    lastPinA11yKey = key
+                    A11y.describe(pinDisplay, if (locked) A11yCopy.pinLockedLabel() else A11yCopy.pinWaiting(pin))
+                    A11y.describe(
+                        pinLockText,
+                        if (locked) "PIN 锁定期间不接受输入" else "在发送端输入电视上显示的四位数字",
+                    )
+                    if (!first) {
+                        if (locked) {
+                            A11y.announce(pinArea, A11yCopy.pinLocked(seconds, mask), "pin-locked")
+                        } else {
+                            A11y.announce(pinArea, A11yCopy.pinWaiting(pin), "pin-unlocked")
+                        }
+                    }
+                }
+            }
+            AccessMode.TRUSTED_ONLY -> {
+                pinDisplay.text = "仅信任设备"
+                pinDisplay.setTextColor(Theme.TEXT_PRIMARY)
+                pinLockText.text = "新设备需先在电视加入信任列表"
+                pinLockText.setTextColor(StatusColors.secondaryText(highContrastUi))
+                if ("trusted-only" != lastPinA11yKey) {
+                    lastPinA11yKey = "trusted-only"
+                    A11y.describe(pinDisplay, A11yCopy.pinTrustedOnly())
+                    A11y.describe(pinLockText, "新设备连接前需由机主在电视添加信任")
+                }
+            }
+            AccessMode.CONFIRM -> Unit
+        }
+    }
+
     /** 投屏码面板：锁定期用占位符；描述只在换码/锁定翻转时改写与播报，每秒倒计时不打断读屏（R8）。 */
     private fun refreshCodePanel() {
+        // PIN / 仅信任模式下 6 位码不参与认证，必须从主视觉区撤掉，避免被当成可用入口。
+        val confirmMode = store.accessMode() == AccessMode.CONFIRM
+        codeSlot.visibility = if (confirmMode) View.VISIBLE else View.GONE
+        countdownText.visibility = if (confirmMode) View.VISIBLE else View.GONE
+        if (!confirmMode) {
+            lastPayload = ""
+            return
+        }
         val code = pairing.code
         val locked = code.state() == CastCode.State.LOCKED
         // 锁定期内展示的数字输了也不认，宁可用占位符也不给一个「看着能用」的码

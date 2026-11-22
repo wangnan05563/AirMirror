@@ -66,7 +66,7 @@ class UiFlowTest {
         val input = texts(a.window.decorView).filterIsInstance<EditText>().first()
         input.setText("123")
         assertTrue(click(a.window.decorView, "用码连接"))
-        assertEquals("请输入电视上的 6 位投屏码", ShadowToast.getTextOfLatestToast())
+        assertEquals("请输入电视上的 4 位 PIN 或 6 位投屏码", ShadowToast.getTextOfLatestToast())
 
         input.setText("123456")
         assertTrue(click(a.window.decorView, "用码连接"))

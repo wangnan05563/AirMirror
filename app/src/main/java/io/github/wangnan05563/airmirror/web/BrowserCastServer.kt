@@ -29,6 +29,8 @@ class BrowserCastServer(
     private val token: String = newToken(),
     /** 页面标题行显示的大屏名；用取值函数，改名后不必重建服务也能刷新。 */
     private val deviceName: () -> String = { DEFAULT_DEVICE_NAME },
+    /** T06114：访问控制非「每次确认」时，浏览器 token 不能成为绕过 PIN/白名单的第二条路。 */
+    private val allowed: () -> Boolean = { true },
     /**
      * 读请求头与读文件体的超时。这个服务对局域网敞开，谁都能连上；
      * 没有超时的话，一个连上就不发字节的客户端会把处理线程永久挂住——
@@ -111,6 +113,7 @@ class BrowserCastServer(
         if (parts.size < 2) return
         val method = parts[0]
         val path = parts[1].substringBefore('?')
+        if (!allowed()) return respond(client, 404, MIME_TEXT_PLAIN, "not found")
         if (!tokenMatches(path)) return respond(client, 404, MIME_TEXT_PLAIN, "not found")
         when {
             method == "GET" && path == pagePath -> respond(client, 200, "text/html; charset=utf-8", page())

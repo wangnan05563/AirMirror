@@ -236,14 +236,14 @@ class SenderActivity : Activity() {
         root.addView(permissionFix, matchWidth())
         root.addView(buildTakeoverBar(), matchWidth())
 
-        codeInput = makeInput("投屏码", InputType.TYPE_CLASS_NUMBER)
+        codeInput = makeInput("投屏码或 PIN", InputType.TYPE_CLASS_NUMBER)
         codeInput.filters = arrayOf(InputFilter.LengthFilter(CODE_LENGTH))
         root.addView(
             rowWith(codeInput, "用码连接") { connectByCode() },
             matchWidth(),
         )
         root.addView(TextView(this).apply {
-            text = "电视待连接页上的 6 位数字"
+            text = "电视上的 6 位投屏码，或 PIN 模式下的 4 位 PIN"
             textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_SECONDARY)
             setPadding(Theme.dp(this@SenderActivity, Theme.SPACE_XS_DP), 0, 0, Theme.dp(this@SenderActivity, Theme.SPACE_XS_DP))
@@ -807,8 +807,8 @@ class SenderActivity : Activity() {
 
     private fun connectByCode() {
         val code = codeInput.text.toString().trim()
-        if (code.length != CODE_LENGTH) {
-            toast("请输入电视上的 6 位投屏码")
+        if ((code.length != CODE_LENGTH && code.length != PIN_LENGTH) || !code.all(Char::isDigit)) {
+            toast("请输入电视上的 4 位 PIN 或 6 位投屏码")
             return
         }
         val online = devices.rows().filter { it.online }
@@ -896,7 +896,7 @@ class SenderActivity : Activity() {
             return
         }
         val credential = when {
-            code.length == CODE_LENGTH -> code
+            code.length == CODE_LENGTH || code.length == PIN_LENGTH -> code
             else -> link?.token.orEmpty()
         }
         connectTo(Target(link?.name.orEmpty().ifEmpty { host }, host, port, host), credential)
@@ -1436,6 +1436,7 @@ class SenderActivity : Activity() {
         private const val SEARCHING = "正在搜索同一网络里的电视…"
         private const val PROTOCOL = "AMRC"
         private const val CODE_LENGTH = 6
+        private const val PIN_LENGTH = 4
         private const val DEFAULT_PORT = 41523
         private const val POLL_MS = 800L
         const val EXTRA_TARGET_HOST = "io.github.wangnan05563.airmirror.TARGET_HOST"

@@ -9,8 +9,20 @@ package io.github.wangnan05563.airmirror.pairing
 class AuthGate(
     private val trust: TrustRegistry,
     private val code: CastCode,
+    private val pin: PinCode? = null,
+    private val accessMode: () -> AccessMode = { AccessMode.CONFIRM },
 ) {
-    enum class Refused { INVALID_CODE, ALREADY_USED, TOO_MANY_ATTEMPTS, NOT_TRUSTED, SESSION_BUSY }
+    enum class Refused {
+        INVALID_CODE,
+        ALREADY_USED,
+        TOO_MANY_ATTEMPTS,
+        NOT_TRUSTED,
+        SESSION_BUSY,
+        PIN_REQUIRED,
+        PIN_WRONG,
+        PIN_LOCKED,
+        TRUSTED_ONLY,
+    }
 
     sealed interface Verdict {
         data class Authorized(val deviceName: String, val permanent: Boolean) : Verdict
@@ -47,13 +59,31 @@ class AuthGate(
     fun promote(deviceId: String, deviceName: String, permanent: Boolean): Verdict.Authorized? =
         if (trust.acquireSession(deviceId)) Verdict.Authorized(deviceName, permanent) else null
 
-    fun authorize(deviceId: String, deviceName: String, credential: String): Verdict {
+    fun authorize(deviceId: String, deviceName: String, credential: String, peer: String = ""): Verdict {
         val id = deviceId.ifBlank { "unknown" }
         val cred = credential.trim()
         // 拒绝后的静默期对凭据路径同样生效：否则刚点过「拒绝」的设备换个码就能上屏
         val decision = trust.decide(id)
         if (decision.verdict == TrustRegistry.Verdict.SUPPRESSED) {
             return Verdict.Rejected(Refused.NOT_TRUSTED, 0)
+        }
+        when (accessMode()) {
+            AccessMode.TRUSTED_ONLY -> {
+                // 仅信任设备：连 6 位码/扫码令牌也不放行，避免“换个凭据就绕开白名单”。
+                return if (decision.verdict == TrustRegistry.Verdict.TRUSTED) {
+                    admit(id, deviceName, permanent = true)
+                } else {
+                    Verdict.Rejected(Refused.TRUSTED_ONLY, 0)
+                }
+            }
+            AccessMode.PIN -> {
+                // 可信设备仍免确认；未知设备只认 4 位 PIN，6 位码与扫码令牌不能绕过 PIN。
+                if (decision.verdict == TrustRegistry.Verdict.TRUSTED) {
+                    return admit(id, deviceName, permanent = true)
+                }
+                return authorizeByPin(id, deviceName, cred, peer)
+            }
+            AccessMode.CONFIRM -> Unit
         }
         if (cred.isNotEmpty()) return authorizeByCode(id, deviceName, cred)
         if (decision.verdict == TrustRegistry.Verdict.TRUSTED) return admit(id, deviceName, permanent = true)
@@ -63,6 +93,22 @@ class AuthGate(
         // 按 T04496 裁决选项1，空凭据一律不自动放行，必须由大屏显式确认。5 秒/无人表态的超时
         // 由 ReceiverSession.awaitDecision 退回拒绝（decline），不再把匿名同网设备永久写入可信列表。
         return Verdict.PendingPrompt(id, deviceName, Long.MAX_VALUE)
+    }
+
+    /** PIN 模式下的未知设备：只认 4 位 PIN，成功是一次性会话，不写可信列表。 */
+    private fun authorizeByPin(id: String, deviceName: String, cred: String, peer: String): Verdict {
+        val subject = pin ?: return Verdict.Rejected(Refused.PIN_REQUIRED, 0)
+        if (cred.isEmpty() || !cred.matches(FOUR_DIGITS)) {
+            return Verdict.Rejected(Refused.PIN_REQUIRED, 0)
+        }
+        return when (val outcome = subject.submit(cred, peer)) {
+            PinCode.Outcome.Accepted -> {
+                trust.allow(id, deviceName, permanent = false)
+                admit(id, deviceName, permanent = false)
+            }
+            is PinCode.Outcome.Locked -> Verdict.Rejected(Refused.PIN_LOCKED, outcome.secondsLeft)
+            is PinCode.Outcome.Rejected -> Verdict.Rejected(Refused.PIN_WRONG, 0)
+        }
     }
 
     /** 一次性凭据：6 位码或 16 位令牌，命中即放行但只记本次会话，不写可信列表。 */
@@ -99,6 +145,7 @@ class AuthGate(
 
     private companion object {
         val SIX_DIGITS = Regex("^\\d{6}$")
+        val FOUR_DIGITS = Regex("^\\d{4}$")
         val HEX_TOKEN = Regex("^[0-9a-f]{16}$")
     }
 }
