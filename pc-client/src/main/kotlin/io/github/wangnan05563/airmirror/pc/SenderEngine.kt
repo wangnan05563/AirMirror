@@ -20,6 +20,7 @@ class SenderEngine(
     private val onStatus: (String) -> Unit,
     private val onStats: (Stats) -> Unit = {},
     private val onAuthorized: (Session) -> Unit = {},
+    private val onFirstFrame: () -> Unit = {},
 ) {
     data class Session(val deviceName: String, val host: String, val port: Int)
     data class Config(
@@ -52,6 +53,7 @@ class SenderEngine(
     private var ffmpegEncoder: FfmpegCaptureEncoder? = null
     private val frameCount = AtomicLong()
     private val byteCount = AtomicLong()
+    private val firstFrameNotified = AtomicBoolean(false)
 
     fun start() {
         if (!running.compareAndSet(false, true)) return
@@ -158,7 +160,7 @@ class SenderEngine(
                                     payload = encoded.payload,
                                 ),
                             )
-                            frameCount.incrementAndGet()
+                            afterFrameSent()
                             byteCount.addAndGet(encoded.payload.size.toLong())
                             statFrames++
                         }
@@ -206,7 +208,6 @@ class SenderEngine(
         val frameNanos = 1_000_000_000L / cfg.fps.coerceAtLeast(1)
         val start = System.nanoTime()
         var next = start
-        var frames = 0L
         var bytes = 0L
         var encodeTotal = 0L
         var statWindow = start
@@ -230,14 +231,14 @@ class SenderEngine(
                 if (encoded.keyFrame) flags = flags or Protocol.Flags.KEY_FRAME
                 val ptsUs = (System.nanoTime() - start) / 1000
                 conn.send(Protocol.Frame(Protocol.Type.VIDEO, flags = flags, ptsUs = ptsUs, payload = encoded.payload))
-                frames++
+                afterFrameSent()
                 bytes += encoded.payload.size
                 statFrames++
             }
             val now = System.nanoTime()
             if (now - statWindow >= 1_000_000_000L) {
                 val fps = statFrames * 1e9 / (now - statWindow)
-                onStats(Stats(frames, bytes, encodeTotal / frames.coerceAtLeast(1) / 1_000_000, fps))
+                onStats(Stats(frameCount.get(), bytes, encodeTotal / frameCount.get().coerceAtLeast(1) / 1_000_000, fps))
                 statWindow = now
                 statFrames = 0
             }
@@ -245,6 +246,11 @@ class SenderEngine(
             val waitMs = (next - System.nanoTime()) / 1_000_000
             if (waitMs > 0) Thread.sleep(waitMs) else next = System.nanoTime()
         }
+    }
+
+    private fun afterFrameSent() {
+        frameCount.incrementAndGet()
+        if (firstFrameNotified.compareAndSet(false, true)) onFirstFrame()
     }
 
     private fun startReader(conn: PcConnection, gen: Long) {

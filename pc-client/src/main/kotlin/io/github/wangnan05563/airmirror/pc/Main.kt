@@ -41,6 +41,7 @@ class PcSenderFrame : JFrame("AirMirror PC 发送端") {
     private val pairedBox = JComboBox<PairedChoice>()
     private val forgetButton = JButton("忘记设备")
     private val scanButton = JButton("扫码配对")
+    private val wizardButton = JButton("设置向导")
     private val presetBox = JComboBox(
         arrayOf(
             Preset("1920x1080 @ 30fps", 1920, 1080, 30),
@@ -60,6 +61,8 @@ class PcSenderFrame : JFrame("AirMirror PC 发送端") {
     private val foundDevices = LinkedHashMap<String, MdnsDiscovery.Device>()
     private var updatingDevices = false
     private val pairedStore = PairedDeviceStore()
+    private val onboardingStore = OnboardingStore()
+    private var wizard: OnboardingWizard? = null
     private var pairedDevices: List<PairedDeviceStore.Device> = pairedStore.load()
     private var updatingPaired = false
     /** 扫码带出的接收端设备标识；授权成功后与地址一起写入最近设备。 */
@@ -103,6 +106,7 @@ class PcSenderFrame : JFrame("AirMirror PC 发送端") {
 
         val actions = JPanel(FlowLayout(FlowLayout.LEFT, 8, 0))
         actions.add(scanButton)
+        actions.add(wizardButton)
         actions.add(startButton)
         actions.add(stopButton)
 
@@ -121,6 +125,7 @@ class PcSenderFrame : JFrame("AirMirror PC 发送端") {
         startButton.addActionListener { start() }
         stopButton.addActionListener { stop() }
         scanButton.addActionListener { scanPairing() }
+        wizardButton.addActionListener { openWizard() }
         forgetButton.addActionListener { forgetSelectedDevice() }
         refreshButton.addActionListener {
             statusLabel.text = "正在搜索局域网接收端…"
@@ -202,6 +207,27 @@ class PcSenderFrame : JFrame("AirMirror PC 发送端") {
         QrScanDialog(this) { link -> applyPairingLink(link) }.isVisible = true
     }
 
+    /** 首次启动进入四步向导；用户点“设置向导”时也复用同一入口。 */
+    fun showOnboardingIfNeeded() {
+        if (onboardingStore.shouldShow()) openWizard()
+    }
+
+    private fun openWizard() {
+        wizard?.dispose()
+        val dialog = OnboardingWizard(this, onboardingStore, onConnect = ::connectFromWizard)
+        wizard = dialog
+        dialog.isVisible = true
+        wizard = null
+    }
+
+    private fun connectFromWizard(host: String, port: Int, code: String, pairId: String) {
+        hostField.text = host
+        portField.text = port.toString()
+        codeField.text = code
+        pendingPairId = pairId
+        start()
+    }
+
     private fun applyPairingLink(link: io.github.wangnan05563.airmirror.pairing.PairingLink.Link) {
         val host = link.host.ifBlank { hostField.text.trim() }
         if (host.isBlank()) {
@@ -269,6 +295,7 @@ class PcSenderFrame : JFrame("AirMirror PC 发送端") {
         statusLabel.text = "连接中…"
         statsLabel.text = " "
         appendLog("开始：$host:$port  ${preset.label}  ${if (code.length == 6) "code=******" else "扫码令牌"}")
+        var connectedName = "电视"
         val sender = SenderEngine(
             SenderEngine.Config(
                 host = host,
@@ -291,6 +318,7 @@ class PcSenderFrame : JFrame("AirMirror PC 发送端") {
                 }
             },
             onAuthorized = { session ->
+                connectedName = session.deviceName
                 SwingUtilities.invokeLater {
                     val device = PairedDeviceStore.Device(
                         deviceId = pairId,
@@ -306,6 +334,12 @@ class PcSenderFrame : JFrame("AirMirror PC 发送端") {
                     codeField.text = ""
                     statusLabel.text = "配对成功：${session.deviceName}，已加入最近设备"
                     appendLog("配对成功并记住：${session.deviceName}  ${session.host}:${session.port}")
+                }
+            },
+            onFirstFrame = {
+                if (!onboardingStore.load().completed) {
+                    onboardingStore.markCompleted(connectedName, host, port)
+                    appendLog("首帧已送达，首次设置完成")
                 }
             },
         )
@@ -325,6 +359,10 @@ class PcSenderFrame : JFrame("AirMirror PC 发送端") {
 object Main {
     @JvmStatic
     fun main(args: Array<String>) {
+        if (args.firstOrNull() == "--self-check") {
+            runSelfCheck()
+            return
+        }
         if (args.firstOrNull() == "--discover") {
             runDiscovery(args.drop(1))
             return
@@ -333,7 +371,32 @@ object Main {
             runCli(args)
             return
         }
-        SwingUtilities.invokeLater { PcSenderFrame().isVisible = true }
+        SwingUtilities.invokeLater {
+            val frame = PcSenderFrame()
+            frame.isVisible = true
+            frame.showOnboardingIfNeeded()
+        }
+    }
+
+    /** 安装脚本用的无界面自检：只验证打包进去的运行时与 jar，不启动 UI。 */
+    private fun runSelfCheck() {
+        try {
+            listOf(
+                "io.github.wangnan05563.airmirror.protocol.Protocol",
+                "io.github.wangnan05563.airmirror.pairing.PairingLink",
+                "com.google.zxing.Result",
+                "com.github.sarxos.webcam.Webcam",
+                "kotlin.Unit",
+            ).forEach { Class.forName(it, false, Main::class.java.classLoader) }
+            println(
+                "AIRMIRROR_PC_SELF_CHECK_OK version=${System.getProperty("java.version")} " +
+                    "java_home=${System.getProperty("java.home")} os=${System.getProperty("os.name")} " +
+                    "arch=${System.getProperty("os.arch")}",
+            )
+        } catch (t: Throwable) {
+            println("AIRMIRROR_PC_SELF_CHECK_FAIL ${t.javaClass.simpleName}: ${t.message}")
+            kotlin.system.exitProcess(1)
+        }
     }
 
     private fun runDiscovery(args: List<String>) {

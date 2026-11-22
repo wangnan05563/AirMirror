@@ -70,6 +70,18 @@ $env:JAVA_HOME = '<你的 JDK 17 目录>'
 
 App 内「检查更新」会查询内置仓库的 GitHub Release；安装新版本时由系统弹「未知来源」授权，App 不自批。
 
+### Windows PC 发送端
+
+```powershell
+.\scripts\package-pc.ps1 -VersionPatch 20261122-003
+# 产出 release\release\AirMirror-PC-0.1.0-m0.20261122-003-win-x64.zip
+# 解压后可直接运行 AirMirror-PC.bat；安装到当前用户：
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -Silent
+# 包内 scripts\fix-firewall.ps1 / uninstall.ps1 分别修复防火墙与卸载
+```
+
+PC 包自带精简 JRE 17，不需要系统 Java；安装/卸载/防火墙规则与首启向导见 `docs/AirMirror-PC安装包与首启向导-v2.0-20261122.md`。`scripts\test-pc-package.ps1` 可在本机复跑 ZIP 布局、静默安装、自检、防火墙 dry-run 与卸载。
+
 版本号约定：`versionName` 是对外展示的可读版本；`versionCode` 由 `versionPatch`（`YYYYMMDD-NNN`）派生为「日期后 6 位 × 1000 + 序号」，例如 `20261116-009 -> 261116009`，保证单调递增。在线更新覆盖安装必须提升 `versionCode`，只改 `versionName` 会被系统当成不可安装；debug 包保留 `-debug` 标记，不为了“正式感”去掉它。
 
 一键发布（两条凭据通道，任选其一，都只从环境变量读取）：
@@ -80,12 +92,12 @@ App 内「检查更新」会查询内置仓库的 GitHub Release；安装新版�
 ```powershell
 $env:GITHUB_TOKEN = '<your token>'   # 仅无 gh 时需要；不要写进仓库
 .\scripts\release.ps1 -DryRun     # 只校验流程与产物，不写任何远端
-.\scripts\release.ps1             # 构建 → 打 tag → 建 Release → 上传 APK
+.\scripts\release.ps1             # 构建 → 打 tag → 建 Release → 上传 APK + PC ZIP
 ```
 
 脚本在前置检查全部通过后才写远端：缺凭据、工作区有未提交改动、产物不全或 tag 已存在时当场失败，不会留下「本地有 tag、远端没 Release」的半成品。REST 通道先建草稿 Release、传完资产再转正，任何一步失败都会回滚本次创建的远端 tag 与草稿。工作区检查是为了让 Release 里的包能从 tag 原样重建——`-DryRun` 只读，允许脏工作区。现有产物若带 `-unsigned` 会显式警告（未签名包安装会被系统拒绝）。
 
-发布与构建已联动：显式 `-Tag v0.1.0-m0.20261118-003` 时，构建会使用 tag 尾部的 `20261118-003` 作为 `versionPatch`，保证 APK 的 `versionName` 与 tag 一致；脚本在发布前用 `aapt dump badging` 复核，不一致直接失败。`-SkipBuild` 复用已有产物时会同时校验版本号，并要求 APK 修改时间不早于 `HEAD`（否则不是当前提交构建的包，拒绝发布）；`-SkipTests` 可把跳过单测的意图传给构建。构建脚本的 `-VersionPatch` 成功后会把该 patch 同步回 `.build-state/`，避免下一次自动构建又生成一个已发布号。
+发布与构建已联动：显式 `-Tag v0.1.0-m0.20261118-003` 时，构建会使用 tag 尾部的 `20261118-003` 作为 `versionPatch`，保证 APK 的 `versionName` 与 tag 一致；脚本在发布前用 `aapt dump badging` 复核，不一致直接失败。`-SkipBuild` 复用已有产物时会同时校验版本号，并要求 APK 修改时间不早于 `HEAD`（否则不是当前提交构建的包，拒绝发布）；`-SkipTests` 可把跳过单测的意图传给构建。`release.ps1` 默认还会执行 `package-pc.ps1` 并把 PC ZIP 一起上传；`-SkipPc` 可跳过。构建脚本的 `-VersionPatch` 成功后会把该 patch 同步回 `.build-state/`，避免下一次自动构建又生成一个已发布号。
 
 所有可重复构建文件都收敛在 `release/`：Gradle 的中间产物在 `release/build/<module>/`，项目缓存与 Kotlin 持久化目录在 `release/.gradle`、`release/kotlin`，SonarScanner 工作目录在 `release/scannerwork`，可直接安装的包汇总在 `release/debug/`（`AirMirror-<版本>-universal-debug.apk` 为全 ABI 包，如 `AirMirror-0.1.0-m0-universal-debug.apk`，版本号取 `versionName`、debug 标记保留；构建脚本从 `release/build/app/outputs/apk/debug` 复制过来）和 `release/release/`（签名后的 `-universal-release.apk`）。删掉整个 `release/` 即可彻底清理，下一次构建自动重建；版本号序列状态单独放在 `.build-state/`，不随清理重置。
 

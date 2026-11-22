@@ -27,6 +27,9 @@
 .PARAMETER SkipTests
     传给构建脚本，跳过 JVM 单测（仅建议在已单独跑过测试时使用）。
 
+.PARAMETER SkipPc
+    不构建/不收集 Windows PC ZIP；默认会构建并随 Release 一起发布。
+
 .PARAMETER Notes
     Release 说明正文。缺省用本次 tag 与产物清单生成一段简短说明。
 
@@ -41,6 +44,7 @@ param(
     [string]$Tag = '',
     [switch]$SkipBuild,
     [switch]$SkipTests,
+    [switch]$SkipPc,
     [string]$Notes = '',
     [string]$KeystoreFile = '',
     [string]$KeystorePassword = '',
@@ -302,6 +306,42 @@ if ($apks.Count -eq 0) {
     }
 }
 
+Step '构建 PC 安装包'
+$pcZip = ''
+if ($SkipPc) {
+    Ok '按 -SkipPc 跳过 PC ZIP'
+} else {
+    $pcZipName = "AirMirror-PC-$expectedVersionName-win-x64.zip"
+    $pcZip = Join-Path $root ("release\release\" + $pcZipName)
+    if ($DryRun) {
+        Ok "将执行：scripts\package-pc.ps1 -VersionPatch $tagPatch"
+    } else {
+        $pkgParams = @{ VersionPatch = $tagPatch }
+        if ($SkipBuild) { $pkgParams['SkipBuild'] = $true }
+        & (Join-Path $root 'scripts\package-pc.ps1') @pkgParams
+        if ($LASTEXITCODE -ne 0) { Fail "PC 安装包构建失败（exit=$LASTEXITCODE）。" }
+        Ok 'PC 安装包构建完成'
+    }
+    if (Test-Path -LiteralPath $pcZip) {
+        $pcItem = Get-Item -LiteralPath $pcZip
+        Ok ("{0} ({1:N0} B)" -f $pcItem.Name, $pcItem.Length)
+        if ($SkipBuild) {
+            $headEpochText = ((& git -C $root show -s --format=%ct HEAD) -join '').Trim()
+            if ($headEpochText -match '^\d+$') {
+                $headTime = [DateTimeOffset]::FromUnixTimeSeconds([int64]$headEpochText).UtcDateTime
+                if ($pcItem.LastWriteTimeUtc -lt $headTime) {
+                    $msg = "复用 PC ZIP 早于 HEAD 提交（ZIP $($pcItem.LastWriteTimeUtc.ToString('u')), HEAD $($headTime.ToString('u'))）：不是当前提交构建的包，不能发布。"
+                    if ($DryRun) { Warn $msg } else { Fail $msg }
+                }
+            }
+        }
+    } elseif ($DryRun) {
+        Warn "PC ZIP 尚未生成（DryRun 允许）：$pcZip"
+    } else {
+        Fail "PC ZIP 未生成：$pcZip"
+    }
+}
+
 Step '检查 tag 是否已存在'
 $existing = (& git -C $root tag --list $Tag) -join ''
 if ($existing.Trim().Length -gt 0) { Fail "tag $Tag 已存在；换一个 patch 号或用 -Tag 指定。" }
@@ -311,14 +351,16 @@ $headSha = ((& git -C $root rev-parse HEAD) -join '').Trim()
 $recordScript = Join-Path $root 'scripts\release-record.ps1'
 if (-not (Test-Path $recordScript)) { Fail "缺少发布记录生成器：$recordScript" }
 $apkPaths = @($apks | ForEach-Object { $_.FullName })
+$artifactPaths = @($apkPaths)
+if ($pcZip -and (Test-Path -LiteralPath $pcZip)) { $artifactPaths += $pcZip }
 
 Step '发布计划'
 Write-Host "   git tag $Tag"
 if ($useRest) {
-    Write-Host "   python scripts\publish-release.py --repo $repo --tag $Tag（REST 建远端 tag + Release，$($apks.Count) 个 APK）"
+    Write-Host "   python scripts\publish-release.py --repo $repo --tag $Tag（REST 建远端 tag + Release，$($artifactPaths.Count) 个产物）"
 } else {
     Write-Host "   git push origin $Tag"
-    Write-Host "   gh release create $Tag 「$($apks.Count) 个 APK」 --title `"AirMirror $Tag`" --notes 说明正文"
+    Write-Host "   gh release create $Tag 「$($artifactPaths.Count) 个产物」 --title `"AirMirror $Tag`" --notes 说明正文"
 }
 
 if ($DryRun) {
@@ -333,7 +375,7 @@ $recordArgs = @{
     Repo      = $repo
     Branch    = $branch
     Commit    = $headSha
-    Artifacts = $apkPaths
+    Artifacts = $artifactPaths
     Notes     = $Notes
 }
 $record = & $recordScript @recordArgs
@@ -356,7 +398,7 @@ if ($useRest) {
     $publishScript = Join-Path $root 'scripts\publish-release.py'
     if (-not (Test-Path $publishScript)) { Fail "缺少发布器：$publishScript" }
     $publishArgs = @($publishScript, '--repo', $repo, '--tag', $Tag, '--sha', $headSha,
-        '--title', "AirMirror $Tag", '--notes', $Notes) + @($apks | ForEach-Object { $_.FullName })
+        '--title', "AirMirror $Tag", '--notes', $Notes) + @($artifactPaths)
     & python @publishArgs
     if ($LASTEXITCODE -ne 0) {
         & git -C $root tag -d $Tag | Out-Null
@@ -373,7 +415,7 @@ if ($useRest) {
     Ok 'tag 已推送'
 
     Step '创建 GitHub Release'
-    $ghArgs = @('release', 'create', $Tag) + @($apks | ForEach-Object { $_.FullName }) +
+    $ghArgs = @('release', 'create', $Tag) + @($artifactPaths) +
         @('--title', "AirMirror $Tag", '--notes', $Notes)
     & gh @ghArgs
     if ($LASTEXITCODE -ne 0) { Fail "gh release create 失败（exit=$LASTEXITCODE）。tag 已推送，可修正后重试 gh。" }
