@@ -68,10 +68,20 @@ class UiConsistencyGuardTest {
     }
 
     @Test
-    fun `诊断卡三动作纵向全宽且不换行`() {
-        val src = ui("SenderActivity.kt")
-        assertTrue("诊断卡按钮未改纵向", src.contains("orientation = LinearLayout.VERTICAL"))
-        assertTrue("诊断卡按钮未限制单行", src.contains("maxLines = 1") && src.contains("TextUtils.TruncateAt.END"))
+    fun `诊断卡三动作全宽且不换行`() {
+        val sender = ui("SenderActivity.kt")
+        val card = ui("ErrorStateCard.kt")
+        assertTrue("发送端诊断区未委托 ErrorStateCard", sender.contains("ErrorStateCard"))
+        assertTrue(
+            "诊断卡动作区未按窄屏横排/宽屏纵向切换",
+            card.contains("orientation = if (compact) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL"),
+        )
+        assertTrue(
+            "诊断卡按钮未全宽或未限制单行",
+            card.contains("LayoutParams(LayoutParams.MATCH_PARENT, buttonHeight)") &&
+                card.contains("maxLines = 1") &&
+                card.contains("TextUtils.TruncateAt.END"),
+        )
     }
 
     @Test

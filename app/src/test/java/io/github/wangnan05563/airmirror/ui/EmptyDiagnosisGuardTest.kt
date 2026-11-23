@@ -25,15 +25,19 @@ class EmptyDiagnosisGuardTest {
     private fun sender(): String =
         File(projectRoot(), "app/src/main/java/io/github/wangnan05563/airmirror/ui/SenderActivity.kt").readText()
 
+    private fun card(): String =
+        File(projectRoot(), "app/src/main/java/io/github/wangnan05563/airmirror/ui/ErrorStateCard.kt").readText()
+
     @Test
     fun `诊断卡由固定三动作循环渲染`() {
-        val s = sender()
+        val c = card()
         assertTrue(
             "按钮要遍历 EmptyDiagnosis.ACTIONS",
-            s.contains("for ((index, action) in EmptyDiagnosis.ACTIONS.withIndex())"),
+            c.contains("for ((index, action) in actions.withIndex())"),
         )
-        assertTrue("按钮文案走统一出口", s.contains("text = ErrorNotice.actionLabel(action)"))
-        assertTrue("按钮触控高度 ≥48dp", s.contains("minimumHeight = Theme.dp(this@SenderActivity, 48)"))
+        assertTrue("默认动作集走统一出口", c.contains("actions: List<ErrorNotice.Action> = EmptyDiagnosis.ACTIONS"))
+        assertTrue("按钮文案走统一出口", c.contains("text = ErrorNotice.actionLabel(action)"))
+        assertTrue("按钮触控高度 ≥48dp", c.contains("minimumHeight = buttonHeight"))
     }
 
     @Test
@@ -43,6 +47,11 @@ class EmptyDiagnosisGuardTest {
         assertTrue("空态要消费结构化判决", s.contains("val cause = EmptyDiagnosis.of(verdict, registry)"))
         assertTrue("有诊断才亮卡", s.contains("diagnosisCard.visibility = View.VISIBLE"))
         assertTrue("无诊断要隐藏", s.contains("diagnosisCard.visibility = View.GONE"))
+        assertTrue("诊断原因交给组件统一绑定", s.contains("diagnosisCard.bind(cause, EmptyDiagnosis.ACTIONS)"))
+        assertTrue(
+            "搜索中 0 台也要给无设备入口",
+            s.contains("diagnosisCard.bind(ErrorNotice.Cause.NO_DISCOVERY, EmptyDiagnosis.ACTIONS)"),
+        )
     }
 
     @Test
@@ -51,10 +60,12 @@ class EmptyDiagnosisGuardTest {
         assertTrue("重试发现重起搜索窗口", s.contains("scanner?.begin()"))
         assertTrue("用投屏码连接聚焦码输入框", s.contains("ErrorNotice.Action.ENTER_CODE -> focusInput(codeInput)"))
         assertTrue("手动输 IP 聚焦地址输入框", s.contains("ErrorNotice.Action.ENTER_IP -> focusInput(addressInput)"))
+        assertTrue("组件回调用宿主既有动作处理", s.contains("onAction = ::onDiagnosisAction"))
     }
 
     @Test
     fun `发送端空态不引扫码`() {
         assertFalse("发送端无相机入口，空态不得给 SCAN_QR（设计 §2.6 / §09）", sender().contains("SCAN_QR"))
+        assertFalse("空态组件也不得引扫码", card().contains("SCAN_QR"))
     }
 }

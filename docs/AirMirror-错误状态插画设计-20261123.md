@@ -127,7 +127,7 @@
 
 ## 09 边界与未做
 
-- 不改 `SenderActivity` 现有 `diagnosisCard` 结构；其 3 个反射字段、`EmptyDiagnosisGuardTest` 源码串与 `AccessibilityManifestTest` 的 12 个监听基线保持原样，留给 T06104 统一替换。
+- T06104 已完成发送端替换：`diagnosisCard` 改为 `ErrorStateCard`，`AccessibilityManifestTest` 的 Sender 源码监听基线由 12 调整为 11，并新增 `ErrorStateCard`/`LoadingStateCard` 两个组件接线点；详见 `AirMirror-空态视觉组件-T06104-20261123.md`。
 - 不做第四套插画；码过期、PIN、权限等错误继续用现有文案卡。
-- 真电视 HDMI overscan、OLED 纯黑、TalkBack 线性顺序与遥控器焦点顺序仍需 T06115/T06104 现场复验；本单只证明 JVM 真实像素渲染与代码绘制路径。
+- 真电视 HDMI overscan、OLED 纯黑、TalkBack 线性顺序与遥控器焦点顺序仍需 T06115 真机现场复验；本单只证明 JVM 真实像素渲染与代码绘制路径。
 - 不新增位图/矢量资源，不引第三方图标库；APK 资源表无新增条目。

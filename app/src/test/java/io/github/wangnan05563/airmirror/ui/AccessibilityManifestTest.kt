@@ -36,23 +36,29 @@ class AccessibilityManifestTest {
      * 详情弹窗改名/撤销、重命名保存，Receiver 由 21 增至 29。
      * T06114 PIN 锁定机制在 Receiver 新增 2 个接线点：设置页 PIN 行、PIN 数字键盘（12 键共用一处循环接线），
      * Receiver 由 29 增至 31。
+     * T06104 把空态三动作循环从 SenderActivity 迁入 ErrorStateCard（源码 1 处循环、运行时 3 枚），
+     * Sender 由 12 回到 11；加载卡取消按钮由 LoadingStateCard 自带（源码 1 处）。
      */
     @Test
     fun `点击接线点数量与无障碍决策表一致`() {
         assertEquals(4, countOf(source("MainActivity.kt"), "setOnClickListener"))
-        assertEquals(12, countOf(source("SenderActivity.kt"), "setOnClickListener"))
+        assertEquals(11, countOf(source("SenderActivity.kt"), "setOnClickListener"))
         assertEquals(31, countOf(source("ReceiverActivity.kt"), "setOnClickListener"))
         assertEquals(3, countOf(source("AboutActivity.kt"), "setOnClickListener"))
         assertEquals(1, countOf(source("ReceiverActivity.kt"), "setOnLongClickListener"))
+        assertEquals(1, countOf(source("ErrorStateCard.kt"), "setOnClickListener"))
+        assertEquals(1, countOf(source("LoadingStateCard.kt"), "setOnClickListener"))
     }
 
     @Test
     fun `每个点击接线点都配了可访问名`() {
         mapOf(
             "MainActivity.kt" to 4,
-            "SenderActivity.kt" to 12,
+            "SenderActivity.kt" to 11,
             "ReceiverActivity.kt" to 31,
             "AboutActivity.kt" to 3,
+            "ErrorStateCard.kt" to 1,
+            "LoadingStateCard.kt" to 1,
         ).forEach { (file, sites) ->
             val describes = countOf(source(file), "A11y.describe(")
             assertTrue("$file 描述接线 $describes < 接线点 $sites", describes >= sites)

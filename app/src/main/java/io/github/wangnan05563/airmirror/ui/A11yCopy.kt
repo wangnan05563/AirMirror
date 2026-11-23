@@ -84,6 +84,9 @@ object A11yCopy {
 
     fun diagnosisIp(): String = "手动输 IP，填写电视地址直连"
 
+    /** T06104：首次连接超过 10 秒后的取消入口。 */
+    fun loadingCancel(): String = "取消本次连接，回到设备列表"
+
     // ───────────────────────── 接收端设置页 ─────────────────────────
 
     fun settingsEntry(casting: Boolean): String = if (casting) "打开显示设置，当前正在投屏" else "打开显示设置"

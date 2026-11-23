@@ -39,8 +39,9 @@ class ErrorStateCard @JvmOverloads constructor(
         UiKit.surface(this, color = Theme.component.emptyDiagnosisCard, elevationDp = 2)
         setPadding(gap, gap, gap, gap)
 
-        val artWidth = Theme.dp(context, if (isTv) 240 else 200)
+        val artWidth = Theme.dp(context, if (isTv) 240 else if (compact) 120 else 200)
         val artHeight = Theme.dp(context, when {
+            !isTv && compact -> 72
             !isTv -> 120
             resources.configuration.screenHeightDp <= 400 -> 120
             else -> 144
@@ -49,10 +50,10 @@ class ErrorStateCard @JvmOverloads constructor(
         addView(art, LayoutParams(LayoutParams.MATCH_PARENT, artHeight))
 
         errorCode = TextView(context).apply {
-            textSize = if (isTv) 18f else 12f
+            textSize = if (isTv) 18f else if (compact) 11f else 12f
             setTextColor(Theme.TEXT_SECONDARY)
             letterSpacing = 0.06f
-            setPadding(0, gap, 0, 0)
+            setPadding(0, Theme.dp(context, if (compact) Theme.SPACE_XS_DP else Theme.SPACE_SM_DP), 0, 0)
         }
         addView(errorCode, matchWidth())
 
@@ -65,7 +66,7 @@ class ErrorStateCard @JvmOverloads constructor(
         addView(headline, matchWidth())
 
         nextStep = TextView(context).apply {
-            textSize = FocusPolicy.bodySp(isTv)
+            textSize = if (!isTv && compact) Theme.PHONE_BODY_SP else FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_SECONDARY)
             setPadding(0, Theme.dp(context, Theme.SPACE_XS_DP), 0, 0)
         }
@@ -73,7 +74,7 @@ class ErrorStateCard @JvmOverloads constructor(
 
         actionsBar = LinearLayout(context).apply {
             orientation = if (compact) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
-            setPadding(0, gap, 0, 0)
+            setPadding(0, Theme.dp(context, if (compact) Theme.SPACE_XS_DP else Theme.SPACE_SM_DP), 0, 0)
         }
         addView(actionsBar, matchWidth())
     }

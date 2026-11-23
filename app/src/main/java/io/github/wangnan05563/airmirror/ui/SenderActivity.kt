@@ -11,10 +11,10 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
 import android.text.InputFilter
 import android.text.InputType
-import android.text.TextUtils
 import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
@@ -108,10 +108,18 @@ class SenderActivity : Activity() {
     private lateinit var controlBar: LinearLayout
     private lateinit var listScroller: ScrollView
     private var scanner: ProbeScanner? = null
-    /** UX-01 空列表自救卡：首行诊断 + 次行下一步 + 固定三按钮；cause 为 null 时整卡隐藏。 */
-    private lateinit var diagnosisCard: LinearLayout
+    /** UX-01 空列表自救卡：T06104 起由 [ErrorStateCard] 渲染三套插画、稳定错误码与固定三动作。 */
+    private lateinit var diagnosisCard: ErrorStateCard
     private lateinit var diagnosisHeadline: TextView
     private lateinit var diagnosisNextStep: TextView
+    /** T06104 首次连接加载卡：10 秒前只显示进度，10 秒整切“仍在连接”并露出取消。 */
+    private lateinit var loadingCard: LoadingStateCard
+    private var loadingName = ""
+    private var loadingStartedAt = 0L
+    /** 录屏授权已通过、CaptureService 已启动：取消加载时要发 ACTION_STOP 收尾。 */
+    private var captureStarted = false
+    /** 连接代次：取消或发起新连接后，旧的跨网打洞结果不得再弹授权/起服务。 */
+    private var connectGeneration = 0
 
     private val devices = DeviceRegistry(now = { System.currentTimeMillis() }, sameSubnet = ::sameSubnet)
     private val main = Handler(Looper.getMainLooper())
@@ -134,6 +142,12 @@ class SenderActivity : Activity() {
     /** 采集在后台服务里跑，界面按拍轮询它的结论。 */
     private val refresh = Runnable { refreshStatus() }
 
+    /** 10 秒到点只切一次文案，不做每秒重绘；后续显隐仍由连接结果驱动。 */
+    private val loadingTimeout = Runnable {
+        if (!::loadingCard.isInitialized || loadingCard.visibility != View.VISIBLE) return@Runnable
+        loadingCard.bind(loadingName, SystemClock.uptimeMillis() - loadingStartedAt)
+    }
+
     private fun refreshStatus() {
         updateStatusLine()
         // 有画质说明即表示会话在跑；暂停只停送帧，按钮仍留在原位
@@ -149,6 +163,8 @@ class SenderActivity : Activity() {
         val report = SenderReport.last
         val note = if (report.isEmpty()) SenderReport.quality else report
         if (note == lastReport) return
+        // 有报错或首帧画质说明，首次连接就不再是“加载中”；跨网/局域网同一口径。
+        if (report.isNotEmpty() || SenderReport.quality.isNotEmpty()) endLoading()
         lastReport = note
         // UX-02：码类拒绝是发送端唯一可观测的「换码」时刻，按输入态给可重新确认的提示，
         // 输入框保留不清空（这里从不 setText("")）；非码类错误照旧走原提示。
@@ -173,7 +189,12 @@ class SenderActivity : Activity() {
         controlBar.visibility = if (casting) View.VISIBLE else View.GONE
         // PRD §11.3「投屏中列表收起」
         listScroller.visibility = if (casting) View.GONE else View.VISIBLE
-        if (casting) expandedFingerprint = null
+        if (casting) {
+            expandedFingerprint = null
+            endLoading()
+        } else {
+            captureStarted = false
+        }
     }
 
     /** 投屏中的按钮文案与无障碍描述：暂停、停止、声音三键始终反映当前状态。 */
@@ -277,9 +298,11 @@ class SenderActivity : Activity() {
         }
         list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         diagnosisCard = buildDiagnosisCard()
+        loadingCard = buildLoadingCard()
         val column = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(hint, matchWidth())
+            addView(loadingCard, matchWidth())
             addView(diagnosisCard, matchWidth())
             addView(list, matchWidth())
         }
@@ -361,6 +384,7 @@ class SenderActivity : Activity() {
         val directHost = intent.getStringExtra(EXTRA_TARGET_HOST)
         val directPort = intent.getIntExtra(EXTRA_TARGET_PORT, 0)
         if (!directHost.isNullOrEmpty() && directPort > 0) {
+            beginLoading("直连设备")
             requestCapture(Target("direct", directHost, directPort, directHost), intent.getStringExtra(EXTRA_TARGET_CREDENTIAL).orEmpty())
         }
     }
@@ -668,95 +692,100 @@ class SenderActivity : Activity() {
         return if (minutes < 1L) "刚刚连过" else "上次连接 $minutes 分钟前"
     }
 
-    /** 空列表自救卡：能给出成因就换成诊断卡，否则按有无在线设备给一句提示。 */
+    /** 空列表自救卡：能给出成因就换成诊断卡；搜索中且 0 台也先给无设备入口，不再只留一行字。 */
     private fun renderEmptyState() {
         val registry = devices.emptyReason()
         val verdict = scanner?.verdict()
             ?: DiscoveryLadder.Verdict.Nothing(DiscoveryLadder.Empty.SEARCHING, "")
         val cause = EmptyDiagnosis.of(verdict, registry)
         if (cause == null) {
-            diagnosisCard.visibility = View.GONE
-            hint.text = if (registry == DeviceRegistry.EmptyReason.HAS_ONLINE) "点设备名开始投屏" else ""
-            hint.visibility = if (hint.text.isEmpty()) View.GONE else View.VISIBLE
+            val searchingEmpty = verdict is DiscoveryLadder.Verdict.Nothing &&
+                verdict.reason == DiscoveryLadder.Empty.SEARCHING &&
+                registry == DeviceRegistry.EmptyReason.NONE_FOUND &&
+                list.childCount == 0
+            if (searchingEmpty) {
+                // T06104：搜索窗口未结束但一台都没出现，显式给无设备空态；三动作保持 EmptyDiagnosis 固定顺序。
+                diagnosisCard.bind(ErrorNotice.Cause.NO_DISCOVERY, EmptyDiagnosis.ACTIONS)
+                diagnosisCard.visibility = View.VISIBLE
+                hint.text = ""
+                hint.visibility = View.GONE
+            } else {
+                diagnosisCard.visibility = View.GONE
+                hint.text = if (registry == DeviceRegistry.EmptyReason.HAS_ONLINE) "点设备名开始投屏" else ""
+                hint.visibility = if (hint.text.isEmpty()) View.GONE else View.VISIBLE
+            }
             return
         }
-        val notice = ErrorNotice.noticeFor(cause)
-        diagnosisHeadline.text = notice.headline
-        diagnosisNextStep.text = notice.nextStep
+        // 三套插画、稳定错误码、原因/下一步、主次兜底三动作都由 ErrorStateCard 统一渲染。
+        diagnosisCard.bind(cause, EmptyDiagnosis.ACTIONS)
         diagnosisCard.visibility = View.VISIBLE
         hint.text = ""
         hint.visibility = View.GONE
     }
 
     /**
-     * UX-01 空列表自救卡（设计 §4）：首行诊断 + 次行下一步 + 固定三按钮。
-     * 三个动作都在当前页就地生效，不跳新页面；按钮高度 ≥48dp，等宽间距 8dp。
+     * UX-01 空列表自救卡（设计 §4）：T06104 起交给 [ErrorStateCard]，
+     * 保持固定三动作、就地生效、48dp 触控高度；页面只负责把动作接到输入框/搜索器。
      */
-    private fun buildDiagnosisCard(): LinearLayout {
-        val gap = Theme.dp(this, Theme.SPACE_SM_DP)
-        val card = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            UiKit.surface(this, color = Theme.component.cardElevated, elevationDp = 2)
-            setPadding(gap, gap, gap, gap)
-            visibility = View.GONE
+    private fun buildDiagnosisCard(): ErrorStateCard = ErrorStateCard(this).apply {
+        visibility = View.GONE
+        onAction = ::onDiagnosisAction
+        // CompactPagesRenderTest 仍按旧字段名取文案；这里保留只读别名，避免测试和页面各改一套。
+        diagnosisHeadline = headline
+        diagnosisNextStep = nextStep
+    }
+
+    /** T06104 首次连接加载卡：骨架/进度/设备名/10 秒后取消，组件内部只回调宿主。 */
+    private fun buildLoadingCard(): LoadingStateCard = LoadingStateCard(this).apply {
+        visibility = View.GONE
+        onCancel = ::cancelLoading
+    }
+
+    /** T06104：首次连接期间只展示加载卡，不叠诊断卡；失败/取消后由 [endLoading] 恢复空态。 */
+    private fun beginLoading(deviceName: String) {
+        loadingName = deviceName
+        loadingStartedAt = SystemClock.uptimeMillis()
+        loadingCard.bind(deviceName, 0)
+        loadingCard.visibility = View.VISIBLE
+        diagnosisCard.visibility = View.GONE
+        hint.visibility = View.GONE
+        main.removeCallbacks(loadingTimeout)
+        main.postDelayed(loadingTimeout, ErrorVisualSpec.CANCEL_AFTER_MS)
+    }
+
+    private fun endLoading() {
+        if (!::loadingCard.isInitialized || loadingCard.visibility != View.VISIBLE) return
+        loadingCard.visibility = View.GONE
+        main.removeCallbacks(loadingTimeout)
+        // 失败回落到设备列表：空列表要把诊断卡还原，避免错误后只剩一条状态行。
+        if (list.childCount == 0 && !lastCasting) renderEmptyState()
+    }
+
+    /** 加载中取消：清掉待交接目标/跨网 token，已起服务则按既有 ACTION_STOP 收尾。 */
+    private fun cancelLoading() {
+        val serviceStarted = captureStarted
+        connectGeneration++
+        resetPendingConnection()
+        endLoading()
+        codeInput.isEnabled = true
+        if (serviceStarted) {
+            startService(Intent(this, CaptureService::class.java).setAction(CaptureService.ACTION_STOP))
         }
-        diagnosisHeadline = TextView(this).apply {
-            textSize = FocusPolicy.bodySp(isTv)
-            setTextColor(Theme.TEXT_PRIMARY)
-            setTypeface(typeface, Typeface.BOLD)
-        }
-        card.addView(diagnosisHeadline, matchWidth())
-        diagnosisNextStep = TextView(this).apply {
-            textSize = FocusPolicy.bodySp(isTv)
-            setTextColor(Theme.TEXT_SECONDARY)
-            setPadding(0, Theme.dp(this@SenderActivity, Theme.SPACE_XS_DP), 0, 0)
-        }
-        card.addView(diagnosisNextStep, matchWidth())
-        // 640dp 高的机型上，三枚 48dp 竖排按钮会把「用投屏码连接」裁掉一半；
-        // 紧凑屏改横排等宽，卡片总高从约 222dp 收到约 110dp。
-        val compact = resources.configuration.screenHeightDp < 700
-        val buttons = LinearLayout(this).apply {
-            orientation = if (compact) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
-            setPadding(0, gap, 0, 0)
-        }
-        for ((index, action) in EmptyDiagnosis.ACTIONS.withIndex()) {
-            buttons.addView(UiKit.button(this).apply {
-                text = ErrorNotice.actionLabel(action)
-                setTextColor(Theme.ACCENT)
-                maxLines = 1
-                ellipsize = TextUtils.TruncateAt.END
-                if (compact) {
-                    textSize = Theme.PHONE_BUTTON_COMPACT_SP
-                    setPadding(Theme.dp(this@SenderActivity, Theme.SPACE_XS_DP), 0,
-                        Theme.dp(this@SenderActivity, Theme.SPACE_XS_DP), 0)
-                }
-                minimumHeight = Theme.dp(this@SenderActivity, 48)
-                A11y.describe(this, when (action) {
-                    ErrorNotice.Action.RETRY_DISCOVERY -> A11yCopy.diagnosisRetry()
-                    ErrorNotice.Action.ENTER_CODE -> A11yCopy.diagnosisCode()
-                    ErrorNotice.Action.ENTER_IP -> A11yCopy.diagnosisIp()
-                    else -> ErrorNotice.actionLabel(action)
-                })
-                setOnClickListener { onDiagnosisAction(action) }
-            }, if (compact) {
-                LinearLayout.LayoutParams(0, Theme.dp(this@SenderActivity, 48), 1f).apply {
-                    if (index > 0) leftMargin = gap
-                }
-            } else {
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    Theme.dp(this@SenderActivity, 48),
-                ).apply {
-                    if (index > 0) topMargin = gap
-                }
-            })
-        }
-        card.addView(buttons, matchWidth())
-        return card
+        showStatus(CastStatus.State.IDLE, "已取消连接")
+        renderList()
+    }
+
+    private fun resetPendingConnection() {
+        pending = null
+        pendingTarget = null
+        pendingCrossNetToken?.let { CrossNetLinkRegistry.discard(it) }
+        pendingCrossNetToken = null
+        captureStarted = false
     }
 
     /** PRD UI-04：状态文案与六态语义色一起落，避免同一条状态行在不同入口换出不同颜色。 */
     private fun showStatus(state: CastStatus.State, line: CharSequence?) {
+        if (state == CastStatus.State.ERROR || state == CastStatus.State.IDLE) endLoading()
         statusState = state
         status.text = line
         status.setTextColor(StatusColors.textOf(state))
@@ -840,6 +869,8 @@ class SenderActivity : Activity() {
      * 这一步必须在后台线程做（信令轮询与 UDP 打洞都是阻塞 IO）。
      */
     private fun connectCrossNet(code: String) {
+        val generation = ++connectGeneration
+        beginLoading("跨网设备")
         showStatus(CastStatus.State.CONNECTING, "正在跨网连接…")
         codeInput.isEnabled = false
         thread(name = "airmirror-crossnet-out", isDaemon = true) {
@@ -864,6 +895,11 @@ class SenderActivity : Activity() {
                 )
             }
             main.post {
+                // 用户已取消或已发起新一轮连接：这轮打洞结果作废，先关隧道再退出。
+                if (generation != connectGeneration) {
+                    outcome.link?.let { runCatching { it.close() } }
+                    return@post
+                }
                 if (isFinishing) {
                     outcome.link?.let { runCatching { it.close() } }
                     return@post
@@ -903,6 +939,8 @@ class SenderActivity : Activity() {
     }
 
     private fun connectTo(target: Target, credential: String = codeInput.text.toString().trim()) {
+        connectGeneration++
+        beginLoading(target.name)
         showStatus(CastStatus.State.CONNECTING, CastStatus.line(CastStatus.State.CONNECTING))
         lastReport = ""
         codeInput.isEnabled = false
@@ -1192,8 +1230,7 @@ class SenderActivity : Activity() {
         if (resultCode != RESULT_OK || data == null) {
             codeInput.isEnabled = true
             // 没拿到录屏授权就没有会话，跨网隧道必须在此时释放，否则线程和 socket 一直挂着
-            pendingCrossNetToken?.let { CrossNetLinkRegistry.discard(it) }
-            pendingCrossNetToken = null
+            resetPendingConnection()
             showStatus(CastStatus.State.ERROR, if (lastReport.isEmpty()) hint.text else lastReport)
             // 用统一口径而不是另写一句：接收端与服务侧同样的拒绝都走 ErrorNotice，
             // 两套说法会让用户在「还能怎么投」上得到不同答案（PRD 7.3 自解释口径）
@@ -1218,6 +1255,7 @@ class SenderActivity : Activity() {
             }
         }
         pendingCrossNetToken = null
+        captureStarted = true
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent) else startService(intent)
         showStatus(CastStatus.State.CASTING, CastStatus.line(CastStatus.State.CASTING, if (token != null) "跨网设备" else target.name))
     }
@@ -1418,6 +1456,7 @@ class SenderActivity : Activity() {
 
     override fun onDestroy() {
         main.removeCallbacks(refresh)
+        main.removeCallbacks(loadingTimeout)
         // 已建好但还没交给前台服务的跨网隧道必须在这里释放，daemon 线程不会替我们做这件事
         pendingCrossNetToken?.let { CrossNetLinkRegistry.discard(it) }
         pendingCrossNetToken = null

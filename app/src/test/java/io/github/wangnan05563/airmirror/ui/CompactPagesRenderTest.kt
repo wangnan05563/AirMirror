@@ -8,10 +8,10 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.ImageView
-import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
+import io.github.wangnan05563.airmirror.error.ErrorNotice
 import io.github.wangnan05563.airmirror.pairing.DeviceStore
 import io.github.wangnan05563.airmirror.receiver.ReceiverHost
 import io.github.wangnan05563.airmirror.update.ReleaseInfo
@@ -110,7 +110,8 @@ class CompactPagesRenderTest {
     @Test
     fun senderDiagnosisCardFits() {
         val a = Robolectric.buildActivity(SenderActivity::class.java).setup().get()
-        val card = field(a, "diagnosisCard") as LinearLayout
+        val card = field(a, "diagnosisCard") as ErrorStateCard
+        card.bind(ErrorNotice.Cause.DISCOVERY_AP_ISOLATED)
         (field(a, "diagnosisHeadline") as TextView).text = "网络禁止设备互访"
         (field(a, "diagnosisNextStep") as TextView).text = "先允许互访，或用投屏码连接"
         card.visibility = View.VISIBLE
