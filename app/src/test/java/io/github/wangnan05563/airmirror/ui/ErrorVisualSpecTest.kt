@@ -13,7 +13,10 @@ class ErrorVisualSpecTest {
     fun `三类空态原因各自映射到唯一插画`() {
         assertEquals(ErrorVisualSpec.Scene.NO_DEVICE, ErrorVisualSpec.sceneFor(null))
         assertEquals(ErrorVisualSpec.Scene.NO_DEVICE, ErrorVisualSpec.sceneFor(ErrorNotice.Cause.NO_DISCOVERY))
+        assertEquals(ErrorVisualSpec.Scene.NO_DEVICE, ErrorVisualSpec.sceneFor(ErrorNotice.Cause.NO_RECEIVER))
         assertEquals(ErrorVisualSpec.Scene.OFFLINE, ErrorVisualSpec.sceneFor(ErrorNotice.Cause.DEVICE_OFFLINE))
+        assertEquals(ErrorVisualSpec.Scene.NETWORK, ErrorVisualSpec.sceneFor(ErrorNotice.Cause.NO_NETWORK))
+        assertEquals(ErrorVisualSpec.Scene.NETWORK, ErrorVisualSpec.sceneFor(ErrorNotice.Cause.PERMISSION_NETWORK))
         assertEquals(ErrorVisualSpec.Scene.NETWORK, ErrorVisualSpec.sceneFor(ErrorNotice.Cause.DISCOVERY_AP_ISOLATED))
         assertEquals(ErrorVisualSpec.Scene.NETWORK, ErrorVisualSpec.sceneFor(ErrorNotice.Cause.DISCOVERY_DUAL_BAND))
         assertEquals(ErrorVisualSpec.Scene.NETWORK, ErrorVisualSpec.sceneFor(ErrorNotice.Cause.UNREACHABLE))
@@ -23,17 +26,25 @@ class ErrorVisualSpecTest {
     @Test
     fun `错误码稳定且不复用`() {
         assertEquals("AM-ND-01", ErrorVisualSpec.codeFor(ErrorNotice.Cause.NO_DISCOVERY))
+        assertEquals("AM-ND-02", ErrorVisualSpec.codeFor(ErrorNotice.Cause.NO_RECEIVER))
         assertEquals("AM-OFF-01", ErrorVisualSpec.codeFor(ErrorNotice.Cause.DEVICE_OFFLINE))
         assertEquals("AM-NET-01", ErrorVisualSpec.codeFor(ErrorNotice.Cause.DISCOVERY_AP_ISOLATED))
         assertEquals("AM-NET-02", ErrorVisualSpec.codeFor(ErrorNotice.Cause.DISCOVERY_DUAL_BAND))
         assertEquals("AM-NET-03", ErrorVisualSpec.codeFor(ErrorNotice.Cause.UNREACHABLE))
+        assertEquals("AM-NET-04", ErrorVisualSpec.codeFor(ErrorNotice.Cause.NO_NETWORK))
+        assertEquals("AM-PERM-01", ErrorVisualSpec.codeFor(ErrorNotice.Cause.PERMISSION_NETWORK))
+        assertEquals("AM-PAIR-01", ErrorVisualSpec.codeFor(ErrorNotice.Cause.PAIRING_FAILED))
         assertEquals("未映射原因有兜底码", "AM-ERR-01", ErrorVisualSpec.codeFor(ErrorNotice.Cause.CODE_EXPIRED))
         val mapped = listOf(
             ErrorNotice.Cause.NO_DISCOVERY,
+            ErrorNotice.Cause.NO_RECEIVER,
             ErrorNotice.Cause.DEVICE_OFFLINE,
             ErrorNotice.Cause.DISCOVERY_AP_ISOLATED,
             ErrorNotice.Cause.DISCOVERY_DUAL_BAND,
             ErrorNotice.Cause.UNREACHABLE,
+            ErrorNotice.Cause.NO_NETWORK,
+            ErrorNotice.Cause.PERMISSION_NETWORK,
+            ErrorNotice.Cause.PAIRING_FAILED,
         ).map(ErrorVisualSpec::codeFor)
         assertEquals("同一原因不能出现两个码", mapped.size, mapped.toSet().size)
     }

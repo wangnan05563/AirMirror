@@ -52,8 +52,12 @@ object ErrorNotice {
      * 避免出现「同一件事三种说法」。
      */
     enum class Cause {
+        /** T06106：本机没有 Wi-Fi/有线/热点链路，连发现都无从谈起 */
+        NO_NETWORK,
         UNREACHABLE,
         NO_DISCOVERY,
+        /** T06106：有网络、15 秒内确实没有发现任何接收端 */
+        NO_RECEIVER,
         /** 搜索结束、已知设备全部离线（UX-01 空列表自救，优先于网络判决） */
         DEVICE_OFFLINE,
         /** 搜索结束且无任何命中：网络禁止设备互访（AP 隔离） */
@@ -65,6 +69,8 @@ object ErrorNotice {
         CODE_LOCKED,
         CODE_USED,
         REFUSED_BY_USER,
+        /** T06106：已发现接收端，但最近一次配对失败 */
+        PAIRING_FAILED,
         NO_AUTH,
         /** T06114：PIN 模式要求先输 4 位 PIN，6 位码/扫码令牌在该模式下不生效 */
         PIN_REQUIRED,
@@ -73,6 +79,8 @@ object ErrorNotice {
         /** T06114：仅信任设备模式拒绝白名单之外的连接 */
         TRUSTED_ONLY,
         SESSION_BUSY,
+        /** T06106：VPN/企业策略等平台级网络限制，不能误判成通知/录音权限 */
+        PERMISSION_NETWORK,
         PERMISSION_CAPTURE,
         PERMISSION_BACKGROUND,
         PROTOCOL_VERSION,
@@ -106,6 +114,10 @@ object ErrorNotice {
     }
 
     private val table: Map<Cause, Notice> = mapOf(
+        Cause.NO_NETWORK to Notice(
+            Category.NETWORK, "手机没有联网", "打开 Wi-Fi 或手机热点，连上和电视同一个网络后再试。",
+            listOf(Action.OPEN_SETTINGS, Action.RETRY_DISCOVERY),
+        ),
         Cause.UNREACHABLE to Notice(
             Category.NETWORK, "连不上对方设备", "确认两台设备连同一个 Wi-Fi，或用投屏码连接。",
             listOf(Action.ENTER_CODE, Action.ENTER_IP),
@@ -113,6 +125,10 @@ object ErrorNotice {
         Cause.NO_DISCOVERY to Notice(
             Category.NETWORK, "列表里没有设备", "路由器可能屏蔽了设备发现，改用手机投屏码连接。",
             listOf(Action.ENTER_CODE, Action.ENTER_IP),
+        ),
+        Cause.NO_RECEIVER to Notice(
+            Category.NETWORK, "没有发现接收端", "确认电视已打开 AirMirror，并和手机连同一个 Wi-Fi。",
+            listOf(Action.RETRY_DISCOVERY, Action.ENTER_CODE, Action.ENTER_IP),
         ),
         Cause.DEVICE_OFFLINE to Notice(
             Category.NETWORK, "设备已离线", "可能换网或关机；重试发现或用投屏码连接。",
@@ -184,6 +200,10 @@ object ErrorNotice {
             Category.PAIRING, "大屏拒绝了投屏", "需要对方在大屏上点允许；刚被拒绝过的话，等一分钟再试。",
             listOf(Action.RETRY_REQUEST),
         ),
+        Cause.PAIRING_FAILED to Notice(
+            Category.PAIRING, "配对没有成功", "重试连接，或换一个大屏上正在显示的新投屏码。",
+            listOf(Action.RETRY_REQUEST, Action.ENTER_CODE),
+        ),
         Cause.NO_AUTH to Notice(
             Category.PAIRING, "这台设备未授权", "先在投屏端输入大屏上的投屏码完成配对。",
             listOf(Action.ENTER_CODE),
@@ -207,6 +227,10 @@ object ErrorNotice {
         Cause.SESSION_BUSY to Notice(
             Category.SESSION, "已有设备在投屏", "同一时间只允许一路投屏，等对方结束或向大屏申请接管。",
             listOf(Action.RETRY_REQUEST),
+        ),
+        Cause.PERMISSION_NETWORK to Notice(
+            Category.PERMISSION, "网络访问被限制", "检查 VPN/企业网络策略，或改用手机热点再试。",
+            listOf(Action.OPEN_SETTINGS, Action.RETRY_DISCOVERY),
         ),
         Cause.PERMISSION_CAPTURE to Notice(
             Category.PERMISSION, "还没给录屏权限", "开始投屏前需要在弹窗里允许录屏，否则镜像无法启动。",

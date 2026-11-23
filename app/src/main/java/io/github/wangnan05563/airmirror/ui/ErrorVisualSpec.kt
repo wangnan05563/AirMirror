@@ -42,8 +42,10 @@ object ErrorVisualSpec {
      * 不硬套一张不相关的图。
      */
     fun sceneFor(cause: ErrorNotice.Cause?): Scene? = when (cause) {
-        null, ErrorNotice.Cause.NO_DISCOVERY -> Scene.NO_DEVICE
+        null, ErrorNotice.Cause.NO_DISCOVERY, ErrorNotice.Cause.NO_RECEIVER -> Scene.NO_DEVICE
         ErrorNotice.Cause.DEVICE_OFFLINE -> Scene.OFFLINE
+        ErrorNotice.Cause.NO_NETWORK,
+        ErrorNotice.Cause.PERMISSION_NETWORK,
         ErrorNotice.Cause.DISCOVERY_AP_ISOLATED,
         ErrorNotice.Cause.DISCOVERY_DUAL_BAND,
         ErrorNotice.Cause.UNREACHABLE,
@@ -52,15 +54,19 @@ object ErrorVisualSpec {
     }
 
     /**
-     * 错误码是给用户报障用的短标识，不是异常类名。新增映射必须保持稳定，
-     * 已有码不复用；未映射原因统一落到 AM-ERR-01。
+     * 错误码是给用户报障用的短标识，不是异常类名；已用码不复用。
+     * 未映射原因统一落到 AM-ERR-01。
      */
     fun codeFor(cause: ErrorNotice.Cause?): String = when (cause) {
         null, ErrorNotice.Cause.NO_DISCOVERY -> "AM-ND-01"
+        ErrorNotice.Cause.NO_RECEIVER -> "AM-ND-02"
         ErrorNotice.Cause.DEVICE_OFFLINE -> "AM-OFF-01"
         ErrorNotice.Cause.DISCOVERY_AP_ISOLATED -> "AM-NET-01"
         ErrorNotice.Cause.DISCOVERY_DUAL_BAND -> "AM-NET-02"
         ErrorNotice.Cause.UNREACHABLE -> "AM-NET-03"
+        ErrorNotice.Cause.NO_NETWORK -> "AM-NET-04"
+        ErrorNotice.Cause.PERMISSION_NETWORK -> "AM-PERM-01"
+        ErrorNotice.Cause.PAIRING_FAILED -> "AM-PAIR-01"
         else -> "AM-ERR-01"
     }
 
