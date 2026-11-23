@@ -113,6 +113,8 @@ class MainActivity : Activity() {
         setContentView(root)
         // 全站可点控件统一接遥控器焦点（含「查看完整说明」这类 TextView 入口）
         TvFocus.applyTree(root)
+        // T06103：入口页按视觉顺序串成一条链，D-pad 不再依赖几何搜索在文案入口间跳
+        TvFocus.chainVisible(root)
     }
 
     private companion object {

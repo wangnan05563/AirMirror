@@ -49,10 +49,10 @@ class TvLayoutUiTest {
         f.set(null, null)
     }
 
-    private fun setupReceiver(): Activity {
+    private fun setupReceiver(name: String = "客厅电视"): Activity {
         DeviceStore(ApplicationProvider.getApplicationContext<Context>()).apply {
             setFirstLaunch(false)
-            saveDeviceName("客厅电视")
+            saveDeviceName(name)
         }
         val a = Robolectric.buildActivity(ReceiverActivity::class.java).setup().get()
         layout(a)
@@ -224,6 +224,50 @@ class TvLayoutUiTest {
         assertEquals(1024 - 2 * 64, row.width)
         assertTrue(visibleTexts(waiting).all { it.textSize >= 24f })
         capture(a, "tv-layout-4x3-waiting-20261123")
+    }
+
+    @Test
+    @Config(qualifiers = "w1280dp-h540dp-320dpi")
+    fun waiting21x9KeepsSafeAreaAndPairRow() {
+        val a = setupReceiver()
+        awaitQr(a)
+        layout(a)
+        val waiting = field(a, "waiting") as LinearLayout
+        val qr = field(a, "qrView") as ImageView
+        val row = pairRow(waiting)
+        assertEquals(2560, a.resources.displayMetrics.widthPixels)
+        assertEquals(1080, a.resources.displayMetrics.heightPixels)
+        assertEquals(128, waiting.paddingLeft)
+        assertEquals(128, waiting.paddingRight)
+        assertEquals(56, waiting.paddingTop)
+        assertEquals(54, waiting.paddingBottom)
+        assertEquals(368, qr.layoutParams.width)
+        assertTrue("21:9 并排内容超出安全区", row.measuredWidth <= 2560 - 2 * 128)
+        assertTrue(visibleTexts(waiting).all { it.textSize >= 24f })
+        capture(a, "tv-layout-21x9-waiting-20261123")
+    }
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-320dpi")
+    fun longDeviceNameDoesNotCollideWithQrOrSettings() {
+        val name = "客厅东侧墙面的超长电视设备名称二十字符号"
+        val a = setupReceiver(name)
+        awaitQr(a)
+        layout(a)
+        val waiting = field(a, "waiting") as LinearLayout
+        val nameText = field(a, "deviceNameText") as TextView
+        val qr = field(a, "qrView") as ImageView
+        assertEquals(20, nameText.text.length)
+        assertTrue("设备名最多两行，实际 ${nameText.lineCount}", nameText.lineCount <= 2)
+        val nameRect = android.graphics.Rect()
+        val settingsRect = android.graphics.Rect()
+        val qrRect = android.graphics.Rect()
+        nameText.getGlobalVisibleRect(nameRect)
+        (field(a, "settingsEntry") as View).getGlobalVisibleRect(settingsRect)
+        qr.getGlobalVisibleRect(qrRect)
+        assertTrue("设备名与右上显示设置重叠", !android.graphics.Rect.intersects(nameRect, settingsRect))
+        assertTrue("设备名压住二维码", nameRect.bottom <= qrRect.top)
+        capture(a, "tv-layout-1080p-long-name-20261123")
     }
 
     @Test

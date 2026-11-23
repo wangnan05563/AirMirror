@@ -22,6 +22,13 @@ object TvLayoutSpec {
     /** 二维码边长上限：不超过屏高的 34%，给标题、状态行和底部入口留出空间。 */
     const val QR_MAX_HEIGHT_FRACTION = 0.34f
 
+    /** PRD UI-01：TV 二维码基准按屏宽分 160 / 200 / 240dp 三档。 */
+    const val TV_QR_COMPACT_DP = 160
+    const val TV_QR_MEDIUM_DP = 200
+    const val TV_QR_LARGE_DP = 240
+    const val TV_QR_MEDIUM_WIDTH_PX = 1280
+    const val TV_QR_LARGE_WIDTH_PX = 1920
+
     /** 宽屏时二维码与投屏码并排；手机/竖屏仍上下排列，避免 6 位码被挤成两截。 */
     const val PAIR_ROW_MIN_WIDTH_DP = 500
 
@@ -41,6 +48,29 @@ object TvLayoutSpec {
     /** 二维码/码槽边长：保留调用方的基础尺寸，但在低高度屏上按 34% 屏高收敛。 */
     fun qrSidePx(widthPx: Int, heightPx: Int, basePx: Int): Int {
         if (basePx <= 0) return 0
+        if (widthPx <= 0 || heightPx <= 0) return basePx
+        val heightCap = ceil(heightPx * QR_MAX_HEIGHT_FRACTION).toInt()
+        return max(0, minOf(basePx, heightCap))
+    }
+
+    /**
+     * TV 二维码基准边长：按屏宽取 PRD 的 160 / 200 / 240dp 三档。
+     * 单位是 dp，不随电视上报的 density 漂移；调用方再乘 density 换成像素。
+     */
+    fun tvQrBaseDp(widthPx: Int): Int = when {
+        widthPx >= TV_QR_LARGE_WIDTH_PX -> TV_QR_LARGE_DP
+        widthPx >= TV_QR_MEDIUM_WIDTH_PX -> TV_QR_MEDIUM_DP
+        else -> TV_QR_COMPACT_DP
+    }
+
+    /**
+     * TV 二维码实际像素：先按屏宽取基准 dp，再受屏高 34% 上限约束。
+     * 1080p / 720p / 4:3 在 320dpi 下与 T06100 的 368 / 245 / 262px 保持一致；
+     * 低密度电视（如 1080p mdpi）会得到 240px，不再沿用手机 190dp 的偏小尺寸。
+     */
+    fun tvQrSidePx(widthPx: Int, heightPx: Int, density: Float): Int {
+        if (density <= 0f) return 0
+        val basePx = ceil(tvQrBaseDp(widthPx) * density).toInt()
         if (widthPx <= 0 || heightPx <= 0) return basePx
         val heightCap = ceil(heightPx * QR_MAX_HEIGHT_FRACTION).toInt()
         return max(0, minOf(basePx, heightCap))

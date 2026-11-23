@@ -73,6 +73,36 @@ object TvFocus {
         }
     }
 
+    /** 同一行的确认/取消、上一步/跳过/下一步等按钮按左右方向串起来。 */
+    fun chainHorizontal(vararg views: View) {
+        for (v in views) if (v.id == View.NO_ID) v.id = View.generateViewId()
+        for (i in 0 until views.size - 1) {
+            val a = views[i]
+            val b = views[i + 1]
+            a.nextFocusRightId = b.id
+            b.nextFocusLeftId = a.id
+        }
+    }
+
+    /**
+     * 按当前视图树的深度优先顺序，把一块面板内所有可见可聚焦控件串成一条纵向链。
+     * 设置页的行是动态增删的（画质档位、信任设备），每次 refreshSettings 后重串一次，
+     * 避免 D-pad 依赖几何搜索在长面板里跳到看不见的行。
+     */
+    fun chainVisible(root: View) {
+        val targets = ArrayList<View>()
+        collectVisible(root, targets)
+        if (targets.size > 1) chain(*targets.toTypedArray())
+    }
+
+    private fun collectVisible(view: View, out: MutableList<View>) {
+        if (view.visibility != View.VISIBLE) return
+        if (FocusPolicy.isFocusTarget(view.isClickable, view.hasOnClickListeners())) out += view
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) collectVisible(view.getChildAt(i), out)
+        }
+    }
+
     /** 返回遍历到的第一个可聚焦控件（深度优先），供 TV 模式开局定位焦点。 */
     private fun walk(view: View, animationsEnabled: Boolean): View? {
         var first: View? = null
@@ -92,11 +122,21 @@ object TvFocus {
     private fun apply(view: View, animationsEnabled: Boolean) {
         if (!applied.add(view)) return
         view.isFocusable = true
-        // 触屏模式不给焦点：手机端点一下不该留下遥控器焦点框
-        view.isFocusableInTouchMode = false
+        // 手机端点一下不该留下遥控器焦点框；TV/盒子必须允许 touch mode 聚焦，
+        // 否则部分误报 touch mode 的设备（含 Robolectric）会让 requestFocus 直接落空。
+        view.isFocusableInTouchMode = isTvMode(view.context)
         val originalBackground = view.background
+        // MaterialButton 的背景着色会盖在焦点描边层上，把 2dp 高对比环染成按钮底色；
+        // 聚焦时先摘掉 tint，失焦再原样装回。
+        val originalTint = view.backgroundTintList
         view.setOnFocusChangeListener { target, focused ->
-            target.background = if (focused) outline(target.context) else originalBackground
+            if (focused) {
+                target.backgroundTintList = null
+                target.background = outline(target.context)
+            } else {
+                target.background = originalBackground
+                target.backgroundTintList = originalTint
+            }
             val scale = FocusPolicy.focusScale(animationsEnabled, focused)
             val duration = FocusPolicy.focusAnimMs(animationsEnabled)
             if (duration == 0L) {

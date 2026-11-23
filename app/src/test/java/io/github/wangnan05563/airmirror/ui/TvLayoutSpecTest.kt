@@ -35,6 +35,24 @@ class TvLayoutSpecTest {
     }
 
     @Test
+    fun `TV 二维码按屏宽 160 200 240dp 分档并受屏高约束`() {
+        // 1080p / 720p / 4:3 在 320dpi 下仍保持 T06100 的 368 / 245 / 262px
+        assertEquals(368, TvLayoutSpec.tvQrSidePx(1920, 1080, 2f))
+        assertEquals(245, TvLayoutSpec.tvQrSidePx(1280, 720, 2f))
+        assertEquals(262, TvLayoutSpec.tvQrSidePx(1024, 768, 2f))
+        // 屏宽分档：1920 → 240dp，1280 → 200dp，1024 → 160dp
+        assertEquals(240, TvLayoutSpec.tvQrBaseDp(1920))
+        assertEquals(200, TvLayoutSpec.tvQrBaseDp(1280))
+        assertEquals(160, TvLayoutSpec.tvQrBaseDp(1024))
+        // 低密度电视不被高密度上限吞掉：1080p mdpi 用 240px，720p mdpi 用 200px
+        assertEquals(240, TvLayoutSpec.tvQrSidePx(1920, 1080, 1f))
+        assertEquals(200, TvLayoutSpec.tvQrSidePx(1280, 720, 1f))
+        assertEquals(160, TvLayoutSpec.tvQrSidePx(1024, 768, 1f))
+        // 21:9 宽屏仍按 240dp 档，高度上限继续生效
+        assertEquals(368, TvLayoutSpec.tvQrSidePx(2560, 1080, 2f))
+    }
+
+    @Test
     fun `6 位码字号跟着码槽同比缩放`() {
         assertEquals(34.86f, TvLayoutSpec.codeSp(368, 2f, 190f, 36f), 0.01f)
         assertEquals(23.21f, TvLayoutSpec.codeSp(245, 2f, 190f, 36f), 0.01f)

@@ -392,17 +392,18 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             topMargin = Theme.dp(this@ReceiverActivity, 44)
         })
 
-        // T06100：二维码/码槽按屏高 34% 收敛，720p 与 4:3 不把底部入口挤到屏幕外；
-        // 宽屏 TV 上二者并排，手机/竖屏仍上下排列，6 位码不会被挤成两截。
+        // T06103：TV 先按屏宽取 PRD 的 160/200/240dp 基准，再受屏高 34% 约束；
+        // 手机仍用原 156/190dp 基准，避免把手机二维码放大到 TV 尺寸。
         val sideBaseDp = if (resources.configuration.screenWidthDp < 380) 156 else 190
-        val side = TvLayoutSpec.qrSidePx(
-            resources.displayMetrics.widthPixels,
-            resources.displayMetrics.heightPixels,
-            Theme.dp(this, sideBaseDp),
-        )
+        val metrics = resources.displayMetrics
+        val side = if (isTv) {
+            TvLayoutSpec.tvQrSidePx(metrics.widthPixels, metrics.heightPixels, metrics.density)
+        } else {
+            TvLayoutSpec.qrSidePx(metrics.widthPixels, metrics.heightPixels, Theme.dp(this, sideBaseDp))
+        }
         val codeFontSp = TvLayoutSpec.codeSp(
             side,
-            resources.displayMetrics.density,
+            metrics.density,
             sideBaseDp.toFloat(),
             Theme.CODE_SP,
         )
@@ -1057,6 +1058,8 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         refreshMaintenanceRows()
         // 画质档位行是探完能力后动态 addView 的，刷新时再扫一次树；不抢当前焦点
         TvFocus.applyTree(settingsPanel, requestInitialFocus = false)
+        // T06103：长设置页的行序按实际可见控件重串，避免 D-pad 几何搜索跳到隐藏行/跨组乱跳
+        TvFocus.chainVisible(settingsPanel)
     }
 
     /** 显示模式：选中项用实心点与强调色，同时把无障碍选中态切过去。 */
@@ -1649,6 +1652,23 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             hideSettings()
             return
         }
+        // 首启引导：返回上一步；第一步再按返回才交给 Activity 默认行为
+        if (::onboarding.isInitialized && onboarding.visibility == View.VISIBLE) {
+            if (onboardStep > 1) {
+                prevOnboardingStep()
+                return
+            }
+        }
+        // 配对确认条：返回键等价拒绝，不能把未决请求挂在那里直接退出接收端
+        if (::promptBar.isInitialized && promptBar.visibility == View.VISIBLE) {
+            respondToPrompt(false)
+            return
+        }
+        // 结束确认条：返回键等价取消，10 秒倒计时继续由 ticker 收口
+        if (::endBar.isInitialized && endBar.visibility == View.VISIBLE) {
+            cancelEndConfirm()
+            return
+        }
         if (!isCasting) {
             super.onBackPressed()
             return
@@ -1660,6 +1680,14 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         endConfirmUntil = System.currentTimeMillis() + END_CONFIRM_MS
         endBar.visibility = View.VISIBLE
         endText.text = "结束投屏？"
+        // T06103：结束确认默认落在「取消」，左右移动才到「结束」，避免误按一次就断流。
+        TvFocus.chainHorizontal(endCancelButton, endConfirmButton)
+        endCancelButton.post {
+            if (endBar.visibility == View.VISIBLE) {
+                endCancelButton.requestFocus()
+                endCancelButton.sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_VIEW_FOCUSED)
+            }
+        }
         A11y.announce(endBar, A11yCopy.endConfirmBar(), "end-confirm")
     }
 
@@ -1674,8 +1702,10 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     }
 
     private fun cancelEndConfirm() {
+        val wasVisible = endBar.visibility == View.VISIBLE
         endConfirmUntil = 0L
         endBar.visibility = View.GONE
+        if (wasVisible) focusWaitingEntry()
     }
 
     private fun confirmEnd() {
@@ -1839,6 +1869,30 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         val stepCopy = A11yCopy.onboardingStep(onboardStep, 3, stepTitle)
         A11y.describe(onboardStepHint, stepCopy)
         A11y.announce(onboarding, stepCopy, "onboard-step-$onboardStep")
+        refreshOnboardingFocusChain()
+        // 切步/返回上一步后，原来聚焦的控件可能已被隐藏；把焦点收回当前步骤的主按钮，
+        // 避免 D-pad 焦点悬空后要连按多次方向键才恢复。
+        onboardNext.post {
+            if (onboarding.visibility == View.VISIBLE) {
+                onboardNext.requestFocus()
+                onboardNext.sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_VIEW_FOCUSED)
+            }
+        }
+    }
+
+    /**
+     * T06103：首启三步的 D-pad 顺序固定为「右上跳过全部 → 当前步骤主控件 → 底部主按钮」，
+     * 底部「上一步/跳过/下一步」再按左右串起来；隐藏的按钮不进入链。
+     */
+    private fun refreshOnboardingFocusChain() {
+        when (onboardStep) {
+            1 -> TvFocus.chain(onboardSkipAll, onboardNext)
+            2 -> TvFocus.chain(onboardSkipAll, onboardAutoToggle, onboardNext)
+            else -> TvFocus.chain(onboardSkipAll, onboardInput, onboardNext)
+        }
+        val row = listOf(onboardBack, onboardSkip, onboardNext)
+            .filter { it.visibility == View.VISIBLE }
+        if (row.size > 1) TvFocus.chainHorizontal(*row.toTypedArray())
     }
 
     private fun refreshOnboardAutoToggle() {
@@ -1895,7 +1949,10 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     private val hostUi = object : ReceiverHost.Ui {
         override fun onStatus(text: String) = runOnUiThread { statusText.text = text }
         override fun onPrompt(prompt: ReceiverSession.Prompt) = runOnUiThread { showPrompt(prompt) }
-        override fun onPromptDismissed() = runOnUiThread { promptBar.visibility = View.GONE }
+        override fun onPromptDismissed() = runOnUiThread {
+            promptBar.visibility = View.GONE
+            focusWaitingEntry()
+        }
         override fun onCasting(casting: Boolean, senderName: String) =
             runOnUiThread { this@ReceiverActivity.onCasting(casting, senderName) }
         override fun onNotice(text: String) = runOnUiThread { showNotice(text) }
@@ -2129,11 +2186,29 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         A11y.describe(promptDeny, A11yCopy.promptDeny(prompt.deviceName))
         A11y.describe(promptAllow, A11yCopy.promptAllow(prompt.deviceName))
         promptBar.visibility = View.VISIBLE
+        // T06103：配对确认默认落在「拒绝」上，D-pad 左右在拒绝/允许之间移动；
+        // 不把焦点留在底层显示设置，否则遥控器用户看不到也操作不了这个确认条。
+        TvFocus.chainHorizontal(promptDeny, promptAllow)
+        promptDeny.post {
+            if (promptBar.visibility == View.VISIBLE) {
+                promptDeny.requestFocus()
+                promptDeny.sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_VIEW_FOCUSED)
+            }
+        }
     }
 
     private fun respondToPrompt(allowed: Boolean) {
         promptBar.visibility = View.GONE
+        focusWaitingEntry()
         host.resolve(allowed)
+    }
+
+    /** 覆盖层关闭后把焦点送回待连接页右上角入口；投屏中入口隐藏时不抢焦点。 */
+    private fun focusWaitingEntry() {
+        if (!::settingsEntry.isInitialized || settingsEntry.visibility != View.VISIBLE) return
+        if (::settingsOverlay.isInitialized && settingsOverlay.visibility == View.VISIBLE) return
+        if (::onboarding.isInitialized && onboarding.visibility == View.VISIBLE) return
+        settingsEntry.requestFocus()
     }
 
     private fun onCasting(casting: Boolean, senderName: String) {
