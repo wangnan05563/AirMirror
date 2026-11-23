@@ -53,6 +53,15 @@ object A11yCopy {
 
     fun codeConnect(): String = "用码连接，使用电视上的投屏码或四位 PIN"
 
+    /** T06105：扫码入口只调用系统相机拍一张，不申请相机权限。 */
+    fun scanStart(): String = "扫码连接，打开系统相机拍下电视上的投屏二维码"
+
+    fun scanToCode(): String = "改用投屏码，手动输入电视上的四位 PIN 或六位投屏码"
+
+    fun codeToScan(): String = "返回扫码，重新用相机扫描电视上的投屏二维码"
+
+    fun scanResultFailed(): String = "没识别到投屏二维码，已切换到投屏码输入"
+
     fun addressConnect(): String = "直接连接，使用电视地址或配对链接"
 
     fun takeover(from: String, seconds: Int, yield: Boolean): String {

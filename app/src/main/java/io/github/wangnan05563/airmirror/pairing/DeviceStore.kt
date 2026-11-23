@@ -37,6 +37,13 @@ class DeviceStore(context: Context) {
         prefs.edit().putString(KEY_RECENT, snapshot).apply()
     }
 
+    /** T06105：上次真正出过首帧的电视；自动选中只认这一份记录，不把失败尝试当成功。 */
+    fun lastCastTarget(): LastCastTarget.Record? = LastCastTarget.decode(prefs.getString(KEY_LAST_CAST, "").orEmpty())
+
+    fun saveLastCastTarget(record: LastCastTarget.Record) {
+        prefs.edit().putString(KEY_LAST_CAST, LastCastTarget.encode(record)).apply()
+    }
+
     fun deviceName(fallback: String): String = prefs.getString(KEY_NAME, null) ?: fallback
 
     fun saveDeviceName(name: String) {
@@ -179,6 +186,7 @@ class DeviceStore(context: Context) {
         const val KEY_ID = "device_id"
         const val KEY_TRUSTED = "trusted"
         const val KEY_RECENT = "recent_targets"
+        const val KEY_LAST_CAST = "last_cast_target"
         const val KEY_NAME = "device_name"
         const val KEY_FIRST_LAUNCH = "first_launch"
         const val KEY_AUTO_ALLOW = "auto_allow"

@@ -18,6 +18,17 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- 在线更新：只发 GitHub Release（Q-6），安装前由系统弹「未知来源」授权，App 不自批 -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- T06105 扫码走系统相机拍照，不申请 CAMERA 权限；没有相机的设备仍可用投屏码 -->
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
+
+    <!-- Android 11 包可见性：不声明这条，resolveActivity 看不到系统相机，会把扫码误判为不可用 -->
+    <queries>
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
+    </queries>
 
     <!--
         DLNA / 浏览器推送的媒体源几乎都是 http:// 的局域网地址（视频 App 推的临时链接、NAS、
@@ -90,6 +101,17 @@
             android:authorities="${applicationId}.updates"
             android:exported="false"
             android:grantUriPermissions="true" />
+
+        <!-- T06105：扫码拍照输出到 cache，仅把这一张图的临时 URI 授权给系统相机 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.qrfile"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/qr_file_paths" />
+        </provider>
     </application>
 
 </manifest>

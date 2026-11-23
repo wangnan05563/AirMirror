@@ -34,7 +34,8 @@ class CodeInputGuardTest {
         val src = sender()
         assertTrue("缺少码类拒绝反查", src.contains("ErrorNotice.causeOfRendered(report)"))
         assertTrue("缺少四分支判决入口", src.contains("CodeInputPolicy.onCodeRotated(codeInput.text.length, locked)"))
-        assertTrue("status 必须先问换码提示再回落原提示", src.contains("codeRotationNotice(report) ?:"))
+        assertTrue("status 必须先问换码提示再回落原提示", src.contains("val rotation = codeRotationNotice(report)"))
+        assertTrue("换码提示要落在 status 文本", src.contains("status.text = rotation ?:"))
     }
 
     @Test

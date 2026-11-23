@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- 扫码照片只放在 cache；不复用外部存储，权限面最小 -->
+    <cache-path
+        name="qr_capture"
+        path="qr-capture/" />
+</paths>

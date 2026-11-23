@@ -58,7 +58,8 @@ class EmptyDiagnosisGuardTest {
     fun `三动作就地生效不跳页`() {
         val s = sender()
         assertTrue("重试发现重起搜索窗口", s.contains("scanner?.begin()"))
-        assertTrue("用投屏码连接聚焦码输入框", s.contains("ErrorNotice.Action.ENTER_CODE -> focusInput(codeInput)"))
+        assertTrue("用投屏码连接切到投屏码入口", s.contains("ErrorNotice.Action.ENTER_CODE -> {"))
+        assertTrue("切入口后焦点落在码输入框", s.contains("focusInput(codeInput)"))
         assertTrue("手动输 IP 聚焦地址输入框", s.contains("ErrorNotice.Action.ENTER_IP -> focusInput(addressInput)"))
         assertTrue("组件回调用宿主既有动作处理", s.contains("onAction = ::onDiagnosisAction"))
     }

@@ -61,9 +61,17 @@ class LogHygieneTest {
     @Test
     fun `没有新增外部存储或公共目录的落盘通道`() {
         val all = sources().joinToString("\n") { it.readText() }
-        for (forbidden in listOf("getExternalStorage", "MediaStore.", "openFileOutput", "FileOutputStream", "Environment.getExternal")) {
+        for (forbidden in listOf("getExternalStorage", "openFileOutput", "FileOutputStream", "Environment.getExternal")) {
             assertEquals("出现外部落盘通道：$forbidden", 0, all.split(forbidden).size - 1)
         }
+        // T06105 扫码只用 MediaStore 的系统相机动作与临时输出 extra，不读写公共媒体库；
+        // 输出仍是应用私有 cache 的 FileProvider URI，不能把它当成“外部落盘通道”。
+        val mediaStoreDataAccess = all.lines().filter { line ->
+            "MediaStore." in line &&
+                !line.contains("ACTION_IMAGE_CAPTURE") &&
+                !line.contains("EXTRA_OUTPUT")
+        }
+        assertEquals("出现公共媒体库读写：${mediaStoreDataAccess.firstOrNull().orEmpty().trim()}", 0, mediaStoreDataAccess.size)
         // 全工程唯一的 writeText 只允许是诊断文件（应用私有 filesDir）
         assertEquals("写文件只允许诊断这一处", 1, all.split("writeText(").size - 1)
         val manifest = File(projectRoot(), "app/src/main/AndroidManifest.xml").readText()

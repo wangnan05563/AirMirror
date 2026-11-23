@@ -44,6 +44,7 @@ import io.github.wangnan05563.airmirror.net.RecentTargets
 import io.github.wangnan05563.airmirror.net.ServiceBrowser
 import io.github.wangnan05563.airmirror.net.UdpProbeTransport
 import io.github.wangnan05563.airmirror.pairing.DeviceStore
+import io.github.wangnan05563.airmirror.pairing.LastCastTarget
 import io.github.wangnan05563.airmirror.pairing.PairingLink
 import io.github.wangnan05563.airmirror.protocol.ProtocolBoundary
 import io.github.wangnan05563.airmirror.sender.CaptureService
@@ -81,6 +82,25 @@ class SenderActivity : Activity() {
     private lateinit var permissionFix: Button
     private lateinit var list: LinearLayout
     private lateinit var codeInput: EditText
+    private lateinit var entryPanel: LinearLayout
+    private lateinit var scanRow: LinearLayout
+    private lateinit var codeRow: LinearLayout
+    private lateinit var entryNote: TextView
+    private lateinit var scanButton: Button
+    private lateinit var scanToCodeButton: Button
+    private lateinit var codeToScan: TextView
+    private var entryMode = TwoStepCastPolicy.EntryMode.CODE
+    private var entryReason = ""
+    private var cameraAvailable = false
+    /** 用户手动改过入口：此后不再自动选中，避免“我正在输码它却连了另一台”。 */
+    private var userChoseEntry = false
+    /** 本轮页面是否已自动选过一次：自动连接只给一次机会，失败后回到列表由用户决定。 */
+    private var autoAttempted = false
+    private var autoReadyAt = 0L
+    private val decisions = TwoStepCastPolicy.Budget()
+    private var qrCaptureFile: File? = null
+    /** 当前正在投屏/待投屏的设备；首帧到达时才把它写成“上次成功设备”。 */
+    private var castingTarget: Target? = null
     private lateinit var addressInput: EditText
     private lateinit var pauseButton: Button
     private lateinit var stopButton: Button
@@ -148,6 +168,9 @@ class SenderActivity : Activity() {
         loadingCard.bind(loadingName, SystemClock.uptimeMillis() - loadingStartedAt)
     }
 
+    /** 发现稳定窗到点后重算一次列表：第二台电视若在窗口内出现，自动选中会降级为列表。 */
+    private val autoSettle = Runnable { renderList() }
+
     private fun refreshStatus() {
         updateStatusLine()
         // 有画质说明即表示会话在跑；暂停只停送帧，按钮仍留在原位
@@ -168,7 +191,12 @@ class SenderActivity : Activity() {
         lastReport = note
         // UX-02：码类拒绝是发送端唯一可观测的「换码」时刻，按输入态给可重新确认的提示，
         // 输入框保留不清空（这里从不 setText("")）；非码类错误照旧走原提示。
-        status.text = codeRotationNotice(report) ?: note.ifEmpty { hint.text.ifEmpty { SEARCHING } }
+        val rotation = codeRotationNotice(report)
+        if (rotation != null && entryMode == TwoStepCastPolicy.EntryMode.SCAN) {
+            // 扫码令牌/投屏码被接收端拒绝：这是 PRD 规定的回退时刻，直接露出投屏码，不再让用户猜。
+            switchToCode("投屏码或扫码令牌已失效，请输入电视上的新码", charge = false)
+        }
+        status.text = rotation ?: note.ifEmpty { hint.text.ifEmpty { SEARCHING } }
         statusState = statusStateOf(report)
         status.setTextColor(StatusColors.textOf(statusState))
         // 出错时把输入放开让用户重试；正常投屏中保持禁用，避免重复发起
@@ -192,9 +220,13 @@ class SenderActivity : Activity() {
         if (casting) {
             expandedFingerprint = null
             endLoading()
+            rememberCastSuccess()
         } else {
             captureStarted = false
+            castingTarget = null
+            decisions.reset()
         }
+        refreshEntryVisibility()
     }
 
     /** 投屏中的按钮文案与无障碍描述：暂停、停止、声音三键始终反映当前状态。 */
@@ -218,6 +250,10 @@ class SenderActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         store = DeviceStore(this)
+        cameraAvailable = QrPhotoScan.canCapture(this)
+        entryMode = TwoStepCastPolicy.defaultMode(cameraAvailable)
+        if (!cameraAvailable) entryReason = "这台设备没有可用相机，已切换到投屏码"
+        autoReadyAt = SystemClock.uptimeMillis() + TwoStepCastPolicy.AUTO_SETTLE_MS
         // 同机双端时接收端的探测公告会回环到自己：本机指纹交给列表过滤掉
         devices.selfFingerprint = store.deviceId()
         val pad = Theme.dp(this, 20)
@@ -259,16 +295,10 @@ class SenderActivity : Activity() {
 
         codeInput = makeInput("投屏码或 PIN", InputType.TYPE_CLASS_NUMBER)
         codeInput.filters = arrayOf(InputFilter.LengthFilter(CODE_LENGTH))
-        root.addView(
-            rowWith(codeInput, "用码连接") { connectByCode() },
-            matchWidth(),
-        )
-        root.addView(TextView(this).apply {
-            text = "电视上的 6 位投屏码，或 PIN 模式下的 4 位 PIN"
-            textSize = FocusPolicy.bodySp(isTv)
-            setTextColor(Theme.TEXT_SECONDARY)
-            setPadding(Theme.dp(this@SenderActivity, Theme.SPACE_XS_DP), 0, 0, Theme.dp(this@SenderActivity, Theme.SPACE_XS_DP))
-        }, matchWidth())
+        // T06105：默认扫码；没有相机/用户在扫码后失败时切到投屏码。两块共用同一个输入框，
+        // 入口优先级由 TwoStepCastPolicy 管，页面只负责显隐与接线。
+        buildEntryPanel()
+        root.addView(entryPanel, matchWidth())
         // PRD FS-04：跨网入口与局域网并列，但只在「局域网没搜到设备」时才会尝试，
         // 填了端点才启用；不填就不向任何外部服务发请求。
         crossNetRow = TextView(this).apply {
@@ -377,6 +407,8 @@ class SenderActivity : Activity() {
         startBrowsing()
         startScanning()
         main.post(refresh)
+        main.postDelayed(autoSettle, TwoStepCastPolicy.AUTO_SETTLE_MS)
+        refreshEntryVisibility()
         // 冷启动静默查一次：只有发现新版本才弹框，已最新/检查失败都不打扰（手动入口仍走 checkUpdate 默认形态）
         checkUpdate(silent = true)
 
@@ -455,8 +487,170 @@ class SenderActivity : Activity() {
         minHeight = Theme.dp(this@SenderActivity, UiKit.TOUCH_TARGET_DP)
         gravity = Gravity.CENTER_VERTICAL
         setPadding(Theme.dp(this@SenderActivity, Theme.SPACE_MD_DP), Theme.dp(this@SenderActivity, 6), Theme.dp(this@SenderActivity, Theme.SPACE_MD_DP), Theme.dp(this@SenderActivity, 6))
-        A11y.describe(this, if (label == "投屏码") A11yCopy.codeInputLabel() else A11yCopy.addressInputLabel())
+        A11y.describe(this, if (label.startsWith("投屏码")) A11yCopy.codeInputLabel() else A11yCopy.addressInputLabel())
     }
+
+    /** T06105 入口面板：扫码默认，投屏码作为扫描失败/无相机时的回退。 */
+    private fun buildEntryPanel() {
+        scanButton = UiKit.button(this, kind = UiKit.Kind.Primary).apply {
+            text = "扫码连接"
+            setOnClickListener { startQrScan() }
+            A11y.describe(this, A11yCopy.scanStart())
+        }
+        scanToCodeButton = UiKit.button(this).apply {
+            text = "改用投屏码"
+            setOnClickListener { switchToCode("", charge = true) }
+            A11y.describe(this, A11yCopy.scanToCode())
+        }
+        scanRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(scanButton, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            addView(
+                scanToCodeButton,
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    leftMargin = Theme.dp(this@SenderActivity, Theme.SPACE_SM_DP)
+                },
+            )
+        }
+        codeRow = rowWith(codeInput, "用码连接") { connectByCode() }
+        entryNote = TextView(this).apply {
+            textSize = FocusPolicy.bodySp(isTv)
+            setTextColor(Theme.TEXT_SECONDARY)
+            setPadding(Theme.dp(this@SenderActivity, Theme.SPACE_XS_DP), Theme.dp(this@SenderActivity, Theme.SPACE_XS_DP), 0, 0)
+        }
+        codeToScan = TextView(this).apply {
+            text = "返回扫码"
+            textSize = FocusPolicy.bodySp(isTv)
+            setTextColor(Theme.ACCENT)
+            setPadding(Theme.dp(this@SenderActivity, Theme.SPACE_XS_DP), Theme.dp(this@SenderActivity, Theme.SPACE_XS_DP), 0, 0)
+            UiKit.touchTarget(this)
+            setOnClickListener { switchToScan(charge = true) }
+            A11y.describe(this, A11yCopy.codeToScan())
+        }
+        entryPanel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(scanRow, matchWidth())
+            addView(codeRow, matchWidth())
+            addView(entryNote, matchWidth())
+            addView(codeToScan, matchWidth())
+        }
+    }
+
+    private fun applyEntryMode(focusCode: Boolean) {
+        refreshEntryVisibility()
+        if (focusCode && entryMode == TwoStepCastPolicy.EntryMode.CODE) {
+            main.postDelayed({ if (!isFinishing) focusInput(codeInput) }, Theme.DURATION_FOCUS_MS)
+        }
+    }
+
+    private fun refreshEntryVisibility() {
+        if (!::entryPanel.isInitialized || !::scanRow.isInitialized || !::codeRow.isInitialized) return
+        val busy = lastCasting || (::loadingCard.isInitialized && loadingCard.visibility == View.VISIBLE)
+        val rows = devices.rows()
+        val codeMode = entryMode == TwoStepCastPolicy.EntryMode.CODE
+        val scanVisible = !busy && TwoStepCastPolicy.scanEntryVisible(rows, entryMode)
+        scanRow.visibility = if (scanVisible) View.VISIBLE else View.GONE
+        codeRow.visibility = if (!busy && codeMode) View.VISIBLE else View.GONE
+        codeToScan.visibility = if (!busy && codeMode && cameraAvailable) View.VISIBLE else View.GONE
+        entryPanel.visibility = if (scanVisible || (!busy && codeMode)) View.VISIBLE else View.GONE
+        entryNote.text = when {
+            codeMode && entryReason.isNotEmpty() -> entryReason
+            codeMode -> "输入电视上的 4 位 PIN 或 6 位投屏码"
+            entryReason.isNotEmpty() -> entryReason
+            else -> "电视上的二维码；相机不可用可直接用投屏码"
+        }
+        entryNote.setTextColor(if (entryReason.isNotEmpty()) Theme.ACCENT else Theme.TEXT_SECONDARY)
+    }
+
+    /**
+     * 切投屏码：扫码失败/无相机的自动回退不扣决策；用户主动点「改用投屏码」算一次选择。
+     * 返回 false 只在预算已用完且这次是主动选择时出现，界面不再偷偷替用户做第三次决定。
+     */
+    private fun switchToCode(reason: String, charge: Boolean): Boolean {
+        if (entryMode == TwoStepCastPolicy.EntryMode.CODE && reason.isEmpty()) return true
+        if (charge && entryMode != TwoStepCastPolicy.EntryMode.CODE && !decisions.take()) {
+            toast("本次投屏已用 2 步，请直接选择已发现的电视，或重试扫码")
+            return false
+        }
+        entryMode = TwoStepCastPolicy.EntryMode.CODE
+        if (reason.isNotEmpty()) entryReason = reason
+        userChoseEntry = true
+        applyEntryMode(focusCode = true)
+        return true
+    }
+
+    private fun switchToScan(charge: Boolean) {
+        if (charge && !decisions.take()) {
+            toast("本次投屏已用 2 步，请直接选择已发现的电视")
+            return
+        }
+        entryMode = TwoStepCastPolicy.EntryMode.SCAN
+        entryReason = ""
+        userChoseEntry = true
+        applyEntryMode(focusCode = false)
+    }
+
+    private fun startQrScan() {
+        if (!cameraAvailable) {
+            switchToCode("这台设备没有可用相机，已切换到投屏码", charge = false)
+            return
+        }
+        if (!decisions.take()) {
+            toast("本次投屏已用 2 步，请直接选择已发现的电视")
+            return
+        }
+        val file = runCatching { QrPhotoScan.newCaptureFile(this) }.getOrNull()
+        val intent = file?.let { QrPhotoScan.startIntent(this, it) }
+        if (file == null || intent == null || intent.resolveActivity(packageManager) == null) {
+            file?.delete()
+            switchToCode("没有可用的系统相机，已切换到投屏码", charge = false)
+            return
+        }
+        qrCaptureFile = file
+        userChoseEntry = true
+        try {
+            startActivityForResult(intent, REQUEST_QR)
+        } catch (_: ActivityNotFoundException) {
+            file.delete()
+            qrCaptureFile = null
+            switchToCode("没有可用的系统相机，已切换到投屏码", charge = false)
+        }
+    }
+
+    /** 扫码返回文本 → 本地校验 → 直接把一次性令牌交给既有连接链路；失败只切投屏码，不弹堆栈。 */
+    private fun handleQrCaptureResult(resultCode: Int) {
+        val file = qrCaptureFile
+        qrCaptureFile = null
+        if (resultCode != RESULT_OK) {
+            file?.delete()
+            // 取消不是失败：不切投屏码、不额外扣一次决策，用户可重拍
+            decisions.reset()
+            toast("已取消扫码")
+            return
+        }
+        val text = file?.let { QrPhotoScan.decodeFile(it) }
+        file?.delete()
+        if (text.isNullOrBlank()) {
+            switchToCode("没识别到投屏二维码，已切换到投屏码", charge = false)
+            toast(A11yCopy.scanResultFailed())
+            return
+        }
+        val link = PairingLink.parse(text)
+        if (link == null || link.host.isBlank() || link.port !in 1..65_535) {
+            switchToCode("这不是 AirMirror 投屏二维码，已切换到投屏码", charge = false)
+            toast("二维码不完整，请用电视待连接页上的二维码")
+            return
+        }
+        val target = Target(
+            link.name.ifBlank { "电视" },
+            link.host,
+            link.port,
+            link.deviceId,
+        )
+        connectTo(target, link.token, "正在连接 ${target.name}…")
+    }
+
 
     private fun rowWith(input: EditText, action: String, onClick: () -> Unit) = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
@@ -546,11 +740,58 @@ class SenderActivity : Activity() {
 
     private fun renderList() {
         list.removeAllViews()
-        for (row in devices.rows()) {
+        val rows = devices.rows()
+        for (row in rows) {
             val target = targetOf(row.fingerprint, row.name) ?: continue
             list.addView(deviceCard(row, target), matchWidth())
         }
         renderEmptyState()
+        refreshEntryVisibility()
+        maybeAutoConnect(rows)
+    }
+
+    /** T06105：唯一在线且上次成功投屏的设备才自动选中；没有稳定/不是唯一/用户已动手都不抢。 */
+    private fun maybeAutoConnect(rows: List<DeviceRegistry.Row>) {
+        val trusted = store.lastCastTarget()
+        val nowWall = System.currentTimeMillis()
+        val target = TwoStepCastPolicy.autoTarget(
+            TwoStepCastPolicy.Input(
+                rows = rows.map {
+                    TwoStepCastPolicy.Candidate(
+                        fingerprint = it.fingerprint,
+                        name = it.name,
+                        online = it.online,
+                        supported = ProtocolBoundary.bestSupported(it.protocols) != null,
+                    )
+                },
+                trusted = trusted?.let { TwoStepCastPolicy.Trusted(it.fingerprint, it.usedAt) },
+                now = nowWall,
+                discoverySettled = SystemClock.uptimeMillis() >= autoReadyAt,
+                userChoseEntry = userChoseEntry,
+                autoAttempted = autoAttempted,
+                connecting = ::loadingCard.isInitialized && loadingCard.visibility == View.VISIBLE,
+                casting = lastCasting || SenderReport.quality.isNotEmpty(),
+            ),
+        ) ?: return
+        if (autoAttempted) return
+        autoAttempted = true
+        val real = targetOf(target.fingerprint, target.name) ?: return
+        connectTo(real, credential = "", statusLine = "上次设备在线，正在自动连接 ${real.name}…")
+    }
+
+    /** 首帧真正出现才记“上次成功设备”；失败尝试不写，避免下次自动连到一台从没出过画面的电视。 */
+    private fun rememberCastSuccess() {
+        val target = castingTarget ?: return
+        if (target.fingerprint.isBlank() || target.fingerprint == "direct" || target.fingerprint == "crossnet") return
+        store.saveLastCastTarget(
+            LastCastTarget.Record(
+                fingerprint = target.fingerprint,
+                name = target.name,
+                usedAt = System.currentTimeMillis(),
+            ),
+        )
+        devices.markConnected(target.fingerprint)
+        renderList()
     }
 
     /** 一张设备卡：标题行 + 离线/最近使用说明 + 展开后的两个动作。 */
@@ -616,6 +857,11 @@ class SenderActivity : Activity() {
             if (actions.isEmpty()) {
                 toast(if (row.online) ProtocolBoundary.describe(row.strongest).text() else DeviceCardPolicy.offlineHint())
             } else {
+                if (expandedFingerprint != row.fingerprint && !decisions.take()) {
+                    toast("本次投屏已用 2 步，请直接点「镜像屏幕」")
+                    return@setOnClickListener
+                }
+                userChoseEntry = true
                 expandedFingerprint = DeviceCardPolicy.toggle(expandedFingerprint, row.fingerprint)
                 renderList()
             }
@@ -674,6 +920,11 @@ class SenderActivity : Activity() {
             setTextColor(Theme.ACCENT)
             A11y.describe(this, A11yCopy.cardAction(row.name, action == DeviceCardPolicy.CardAction.MIRROR))
             setOnClickListener {
+                if (!decisions.take()) {
+                    toast("本次投屏已用 2 步，请重新扫码或输入投屏码")
+                    return@setOnClickListener
+                }
+                userChoseEntry = true
                 expandedFingerprint = null
                 renderList()
                 when (action) {
@@ -694,6 +945,11 @@ class SenderActivity : Activity() {
 
     /** 空列表自救卡：能给出成因就换成诊断卡；搜索中且 0 台也先给无设备入口，不再只留一行字。 */
     private fun renderEmptyState() {
+        if (::loadingCard.isInitialized && loadingCard.visibility == View.VISIBLE) {
+            diagnosisCard.visibility = View.GONE
+            hint.visibility = View.GONE
+            return
+        }
         val registry = devices.emptyReason()
         val verdict = scanner?.verdict()
             ?: DiscoveryLadder.Verdict.Nothing(DiscoveryLadder.Empty.SEARCHING, "")
@@ -749,6 +1005,7 @@ class SenderActivity : Activity() {
         loadingCard.visibility = View.VISIBLE
         diagnosisCard.visibility = View.GONE
         hint.visibility = View.GONE
+        if (::entryPanel.isInitialized) entryPanel.visibility = View.GONE
         main.removeCallbacks(loadingTimeout)
         main.postDelayed(loadingTimeout, ErrorVisualSpec.CANCEL_AFTER_MS)
     }
@@ -759,6 +1016,7 @@ class SenderActivity : Activity() {
         main.removeCallbacks(loadingTimeout)
         // 失败回落到设备列表：空列表要把诊断卡还原，避免错误后只剩一条状态行。
         if (list.childCount == 0 && !lastCasting) renderEmptyState()
+        refreshEntryVisibility()
     }
 
     /** 加载中取消：清掉待交接目标/跨网 token，已起服务则按既有 ACTION_STOP 收尾。 */
@@ -768,6 +1026,7 @@ class SenderActivity : Activity() {
         resetPendingConnection()
         endLoading()
         codeInput.isEnabled = true
+        decisions.reset()
         if (serviceStarted) {
             startService(Intent(this, CaptureService::class.java).setAction(CaptureService.ACTION_STOP))
         }
@@ -785,6 +1044,10 @@ class SenderActivity : Activity() {
 
     /** PRD UI-04：状态文案与六态语义色一起落，避免同一条状态行在不同入口换出不同颜色。 */
     private fun showStatus(state: CastStatus.State, line: CharSequence?) {
+        if (state == CastStatus.State.ERROR) {
+            // 一次失败就是一次新回合：保留错误入口，但不让上一轮的 2 步预算把恢复路径卡死。
+            decisions.reset()
+        }
         if (state == CastStatus.State.ERROR || state == CastStatus.State.IDLE) endLoading()
         statusState = state
         status.text = line
@@ -797,10 +1060,20 @@ class SenderActivity : Activity() {
             ErrorNotice.Action.RETRY_DISCOVERY -> {
                 // 重起一轮搜索窗口，保留最近设备缓存；不改轮次/通道/探测间隔
                 scanner?.begin()
+                decisions.reset()
+                autoAttempted = false
+                autoReadyAt = SystemClock.uptimeMillis() + TwoStepCastPolicy.AUTO_SETTLE_MS
+                main.removeCallbacks(autoSettle)
+                main.postDelayed(autoSettle, TwoStepCastPolicy.AUTO_SETTLE_MS)
                 showStatus(CastStatus.State.IDLE, SEARCHING)
                 renderList()
             }
-            ErrorNotice.Action.ENTER_CODE -> focusInput(codeInput)
+
+            ErrorNotice.Action.ENTER_CODE -> {
+                if (!switchToCode("", charge = true)) return
+                focusInput(codeInput)
+            }
+
             ErrorNotice.Action.ENTER_IP -> focusInput(addressInput)
             else -> Unit
         }
@@ -835,6 +1108,7 @@ class SenderActivity : Activity() {
     }
 
     private fun connectByCode() {
+        userChoseEntry = true
         val code = codeInput.text.toString().trim()
         if ((code.length != CODE_LENGTH && code.length != PIN_LENGTH) || !code.all(Char::isDigit)) {
             toast("请输入电视上的 4 位 PIN 或 6 位投屏码")
@@ -870,6 +1144,7 @@ class SenderActivity : Activity() {
      */
     private fun connectCrossNet(code: String) {
         val generation = ++connectGeneration
+        castingTarget = null
         beginLoading("跨网设备")
         showStatus(CastStatus.State.CONNECTING, "正在跨网连接…")
         codeInput.isEnabled = false
@@ -938,10 +1213,18 @@ class SenderActivity : Activity() {
         connectTo(Target(link?.name.orEmpty().ifEmpty { host }, host, port, host), credential)
     }
 
-    private fun connectTo(target: Target, credential: String = codeInput.text.toString().trim()) {
+    private fun connectTo(
+        target: Target,
+        credential: String = codeInput.text.toString().trim(),
+        statusLine: String? = null,
+    ) {
         connectGeneration++
+        castingTarget = target
         beginLoading(target.name)
-        showStatus(CastStatus.State.CONNECTING, CastStatus.line(CastStatus.State.CONNECTING))
+        showStatus(
+            CastStatus.State.CONNECTING,
+            statusLine ?: CastStatus.line(CastStatus.State.CONNECTING),
+        )
         lastReport = ""
         codeInput.isEnabled = false
         // 记进 10 分钟缓存：下次组播/广播全被挡住时，这个地址就是直连探测的唯一入口。
@@ -1225,12 +1508,18 @@ class SenderActivity : Activity() {
     @Deprecated("Activity result API kept dependency-free")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) { // NOSONAR(kotlin:S1133) 授权结果回调必须覆写（项目无 AndroidX），不能删除
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQUEST_QR) {
+            handleQrCaptureResult(resultCode)
+            return
+        }
         if (requestCode != REQUEST_CAPTURE) return
         val target = pending ?: return
         if (resultCode != RESULT_OK || data == null) {
             codeInput.isEnabled = true
             // 没拿到录屏授权就没有会话，跨网隧道必须在此时释放，否则线程和 socket 一直挂着
             resetPendingConnection()
+            castingTarget = null
+            decisions.reset()
             showStatus(CastStatus.State.ERROR, if (lastReport.isEmpty()) hint.text else lastReport)
             // 用统一口径而不是另写一句：接收端与服务侧同样的拒绝都走 ErrorNotice，
             // 两套说法会让用户在「还能怎么投」上得到不同答案（PRD 7.3 自解释口径）
@@ -1457,6 +1746,9 @@ class SenderActivity : Activity() {
     override fun onDestroy() {
         main.removeCallbacks(refresh)
         main.removeCallbacks(loadingTimeout)
+        main.removeCallbacks(autoSettle)
+        qrCaptureFile?.delete()
+        qrCaptureFile = null
         // 已建好但还没交给前台服务的跨网隧道必须在这里释放，daemon 线程不会替我们做这件事
         pendingCrossNetToken?.let { CrossNetLinkRegistry.discard(it) }
         pendingCrossNetToken = null
@@ -1472,6 +1764,7 @@ class SenderActivity : Activity() {
         private const val TAG = "AirMirrorSender"
         private const val REQUEST_CAPTURE = 1
         private const val REQUEST_PERMISSION = 2
+        private const val REQUEST_QR = 3
         private const val SEARCHING = "正在搜索同一网络里的电视…"
         private const val PROTOCOL = "AMRC"
         private const val CODE_LENGTH = 6

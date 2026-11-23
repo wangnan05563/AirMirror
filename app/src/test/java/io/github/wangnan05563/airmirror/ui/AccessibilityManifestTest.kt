@@ -38,11 +38,13 @@ class AccessibilityManifestTest {
      * Receiver 由 29 增至 31。
      * T06104 把空态三动作循环从 SenderActivity 迁入 ErrorStateCard（源码 1 处循环、运行时 3 枚），
      * Sender 由 12 回到 11；加载卡取消按钮由 LoadingStateCard 自带（源码 1 处）。
+     * T06105 新增扫码/改用投屏码/返回扫码三个入口，并给两处步数超限分支加了 return 标签，
+     * 源码计数由 11 增至 16；三处新增入口都有 A11y 描述。
      */
     @Test
     fun `点击接线点数量与无障碍决策表一致`() {
         assertEquals(4, countOf(source("MainActivity.kt"), "setOnClickListener"))
-        assertEquals(11, countOf(source("SenderActivity.kt"), "setOnClickListener"))
+        assertEquals(16, countOf(source("SenderActivity.kt"), "setOnClickListener"))
         assertEquals(31, countOf(source("ReceiverActivity.kt"), "setOnClickListener"))
         assertEquals(3, countOf(source("AboutActivity.kt"), "setOnClickListener"))
         assertEquals(1, countOf(source("ReceiverActivity.kt"), "setOnLongClickListener"))
@@ -54,7 +56,7 @@ class AccessibilityManifestTest {
     fun `每个点击接线点都配了可访问名`() {
         mapOf(
             "MainActivity.kt" to 4,
-            "SenderActivity.kt" to 11,
+            "SenderActivity.kt" to 16,
             "ReceiverActivity.kt" to 31,
             "AboutActivity.kt" to 3,
             "ErrorStateCard.kt" to 1,
