@@ -36,12 +36,18 @@ class ErrorStateCardUiTest {
         val slug: String,
         val cause: ErrorNotice.Cause,
         val code: String,
+        val actions: List<ErrorNotice.Action> = EmptyDiagnosis.ACTIONS,
     )
 
     private val cases = listOf(
         Case("no-device", ErrorNotice.Cause.NO_DISCOVERY, "AM-ND-01"),
         Case("network", ErrorNotice.Cause.DISCOVERY_AP_ISOLATED, "AM-NET-01"),
         Case("offline", ErrorNotice.Cause.DEVICE_OFFLINE, "AM-OFF-01"),
+        // T06107：T06106 新增的两条原因也进 360dp/720p/1080p 视觉矩阵。
+        Case("no-network", ErrorNotice.Cause.NO_NETWORK, "AM-NET-04",
+            ErrorNotice.noticeFor(ErrorNotice.Cause.NO_NETWORK).actions),
+        Case("no-receiver", ErrorNotice.Cause.NO_RECEIVER, "AM-ND-02",
+            ErrorNotice.noticeFor(ErrorNotice.Cause.NO_RECEIVER).actions),
     )
 
     private fun projectRoot(): File {
@@ -78,7 +84,7 @@ class ErrorStateCardUiTest {
                 setPadding(safe.horizontal, safe.vertical, safe.horizontal, safe.vertical)
             }
             val card = ErrorStateCard(context)
-            card.bind(case.cause)
+            card.bind(case.cause, case.actions)
             root.addView(card, FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -102,17 +108,16 @@ class ErrorStateCardUiTest {
             assertEquals("错误码可见", "错误码 ${case.code}", card.errorCode.text.toString())
             assertTrue("原因不能为空", card.headline.text.isNotBlank())
             assertTrue("下一步不能为空", card.nextStep.text.isNotBlank())
-            assertEquals("主/次/兜底三动作", 3, card.actionsBar.childCount)
-
-            val primary = card.actionsBar.getChildAt(0) as MaterialButton
-            val secondary = card.actionsBar.getChildAt(1) as MaterialButton
-            val ghost = card.actionsBar.getChildAt(2) as MaterialButton
-            assertEquals("主按钮实底", Theme.ACCENT, primary.backgroundTintList?.defaultColor)
-            assertEquals("次按钮面底", Theme.SURFACE, secondary.backgroundTintList?.defaultColor)
-            assertEquals("兜底按钮透明", Color.TRANSPARENT, ghost.backgroundTintList?.defaultColor)
+            assertEquals("动作数量按原因渲染", case.actions.size, card.actionsBar.childCount)
+            val buttons = (0 until card.actionsBar.childCount).map { card.actionsBar.getChildAt(it) as MaterialButton }
+            assertEquals("主按钮实底", Theme.ACCENT, buttons[0].backgroundTintList?.defaultColor)
+            assertEquals("次按钮面底", Theme.SURFACE, buttons[1].backgroundTintList?.defaultColor)
+            if (buttons.size > 2) {
+                assertEquals("兜底按钮透明", Color.TRANSPARENT, buttons[2].backgroundTintList?.defaultColor)
+            }
             assertTrue(
                 "触控高度不得低于 48dp",
-                listOf(primary, secondary, ghost).all { it.minimumHeight >= Theme.dp(context, 48) },
+                buttons.all { it.minimumHeight >= Theme.dp(context, 48) },
             )
             assertTrue(
                 "动作区越过卡片内边界，720p 会在卡片底缘裁掉按钮圆角",

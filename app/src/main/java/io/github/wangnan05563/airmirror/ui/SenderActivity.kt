@@ -38,6 +38,8 @@ import io.github.wangnan05563.airmirror.dlna.localIpv4s
 import io.github.wangnan05563.airmirror.error.ErrorNotice
 import io.github.wangnan05563.airmirror.net.DeviceRegistry
 import io.github.wangnan05563.airmirror.net.DiscoveryLadder
+import io.github.wangnan05563.airmirror.net.EmptyNetworkCheck
+import io.github.wangnan05563.airmirror.net.NetworkDiagnostics
 import io.github.wangnan05563.airmirror.net.ProbeResponder
 import io.github.wangnan05563.airmirror.net.ProbeScanner
 import io.github.wangnan05563.airmirror.net.RecentTargets
@@ -144,6 +146,13 @@ class SenderActivity : Activity() {
     private val devices = DeviceRegistry(now = { System.currentTimeMillis() }, sameSubnet = ::sameSubnet)
     private val main = Handler(Looper.getMainLooper())
     private var lastReport = ""
+
+    /** T06107：把 T06106 的空态网络判决接到页面；只在本轮搜索开始时记时，重试会重置窗口。 */
+    private var network = NetworkDiagnostics(this)
+    private var searchStartedAt = 0L
+    private val emptyTimeout = Runnable {
+        if (::diagnosisCard.isInitialized && list.childCount == 0) renderEmptyState()
+    }
 
     /** 刚点过「去设置」：下次回到前台时状态行要按系统当前授予态重写，而不是继续用旧文案 */
     private var awaitingSettings = false
@@ -706,6 +715,7 @@ class SenderActivity : Activity() {
      * 命中即静默降级（不提示），三轮全空才把 AP 隔离/双频分离的可执行原因写进列表提示。
      */
     private fun startScanning() {
+        restartEmptyWindow()
         val sink = object : ProbeScanner.Sink {
             override fun onDevice(fingerprint: String, name: String, host: String, port: Int, protocols: List<String>) {
                 // DeviceRegistry 不是线程安全的，一律回主线程再改列表
@@ -736,6 +746,16 @@ class SenderActivity : Activity() {
             interfaces = { ProbeResponder.localInterfaces() },
             senderName = "AirMirror",
         ).also { it.start() }
+    }
+
+    /** T06107：开始一轮新的发现窗口；15 秒到点后再把“没发现”从搜索中改成明确原因。 */
+    private fun restartEmptyWindow() {
+        searchStartedAt = SystemClock.elapsedRealtime()
+        main.removeCallbacks(emptyTimeout)
+        main.postDelayed(emptyTimeout, EmptyNetworkCheck.NO_RESULT_TIMEOUT_MS)
+        main.post {
+            if (::diagnosisCard.isInitialized && list.childCount == 0) renderEmptyState()
+        }
     }
 
     private fun renderList() {
@@ -953,6 +973,34 @@ class SenderActivity : Activity() {
         val registry = devices.emptyReason()
         val verdict = scanner?.verdict()
             ?: DiscoveryLadder.Verdict.Nothing(DiscoveryLadder.Empty.SEARCHING, "")
+        // T06107：T06106 的链路/15 秒窗口判决先于旧的城市空态；未联网和无接收端不再伪装成“搜索中”。
+        val networkResult = if (searchStartedAt > 0L) {
+            val snapshot = network.snapshot(
+                lastScanAt = searchStartedAt,
+                foundReceivers = devices.rows().count { it.online },
+            )
+            network.check(
+                startedAt = searchStartedAt,
+                snapshot = snapshot,
+                verdict = verdict,
+                registry = registry,
+            )
+        } else {
+            null
+        }
+        when (networkResult?.state) {
+            EmptyNetworkCheck.State.NO_NETWORK,
+            EmptyNetworkCheck.State.NO_RECEIVER,
+            EmptyNetworkCheck.State.PAIRING_FAILED -> {
+                val networkCause = networkResult.cause ?: ErrorNotice.Cause.NO_DISCOVERY
+                diagnosisCard.bind(networkCause, networkResult.actions.ifEmpty { EmptyDiagnosis.ACTIONS })
+                diagnosisCard.visibility = View.VISIBLE
+                hint.text = ""
+                hint.visibility = View.GONE
+                return
+            }
+            else -> Unit
+        }
         val cause = EmptyDiagnosis.of(verdict, registry)
         if (cause == null) {
             val searchingEmpty = verdict is DiscoveryLadder.Verdict.Nothing &&
@@ -1060,6 +1108,7 @@ class SenderActivity : Activity() {
             ErrorNotice.Action.RETRY_DISCOVERY -> {
                 // 重起一轮搜索窗口，保留最近设备缓存；不改轮次/通道/探测间隔
                 scanner?.begin()
+                restartEmptyWindow()
                 decisions.reset()
                 autoAttempted = false
                 autoReadyAt = SystemClock.uptimeMillis() + TwoStepCastPolicy.AUTO_SETTLE_MS
@@ -1075,6 +1124,13 @@ class SenderActivity : Activity() {
             }
 
             ErrorNotice.Action.ENTER_IP -> focusInput(addressInput)
+            ErrorNotice.Action.OPEN_SETTINGS -> {
+                // NO_NETWORK 的第一动作：跳到系统无线设置；厂商没有该入口时退回应用详情页。
+                val opened = runCatching {
+                    startActivity(Intent(Settings.ACTION_WIRELESS_SETTINGS))
+                }.isSuccess
+                if (!opened) openPermissionSettings()
+            }
             else -> Unit
         }
     }
@@ -1747,6 +1803,7 @@ class SenderActivity : Activity() {
         main.removeCallbacks(refresh)
         main.removeCallbacks(loadingTimeout)
         main.removeCallbacks(autoSettle)
+        main.removeCallbacks(emptyTimeout)
         qrCaptureFile?.delete()
         qrCaptureFile = null
         // 已建好但还没交给前台服务的跨网隧道必须在这里释放，daemon 线程不会替我们做这件事
