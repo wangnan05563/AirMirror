@@ -14,7 +14,8 @@ import kotlin.concurrent.thread
  * 访客浏览器投屏服务（PRD §5.9 / §6.6：接收端内置网页服务，上传文件、投送浏览器标签页）。
  *
  * 零安装的代价是「谁都能访问」，所以入口不是裸路径，而是一次性会话 token：
- * 大屏上显示带 token 的地址，拿到地址的人才能上传；token 每次进程启动重新生成，不落盘。
+ * 大屏上显示带 token 的地址，拿到地址的人才能上传；token 每次进程启动重新生成，不落盘，
+ * 最多使用 5 分钟后失效并自动换新（REQ-010）。
  *
  * 本轮只做「文件上传 + 大屏播放」这条降级路径。浏览器标签页投送需要 WebRTC，
  * 在 MediaProjection + 自定义信令之外还要一套 SDP/ICE 协商，不是这一片能闭环的量；
@@ -26,7 +27,11 @@ class BrowserCastServer(
     private val dir: File,
     private val maxBytes: Long = DEFAULT_MAX_BYTES,
     private val onUpload: (UploadedFile) -> Unit,
+    /** 测试可注入时钟；生产用系统时间。 */
+    private val now: () -> Long = { System.currentTimeMillis() },
     private val token: String = newToken(),
+    /** 访客 token 的最长可用时间：REQ-010 要求 5 分钟失效，到期后 URL 自动换新。 */
+    private val tokenTtlMillis: Long = DEFAULT_TOKEN_TTL_MS,
     /** 页面标题行显示的大屏名；用取值函数，改名后不必重建服务也能刷新。 */
     private val deviceName: () -> String = { DEFAULT_DEVICE_NAME },
     /** T06114：访问控制非「每次确认」时，浏览器 token 不能成为绕过 PIN/白名单的第二条路。 */
@@ -43,17 +48,21 @@ class BrowserCastServer(
 
     private var server: ServerSocket? = null
     private var acceptThread: Thread? = null
+    @Volatile private var activeToken: String = token
+    @Volatile private var tokenIssuedAt: Long = now()
 
     /** 活动连接：stop 时要当场关掉，否则上传线程能继续把文件写回已清空的目录 */
     private val clients: MutableSet<Socket> = java.util.Collections.synchronizedSet(HashSet())
 
     val port: Int get() = server?.localPort ?: 0
 
-    fun url(hostAddress: String): String = "http://$hostAddress:$port/w/$token/"
+    fun url(hostAddress: String): String = "http://$hostAddress:$port/w/${currentToken()}/"
 
     @Synchronized
     fun start(): BrowserCastServer {
         if (server != null) return this
+        tokenIssuedAt = now()
+        activeToken = token
         dir.mkdirs()
         // 进程重启后旧文件没有会话可归属，先清掉；上传中点停止同样走这里
         dir.listFiles()?.forEach { runCatching { it.delete() } }
@@ -201,13 +210,29 @@ class BrowserCastServer(
 
     private fun tokenMatches(path: String): Boolean {
         val segment = path.removePrefix("/w/").substringBefore('/')
-        return MessageDigest.isEqual(segment.toByteArray(Charsets.US_ASCII), token.toByteArray(Charsets.US_ASCII))
+        return MessageDigest.isEqual(segment.toByteArray(Charsets.US_ASCII), currentToken().toByteArray(Charsets.US_ASCII))
+    }
+
+    /**
+     * 到期就换一枚新 token。旧 URL 从到期那一刻起直接 404，不设宽限；
+     * 待连接页每 500ms 重绘，[url] 会拿到新地址并重画二维码。
+     */
+    private fun currentToken(): String {
+        val t = now()
+        if (t - tokenIssuedAt < tokenTtlMillis) return activeToken
+        synchronized(this) {
+            if (t - tokenIssuedAt >= tokenTtlMillis) {
+                activeToken = newToken()
+                tokenIssuedAt = t
+            }
+            return activeToken
+        }
     }
 
     private fun page(): String = GuestPage.html(deviceName(), uploadPath)
 
-    private val pagePath: String get() = "/w/$token/"
-    private val uploadPath: String get() = "/w/$token/upload"
+    private val pagePath: String get() = "/w/${currentToken()}/"
+    private val uploadPath: String get() = "/w/${currentToken()}/upload"
 
     companion object {
         /** 纯文本应答的 Content-Type：错误路径与 404 都走同一份，避免编码声明写错。 */
@@ -215,6 +240,9 @@ class BrowserCastServer(
 
         const val DEFAULT_MAX_BYTES = 200L * 1024 * 1024
         private const val MAX_HEAD_BYTES = 16 * 1024
+
+        /** REQ-010：访客 token 5 分钟失效，到期由 [url] 自动换新。 */
+        const val DEFAULT_TOKEN_TTL_MS = 5 * 60_000L
 
         /** 没有设备名时的页面标题，避免标题行空白。 */
         const val DEFAULT_DEVICE_NAME = "大屏"

@@ -1,0 +1,44 @@
+T06124 安全与隐私定向测试汇总
+执行时间：2026-11-24T10:29:35Z（Asia/Shanghai 18:29:35）
+执行环境：Linux 云主机；OpenJDK 17.0.21.1+2；Android SDK platform 35；Gradle 8.9 wrapper；AGP 8.7.3
+代码基线：b53aecf31b0d2f471f8c3c4fc040ebc90b8a2d32（T06123 收口提交）+ T06124 未提交改动
+
+命令：
+JAVA_HOME=/home/user/jdk-17.0.21.1+2 \
+ANDROID_HOME=/home/user/android-sdk \
+GRADLE_USER_HOME=/home/user/.gradle \
+./gradlew :app:testDebugUnitTest --offline --no-daemon --console=plain \
+  --tests 'io.github.wangnan05563.airmirror.web.BrowserCastServerTest' \
+  --tests 'io.github.wangnan05563.airmirror.pairing.PinCodeTest' \
+  --tests 'io.github.wangnan05563.airmirror.pairing.TrustRegistryTest' \
+  --tests 'io.github.wangnan05563.airmirror.pairing.AuthGateAccessModeTest' \
+  --tests 'io.github.wangnan05563.airmirror.pairing.CastCodeTest' \
+  --tests 'io.github.wangnan05563.airmirror.privacy.LogHygieneTest' \
+  --tests 'io.github.wangnan05563.airmirror.privacy.RedactorTest' \
+  --tests 'io.github.wangnan05563.airmirror.privacy.DiagnosticPolicyTest' \
+  --tests 'io.github.wangnan05563.airmirror.privacy.TransportMachineClearTest'
+
+结果：BUILD SUCCESSFUL in 4m 18s；9 个测试类 / 96 项 / 0 失败 / 0 错误 / 0 跳过。
+
+全量回归（同环境，复用已编译产物）：
+./gradlew :app:testDebugUnitTest --offline --no-daemon --console=plain
+BUILD SUCCESSFUL in 3m 13s；126 个测试类 / 927 项 / 0 失败 / 0 错误 / 0 跳过。
+测试时间窗：2026-11-24T10:32:39Z–10:34:24Z。
+Robolectric 临时目录清理告警（DirectoryNotEmptyException .../fonts）出现在测试完成后的 TempDirectory.destroy，未产生失败用例。
+
+分项：
+- BrowserCastServerTest          16 项（新增 2 项 5 分钟 token 到期用例）
+- PinCodeTest                    8 项
+- TrustRegistryTest             26 项
+- AuthGateAccessModeTest         8 项
+- CastCodeTest                  20 项
+- LogHygieneTest                 3 项
+- RedactorTest                   7 项
+- DiagnosticPolicyTest           6 项
+- TransportMachineClearTest      2 项
+
+关键新增用例：
+- 访客 token 五分钟到期后自动换新且旧地址立即 404
+- 到期旧 token 的上传路径 404 且不产生文件
+
+边界：以上为 JVM 单元测试。BrowserCastServer 的 5 分钟计时用注入时钟推进，HTTP 请求走 127.0.0.1 真实套接字；未在物理电视/真实浏览器上等待 5 分钟复验，也未做真实断电后的 PIN 锁定现场复验。

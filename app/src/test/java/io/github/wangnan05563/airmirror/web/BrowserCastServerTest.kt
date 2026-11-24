@@ -12,6 +12,7 @@ import java.util.concurrent.atomic.AtomicReference
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -110,6 +111,47 @@ class BrowserCastServerTest {
         val file = uploaded.get()!!
         assertEquals("evil.mp4", file.name)
         assertTrue(file.file.canonicalPath.startsWith(dir.canonicalPath))
+    }
+
+    @Test
+    fun `访客 token 五分钟到期后自动换新且旧地址立即 404`() {
+        var clock = 1_000_000L
+        server = BrowserCastServer(
+            dir,
+            BrowserCastServer.DEFAULT_MAX_BYTES,
+            {},
+            now = { clock },
+            tokenTtlMillis = BrowserCastServer.DEFAULT_TOKEN_TTL_MS,
+        ).start()
+        val first = server!!.url("127.0.0.1")
+        assertEquals(200, get(first).first)
+
+        clock += BrowserCastServer.DEFAULT_TOKEN_TTL_MS - 1
+        assertEquals("未到 5 分钟仍应可用", 200, get(first).first)
+
+        clock += 1
+        val second = server!!.url("127.0.0.1")
+        assertNotEquals("到期必须换新 token", first, second)
+        assertEquals("旧 token 到期即失效", 404, status(first))
+        assertEquals("新 token 可继续访问", 200, get(second).first)
+    }
+
+    @Test
+    fun `到期旧 token 的上传路径 404 且不产生文件`() {
+        var clock = 1_000_000L
+        val latch = CountDownLatch(1)
+        server = BrowserCastServer(
+            dir,
+            BrowserCastServer.DEFAULT_MAX_BYTES,
+            { latch.countDown() },
+            now = { clock },
+            tokenTtlMillis = BrowserCastServer.DEFAULT_TOKEN_TTL_MS,
+        ).start()
+        val oldBase = server!!.url("127.0.0.1")
+        clock += BrowserCastServer.DEFAULT_TOKEN_TTL_MS
+        assertEquals(404, upload(oldBase, "expired.mp4", "video/mp4", ByteArray(16)))
+        assertEquals(false, latch.await(300, TimeUnit.MILLISECONDS))
+        assertTrue("过期请求不能落文件", dir.listFiles().orEmpty().isEmpty())
     }
 
     @Test
