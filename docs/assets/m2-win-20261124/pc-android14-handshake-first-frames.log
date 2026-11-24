@@ -1,0 +1,14 @@
+[status] 连接 127.0.0.1:41523 …
+[status] 握手成功 v1，对方=sdk_gphone64_x86_64，已加密
+[status] 已授权，开始采集 1280x720@15
+[status] 未找到 FFmpeg，回退 JCodec（低帧率）：1280x720@15
+[stats] frames=1 fps=0.8 encode=827ms
+[stats] frames=2 fps=0.9 encode=768ms
+[stats] frames=4 fps=1.3 encode=623ms
+[stats] frames=6 fps=1.8 encode=520ms
+[stats] frames=8 fps=1.5 encode=467ms
+[stats] frames=11 fps=2.0 encode=444ms
+[stats] frames=13 fps=1.8 encode=429ms
+[stats] frames=16 fps=2.3 encode=407ms
+[stats] frames=19 fps=2.4 encode=381ms
+[stats] frames=21 fps=1.8 encode=375ms
