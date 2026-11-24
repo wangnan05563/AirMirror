@@ -1,0 +1,7 @@
+AirMirror pc-client installDist (2026-11-24)
+task=:pc-client:installDist
+result=BUILD SUCCESSFUL in 22s
+jars:
+  jna-5.6.0.jar (WASAPI COM via JNA)
+  protocol-core.jar
+  pc-client.jar

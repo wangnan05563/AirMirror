@@ -1,0 +1,10 @@
+AirMirror Android unit tests (T06117/T06119 code-level, 2026-11-24)
+task=:app:testDebugUnitTest
+classes=128
+tests=935
+failures=0
+errors=0
+skipped=0
+new_perf_tests=PerfSinkTest(3)+PerfTraceTest(5)
+result=BUILD SUCCESSFUL in 13m 1s
+note=JVM/static only; no physical TV / 30min soak

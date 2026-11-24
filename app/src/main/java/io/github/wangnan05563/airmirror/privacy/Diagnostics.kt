@@ -2,6 +2,7 @@ package io.github.wangnan05563.airmirror.privacy
 
 import android.content.Context
 import android.os.Build
+import io.github.wangnan05563.airmirror.perf.PerfLog
 import java.io.File
 import java.io.PrintWriter
 import java.io.StringWriter
@@ -84,6 +85,7 @@ class Diagnostics(context: Context) {
      */
     fun clearCaches(): Int {
         var removed = clear()
+        removed += PerfLog.clear(app)
         for (child in app.cacheDir.listFiles().orEmpty()) {
             if (!DiagnosticPolicy.mayDelete(child.name)) continue
             val gone = if (child.isDirectory) child.deleteRecursively() else child.delete()

@@ -30,6 +30,8 @@ import io.github.wangnan05563.airmirror.perf.BandwidthGauge
 import io.github.wangnan05563.airmirror.perf.LatencyLadder
 import io.github.wangnan05563.airmirror.perf.LatencyMove
 import io.github.wangnan05563.airmirror.perf.LatencyPolicy
+import io.github.wangnan05563.airmirror.perf.PerfLog
+import io.github.wangnan05563.airmirror.perf.PerfTrace
 import io.github.wangnan05563.airmirror.protocol.Auth
 import io.github.wangnan05563.airmirror.protocol.Handshake
 import io.github.wangnan05563.airmirror.protocol.Limit
@@ -125,6 +127,12 @@ class ReceiverSession(
 
     private var avLoggedAtMs = 0L
     private var avDowngrades = 0
+
+    /** 本次连接的本地埋点会话；只写本机 JSONL，不上传（REQ-009 / REQ-026）。 */
+    private val perf = PerfLog.get(context)
+    private var perfSessionId = ""
+    private var perfDroppedUntilKey = 0
+    private var perfDroppedLate = 0
 
     /** 同步状态机与调整节拍器按会话重建：上一场留下的次数不该影响新一场（PRD「连续三次」的口径） */
     private var avSync = AvSync.Tracker()
@@ -411,6 +419,12 @@ class ReceiverSession(
 
     private fun handleConnection(conn: StreamConnection, peer: String, tunnelCredential: String? = null): String? {
         val hello = acceptHello(conn, peer, tunnelCredential)
+        perfSessionId = PerfTrace.sessionId()
+        perf.mark(
+            PerfTrace.Event.SESSION_START,
+            perfSessionId,
+            mapOf("encrypted" to conn.secure, "resume" to false),
+        )
         // PRD 8.9：两端都递了公钥才加密；对面是没升级的老发送端时如实记一行，别让它悄悄裸奔
         Log.i(TAG, "media ${if (conn.secure) "encrypted (ECDH-P256/AES-GCM)" else "in clear, legacy peer"}")
         resetSessionGauges()
@@ -433,7 +447,17 @@ class ReceiverSession(
         } catch (e: IOException) {
             if (running) Log.w(TAG, "connection dropped: ${Redactor.throwable(e)}")
         } finally {
+            perfEvent(
+                PerfTrace.Event.SESSION_END,
+                mapOf(
+                    "bye" to byeReceived,
+                    "received" to stats.received,
+                    "decoded" to stats.decoded,
+                    "audio_frames" to stats.audioFrames,
+                ),
+            )
             finishSession(conn, done, deviceId, hello.deviceName, byeReceived)
+            perfSessionId = ""
         }
         return hello.deviceName
     }
@@ -465,6 +489,8 @@ class ReceiverSession(
         audioGone = false
         lastDriftMs = 0
         avDowngrades = 0
+        perfDroppedUntilKey = 0
+        perfDroppedLate = 0
     }
 
     /** 收流主循环；返回 true 表示对端发了 BYE（正常收尾）。 */
@@ -508,6 +534,15 @@ class ReceiverSession(
             .onSuccess {
                 onVideoSize(it.width, it.height)
                 rebuildLadder(QualityTiers.tierWithin(it.width, it.height))
+                perfEvent(
+                    PerfTrace.Event.CONFIG,
+                    mapOf(
+                        "codec" to if (hevc) "hevc" else "h264",
+                        "width" to it.width,
+                        "height" to it.height,
+                        "bytes" to frame.payload.size,
+                    ),
+                )
             }
         val existing = decoder
         if (existing == null) {
@@ -610,6 +645,19 @@ class ReceiverSession(
         pollLatency(codec, hello.deviceName)
         reportQuality(codec)
         watchAudioInterrupt(hello.deviceName)
+        if (stats.droppedUntilKey > perfDroppedUntilKey || stats.droppedLate > perfDroppedLate) {
+            perfDroppedUntilKey = stats.droppedUntilKey
+            perfDroppedLate = stats.droppedLate
+            perfEvent(
+                PerfTrace.Event.DROP,
+                mapOf(
+                    "until_key" to stats.droppedUntilKey,
+                    "late" to stats.droppedLate,
+                    "received" to stats.received,
+                    "decoded" to stats.decoded,
+                ),
+            )
+        }
     }
 
     /** 一帧声音：配置帧由 [openAudio] 处理，这里只写采样并按节拍采样音画偏差。 */
@@ -655,6 +703,7 @@ class ReceiverSession(
                 takeoverAnswers.offer(signal.allow)
             }
             SessionControl.OP_AUDIO -> {
+                perfEvent(PerfTrace.Event.AUDIO_SWITCH, mapOf("on" to signal.allow))
                 // 对方主动关了声音：这是选择，不是故障，不能等到 1 秒后弹「被占用」
                 if (!signal.allow) {
                     closeAudio()
@@ -938,6 +987,7 @@ class ReceiverSession(
     private fun grant(conn: StreamConnection, deviceName: String, permanent: Boolean, deviceId: String, peer: String) {
         grantedAtNano = System.nanoTime()
         configAtNano = 0L
+        perfEvent(PerfTrace.Event.AUTH, mapOf("result" to "allow", "permanent" to permanent))
         if (permanent) pairing.persistTrusted()
         // 授权成功是这个闸门唯一的清零点：之前打错几次码的正常用户，不该继续背着静默期
         pairing.throttle.allow(peer)
@@ -1168,6 +1218,10 @@ class ReceiverSession(
         audioGone = false
         lastAudioAtMs = System.currentTimeMillis()
         resyncAvClock("$deviceName 投屏中")
+        perfEvent(
+            PerfTrace.Event.AUDIO_OPEN,
+            mapOf("sr" to spec.sampleRate, "ch" to spec.channels, "codec" to spec.codec),
+        )
         Log.i(TAG, "audio pipeline up: ${spec.sampleRate}Hz/${spec.channels}ch ${spec.codec}")
     }
 
@@ -1277,6 +1331,7 @@ class ReceiverSession(
         val interrupted = AvSync.audioInterrupted(lastAudioAtMs, now)
         if (interrupted && !audioGone) {
             audioGone = true
+            perfEvent(PerfTrace.Event.AUDIO_GAP, mapOf("ms" to AvSync.INTERRUPT_MS))
             Log.w(TAG, "audio stream silent for more than ${AvSync.INTERRUPT_MS}ms")
             onNotice("$deviceName · ${ErrorNotice.noticeFor(ErrorNotice.Cause.AUDIO_INTERRUPTED).headline}")
         } else if (!interrupted && audioGone) {
@@ -1295,7 +1350,16 @@ class ReceiverSession(
         loggedFirstRenderNano = first
         val fromConfig = if (configAtNano > 0L) (first - configAtNano) / 1_000_000 else -1L
         val fromAuth = if (grantedAtNano > 0L) (first - grantedAtNano) / 1_000_000 else -1L
+        perfEvent(
+            PerfTrace.Event.FIRST_FRAME,
+            mapOf("config_ms" to fromConfig, "auth_ms" to fromAuth),
+        )
         Log.i(TAG, "first frame config+${fromConfig}ms auth+${fromAuth}ms")
+    }
+
+    private fun perfEvent(event: String, fields: Map<String, Any?> = emptyMap()) {
+        if (perfSessionId.isEmpty()) return
+        perf.mark(event, perfSessionId, fields)
     }
 
     private fun refuse(conn: StreamConnection, reason: String) {

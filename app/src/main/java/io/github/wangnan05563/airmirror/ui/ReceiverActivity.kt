@@ -40,6 +40,8 @@ import io.github.wangnan05563.airmirror.pairing.DeviceStore
 import io.github.wangnan05563.airmirror.pairing.Pairing
 import io.github.wangnan05563.airmirror.pairing.PinCode
 import io.github.wangnan05563.airmirror.privacy.Diagnostics
+import io.github.wangnan05563.airmirror.perf.PerfLog
+import io.github.wangnan05563.airmirror.perf.PerfTrace
 import io.github.wangnan05563.airmirror.protocol.ProtocolBoundary
 import io.github.wangnan05563.airmirror.receiver.ReceiverHost
 import io.github.wangnan05563.airmirror.util.Onboarding
@@ -1710,6 +1712,7 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
 
     private fun confirmEnd() {
         cancelEndConfirm()
+        PerfLog.get(this).event(PerfTrace.Event.CLICK, mapOf("action" to "end"))
         host.endActiveSession()
         statusText.text = "已结束投屏"
     }
@@ -2198,6 +2201,10 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     }
 
     private fun respondToPrompt(allowed: Boolean) {
+        PerfLog.get(this).event(
+            PerfTrace.Event.CLICK,
+            mapOf("action" to if (allowed) "allow" else "deny"),
+        )
         promptBar.visibility = View.GONE
         focusWaitingEntry()
         host.resolve(allowed)

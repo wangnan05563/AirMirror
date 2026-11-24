@@ -1,0 +1,9 @@
+AirMirror pc-client unit tests (T06117 code-level, 2026-11-24)
+task=:pc-client:test
+classes=11
+tests=31
+failures=0
+errors=0
+skipped=0
+result=BUILD SUCCESSFUL in 1m 41s
+note=JVM only; WASAPI/FFmpeg loopback not exercised on live audio endpoint

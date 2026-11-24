@@ -1,5 +1,7 @@
 package io.github.wangnan05563.airmirror.pc
 
+import io.github.wangnan05563.airmirror.pc.audio.AudioSender
+import io.github.wangnan05563.airmirror.pc.audio.WasapiLoopbackCapture
 import io.github.wangnan05563.airmirror.protocol.Handshake
 import io.github.wangnan05563.airmirror.protocol.Protocol
 import io.github.wangnan05563.airmirror.protocol.SessionControl
@@ -32,6 +34,10 @@ class SenderEngine(
         val height: Int,
         val fps: Int,
         val bitrateKbps: Int = 8000,
+        /** 投送系统声音；关闭后视频照常。 */
+        val audioEnabled: Boolean = true,
+        /** 发送增益 0..100，仅影响音频，不改变系统播放音量。 */
+        val volumePercent: Int = 100,
     )
 
     data class Stats(
@@ -51,6 +57,9 @@ class SenderEngine(
     private var capture: ScreenCapture? = null
     private var encoder: H264VideoEncoder? = null
     private var ffmpegEncoder: FfmpegCaptureEncoder? = null
+    private var audioSender: AudioSender? = null
+    /** 同一会话的视频/音频时间戳基准；建连授权后固定，重连时重置。 */
+    private var mediaEpochNanos = 0L
     private val frameCount = AtomicLong()
     private val byteCount = AtomicLong()
     private val firstFrameNotified = AtomicBoolean(false)
@@ -63,12 +72,24 @@ class SenderEngine(
     fun stop() {
         if (!running.compareAndSet(true, false)) return
         runCatching { connection?.send(Protocol.Frame(Protocol.Type.BYE)) }
+        runCatching { audioSender?.stop() }
+        audioSender = null
         runCatching { ffmpegEncoder?.stop() }
         runCatching { connection?.close() }
         runCatching { worker?.join(1500) }
         runCatching { reader?.join(800) }
         capture?.close()
         onStatus("已停止")
+    }
+
+    /** 投屏中切换声音；关掉时只停发音频，画面与编码器不动。 */
+    fun setAudioEnabled(on: Boolean) {
+        audioSender?.setEnabled(on)
+    }
+
+    /** 发送增益 0..100；不改变接收端扬声器音量，也不改变系统音量。 */
+    fun setVolume(percent: Int) {
+        audioSender?.setVolume(percent)
     }
 
     private fun runSender() {
@@ -93,9 +114,12 @@ class SenderEngine(
             socket.connect(InetSocketAddress(cfg.host, cfg.port), 5000)
             val conn = PcConnection(socket)
             connection = conn
+            val ffmpeg = FfmpegLocator.resolve()
+            val audioCapable = ffmpeg != null && WasapiLoopbackCapture.isSupported()
             val ack = conn.connectAsClient(
                 deviceName = cfg.deviceName,
-                capabilities = Handshake.Capability.VIDEO_H264,
+                capabilities = Handshake.Capability.VIDEO_H264 or
+                    (if (audioCapable) Handshake.Capability.AUDIO_AAC else 0),
                 credential = cfg.code,
             )
             onStatus("握手成功 v${ack.chosenVersion}，对方=${ack.deviceName}，${if (conn.secure) "已加密" else "明文"}")
@@ -105,8 +129,15 @@ class SenderEngine(
             onAuthorized(Session(ack.deviceName, cfg.host, cfg.port))
             onStatus("已授权，开始采集 ${cfg.width}x${cfg.height}@${cfg.fps}")
 
+            mediaEpochNanos = System.nanoTime()
             startReader(conn, gen)
-            val ffmpeg = FfmpegLocator.resolve()
+            if (audioCapable && ack.capabilities and Handshake.Capability.AUDIO_AAC != 0) {
+                startAudio(conn, ffmpeg!!)
+            } else if (!audioCapable) {
+                onStatus("未找到 FFmpeg 或 WASAPI 不可用，本次只投画面")
+            } else {
+                onStatus("接收端未接受 AAC 音频能力，本次只投画面")
+            }
             if (ffmpeg != null) {
                 val ok = runFfmpeg(conn, ffmpeg)
                 if (!ok && running.get() && !sessionFailed.get()) {
@@ -122,19 +153,36 @@ class SenderEngine(
             runCatching { connection?.close() }
             generation.incrementAndGet()
             sessionFailed.set(false)
+            runCatching { audioSender?.stop() }
+            audioSender = null
             runCatching { ffmpegEncoder?.stop() }
             ffmpegEncoder = null
             capture?.close()
             capture = null
             encoder = null
             connection = null
+            mediaEpochNanos = 0L
         }
+    }
+
+    private fun startAudio(conn: PcConnection, ffmpeg: java.io.File) {
+        val sender = AudioSender(
+            ffmpeg = ffmpeg,
+            conn = conn,
+            initialEnabled = config.audioEnabled,
+            initialVolume = config.volumePercent,
+            epochNanos = mediaEpochNanos,
+            onStatus = onStatus,
+            onError = { message -> onStatus("音频：$message") },
+        )
+        audioSender = sender
+        sender.start()
     }
 
     private fun runFfmpeg(conn: PcConnection, ffmpeg: java.io.File): Boolean {
         val cfg = config
         onStatus("FFmpeg 原生采集：${ffmpeg.absolutePath}")
-        val start = System.nanoTime()
+        val start = mediaEpochNanos.takeIf { it > 0L } ?: System.nanoTime()
         var statWindow = start
         var statFrames = 0
         val encoder = FfmpegCaptureEncoder(
@@ -206,7 +254,7 @@ class SenderEngine(
         this.encoder = encoder
 
         val frameNanos = 1_000_000_000L / cfg.fps.coerceAtLeast(1)
-        val start = System.nanoTime()
+        val start = mediaEpochNanos.takeIf { it > 0L } ?: System.nanoTime()
         var next = start
         var bytes = 0L
         var encodeTotal = 0L
@@ -273,6 +321,7 @@ class SenderEngine(
                                     ffmpegEncoder?.requestKeyFrame()
                                     encoder?.requestKeyFrame()
                                 }
+                                SessionControl.OP_AUDIO -> audioSender?.setEnabled(signal.allow)
                             }
                         }
                         Protocol.Type.BYE -> break

@@ -9,11 +9,13 @@ import java.awt.GridBagLayout
 import java.awt.Insets
 import javax.swing.BorderFactory
 import javax.swing.JButton
+import javax.swing.JCheckBox
 import javax.swing.JComboBox
 import javax.swing.JFrame
 import javax.swing.JLabel
 import javax.swing.JPanel
 import javax.swing.JScrollPane
+import javax.swing.JSlider
 import javax.swing.JTextArea
 import javax.swing.JTextField
 import javax.swing.SwingUtilities
@@ -51,6 +53,12 @@ class PcSenderFrame : JFrame("AirMirror PC 发送端") {
     )
     private val startButton = JButton("开始投屏")
     private val stopButton = JButton("停止").apply { isEnabled = false }
+    private val audioBox = JCheckBox("投送系统声音", true)
+    private val volumeSlider = JSlider(0, 100, 100).apply {
+        preferredSize = Dimension(140, 20)
+        toolTipText = "发送增益 0–100；不改变本机与电视的系统音量"
+    }
+    private val volumeLabel = JLabel("音量 100%")
     private val statusLabel = JLabel("未连接")
     private val statsLabel = JLabel(" ")
     private val logArea = JTextArea(8, 48).apply {
@@ -103,6 +111,11 @@ class PcSenderFrame : JFrame("AirMirror PC 发送端") {
         add("投屏码", codeField)
         add("设备名", nameField)
         add("画质", presetBox)
+        add("声音", JPanel(BorderLayout(8, 0)).apply {
+            add(audioBox, BorderLayout.WEST)
+            add(volumeSlider, BorderLayout.CENTER)
+            add(volumeLabel, BorderLayout.EAST)
+        })
 
         val actions = JPanel(FlowLayout(FlowLayout.LEFT, 8, 0))
         actions.add(scanButton)
@@ -130,6 +143,11 @@ class PcSenderFrame : JFrame("AirMirror PC 发送端") {
         refreshButton.addActionListener {
             statusLabel.text = "正在搜索局域网接收端…"
             discovery.queryNow()
+        }
+        audioBox.addActionListener { engine?.setAudioEnabled(audioBox.isSelected) }
+        volumeSlider.addChangeListener {
+            volumeLabel.text = "音量 ${volumeSlider.value}%"
+            engine?.setVolume(volumeSlider.value)
         }
         deviceBox.addActionListener {
             if (updatingDevices) return@addActionListener
@@ -305,6 +323,8 @@ class PcSenderFrame : JFrame("AirMirror PC 发送端") {
                 width = preset.width,
                 height = preset.height,
                 fps = preset.fps,
+                audioEnabled = audioBox.isSelected,
+                volumePercent = volumeSlider.value,
             ),
             onStatus = { message ->
                 SwingUtilities.invokeLater { statusLabel.text = message }
@@ -438,8 +458,13 @@ object Main {
         val fps = options["fps"]?.toIntOrNull() ?: 30
         val bitrate = options["bitrate"]?.toIntOrNull() ?: 8000
         val name = options["name"] ?: "AirMirror PC"
+        val audio = options["audio"]?.toBooleanStrictOrNull() ?: true
+        val volume = options["volume"]?.toIntOrNull() ?: 100
         val sender = SenderEngine(
-            SenderEngine.Config(host, port, code, name, width, height, fps, bitrate),
+            SenderEngine.Config(
+                host, port, code, name, width, height, fps, bitrate,
+                audioEnabled = audio, volumePercent = volume,
+            ),
             onStatus = { println("[status] $it") },
             onStats = { println("[stats] frames=${it.frames} fps=${"%.1f".format(it.fps)} encode=${it.encodeMs}ms") },
         )

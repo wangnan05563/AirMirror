@@ -16,6 +16,8 @@ dependencies {
     // 二维码编解码与 PC 摄像头取帧：ZXing core 为 Apache-2.0 纯 Java；webcam-capture 仅用于 PC 扫码预览。
     implementation("com.google.zxing:core:3.5.3")
     implementation("com.github.sarxos:webcam-capture:0.3.12")
+    // WASAPI 回环采集：Windows COM 接口通过 JNA 直接调用，不要求系统装“立体声混音”虚拟设备。
+    implementation("net.java.dev.jna:jna:5.6.0")
     testImplementation("junit:junit:4.13.2")
 }
 
