@@ -121,7 +121,13 @@ android {
             }
         }
         release {
-            isMinifyEnabled = false
+            // T06123：release 打开 R8 压 dex；资源裁剪先保持关闭，避免 aapt2 在旧缓存上做 shrink 的额外风险。
+            isMinifyEnabled = true
+            isShrinkResources = false
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
             // 没传签名参数且 .env 无配置时为 null，产物仍是未签名包（与 T04396 的包体核对口径一致）
             signingConfig = signingConfigs.findByName("release")
         }
