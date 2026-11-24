@@ -1,0 +1,10 @@
+ac_id,title,verdict,code_level_coverage,field_gap,evidence
+"AC-01","空态与网络","代码级通过（现场待验）","是","真实飞行模式/AP 隔离未测","EmptyNetworkCheckTest 11; SenderEmptyNetworkUiTest 3; 5 原因 x 3 尺寸截图"
+"AC-02","两步投屏","部分通过","是","≤10s/≤15s 出帧未计时；真实摄像头未测","TwoStepCastPolicyTest 9; LastCastTargetTest 3; QrPhotoScanTest 4; SenderTwoStepUiTest 4"
+"AC-03","PC 音频","未通过","否","30 分钟音画偏差、静音切换、DRM 均无实现/测量","T06125 环境核查；无 WASAPI 采集实现"
+"AC-04","PC 安装发现","部分通过","是","Win11、同网 mDNS ≤3s、首次投屏 ≤2min 未验","Win10 安装 3.7-8.4s; 卸载 8.8-18.7s; 防火墙 0->2->0; PC->Android14 握手/首帧"
+"AC-05","访问控制","代码级通过（现场待验）","是","真实断电 PIN、撤销后 1 秒断流未测","PinCodeTest 8; TrustRegistryTest 26; AuthGateAccessModeTest 8; BrowserCastServerTest 16"
+"AC-06","TV 布局","代码级通过（现场待验）","是","3 米可读、HDMI overscan、真实 D-pad 未测","TvLayoutSpecTest 6; TvLayoutUiTest 7; TvFocusUiTest 5; 7 张截图"
+"AC-07","视觉系统","代码级通过（现场待验）","是","真实 TalkBack 未测","ErrorVisualSpecTest 6; ErrorStateCardUiTest 3; SenderEmptyStateUiTest 6; AccessibilityManifestTest 12"
+"AC-08","主题令牌","通过（代码级）","是","无","ThemeTokensTest 9; ThemeTokenGuardTest 9; ThemeTokenTest 7; ThemeRenderEvidenceTest 3; 17 组 0 差异"
+"AC-09","性能 SLO","未通过","否","30 分钟 soak、首帧/延迟/丢帧未测","APK 2,395,358 B; PSS 6 点约 40MB; 无 soak 曲线"
