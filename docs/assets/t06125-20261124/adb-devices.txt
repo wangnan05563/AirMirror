@@ -1,0 +1,56 @@
+# T06125 环境原始输出（2026-11-24）
+
+## adb devices -l
+
+```
+List of devices attached
+R5CR716VVEM            device product:p3qzcx model:SM_G9980 device:p3q transport_id:4
+emulator-5554          device product:sdk_gphone64_x86_64 model:sdk_gphone64_x86_64 device:emu64xa transport_id:3
+```
+
+## R5CR716VVEM
+
+```
+ro.product.model=SM-G9980
+ro.build.version.release=15
+ro.build.version.sdk=35
+Physical size: 1440x3200
+MemTotal:       10559488 kB
+```
+
+## emulator-5554
+
+```
+ro.product.model=sdk_gphone64_x86_64
+ro.build.version.release=14
+ro.build.version.sdk=34
+Physical size: 720x1280
+MemTotal:        3050216 kB
+```
+
+## AVD 配置
+
+```
+airmirror_legacy.avd
+  image.sysdir.1=system-images\android-29\google_apis\x86_64\
+  hw.lcd.width=1080, hw.lcd.height=2340, hw.ramSize=2G
+
+airmirror_ui.avd
+  image.sysdir.1=system-images\android-34\google_apis\x86_64\
+  hw.lcd.width=1080, hw.lcd.height=2340, hw.ramSize=1024M
+
+airmirror_ui2.avd
+  image.sysdir.1=system-images\android-34\google_apis\x86_64\
+  hw.lcd.width=1080, hw.lcd.height=2340, hw.ramSize=1536M
+```
+
+## 构建与安装
+
+```
+> Task :app:assembleDebug
+[T05734] APK packaged -> AirMirror-0.1.0-m0-universal-debug.apk
+BUILD SUCCESSFUL in 7m 8s
+
+adb -s emulator-5554 install -r ...: Success
+adb -s R5CR716VVEM install -r --user 0 ...: Success
+```
