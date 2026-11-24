@@ -64,7 +64,7 @@
 | [AirMirror-TrustRegistry-v2-20261122.md](AirMirror-TrustRegistry-v2-20261122.md) | 三期 T06112：可信记录 30 天过期、v2 版本化落盘、v1 迁移与失败回退每次确认 |
 | [AirMirror-TV信任中心-20261122.md](AirMirror-TV信任中心-20261122.md) | 三期 T06113：TV 访问控制三档开关、信任列表、改名/撤销/详情/清空与 1920×1080 截图 |
 | [AirMirror-PIN锁定机制-20261123.md](AirMirror-PIN锁定机制-20261123.md) | 三期 T06114：4 位 PIN、5 次错误锁 60 秒、锁定跨重启、IP 掩码、三模式判定与 PIN 等待页截图 |
-| [AirMirror-M2-联调与Win测试-T06115-20261124.md](AirMirror-M2-联调与Win测试-T06115-20261124.md) | 三期 T06115：Win10 PC→Android 14 接收端握手/授权/首帧 21 帧；Win11、mDNS、安装/卸载、撤销信任阻塞 |
+| [AirMirror-M2-联调与Win测试-T06115-20261124.md](AirMirror-M2-联调与Win测试-T06115-20261124.md) | 三期 T06115：Win10 安装/卸载/防火墙闭环、PC→Android 14 握手/首帧 21 帧；Win11/物理电视/AC-05 仍阻塞 |
 
 ## 代码质量
 
