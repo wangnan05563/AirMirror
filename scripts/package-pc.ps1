@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 <#
 .SYNOPSIS
     Build the AirMirror PC portable ZIP and installer payload.
@@ -165,7 +165,7 @@ $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 [System.IO.File]::WriteAllText((Join-Path $stage 'AirMirror-PC.bat'), $launcher, (New-Object System.Text.ASCIIEncoding))
 
 $readme = @"
-AirMirror PC v$version（Windows x64，未签名）
+AirMirror PC v${version}（Windows x64，未签名）
 
 一、直接使用（便携）
   1. 解压整个目录，不要只复制 AirMirror-PC.bat。
