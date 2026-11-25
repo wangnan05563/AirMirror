@@ -1,0 +1,103 @@
+# 2026-11-25T13:54:53.4666834+08:00
+## meminfo
+Applications Memory Usage (in Kilobytes):
+Uptime: 479548 Realtime: 479548
+
+** MEMINFO in pid 968 [com.android.settings] **
+                   Pss  Private  Private  SwapPss      Rss     Heap     Heap     Heap
+                 Total    Dirty    Clean    Dirty    Total     Size    Alloc     Free
+                ------   ------   ------   ------   ------   ------   ------   ------
+  Native Heap     3124     2776      336     5357     4360    17884    10524     3338
+  Dalvik Heap     3030     3004       12      134     4024     5790     4343     1447
+ Dalvik Other     1864     1836        0      170     2096                           
+        Stack      376      320       56      176      384                           
+       Ashmem        8        0        0        0      708                           
+    Other dev        7        0        4        0      240                           
+     .so mmap      652       76        0      198    18748                           
+    .jar mmap     2382        0      416        0    33272                           
+    .apk mmap    14639        0    14504        0    16656                           
+    .ttf mmap       22        0        0        0      164                           
+    .dex mmap      341        0      328       12     1180                           
+    .oat mmap      556        0        0        0    14304                           
+    .art mmap     1017      572      144      118    20224                           
+   Other mmap       26        8        4        0      504                           
+      Unknown      539      460       76      236      900                           
+        TOTAL    34984     9052    15880     6401   117764    23674    14867     4785
+ 
+ App Summary
+                       Pss(KB)                        Rss(KB)
+                        ------                         ------
+           Java Heap:     3720                          24248
+         Native Heap:     2776                           4360
+                Code:    15324                          84396
+               Stack:      320                            384
+            Graphics:        0                              0
+       Private Other:     2792
+              System:    10052
+             Unknown:                                    4376
+ 
+           TOTAL PSS:    34984            TOTAL RSS:   117764       TOTAL SWAP PSS:     6401
+ 
+ Objects
+               Views:        0         ViewRootImpl:        0
+         AppContexts:        3           Activities:        0
+              Assets:       23        AssetManagers:        0
+       Local Binders:       57        Proxy Binders:       73
+       Parcel memory:       11         Parcel count:       43
+    Death Recipients:        3             WebViews:        0
+ 
+ SQL
+         MEMORY_USED:        0
+  PAGECACHE_OVERFLOW:        0          MALLOC_SIZE:        0
+## cpuinfo
+Load: 19.55 / 17.85 / 8.96
+CPU usage from 11710ms to 3429ms ago (2026-11-25 05:55:00.502 to 2026-11-25 05:55:08.783):
+  32% 380/android.hardware.graphics.composer3-service.ranchu: 0.4% user + 31% kernel
+  27% 527/system_server: 5.2% user + 22% kernel / faults: 80 minor 3 major
+  21% 349/android.hardware.sensors-service.multihal: 0.8% user + 20% kernel
+  16% 339/android.hardware.camera.provider@2.7-service-google: 3.6% user + 13% kernel
+  16% 399/surfaceflinger: 1.1% user + 15% kernel / faults: 1 minor
+  11% 250/kworker/u4:5-loop36: 0% user + 11% kernel
+  10% 458/cameraserver: 1% user + 9.2% kernel
+  7.9% 4717/com.google.android.gms.persistent: 2.8% user + 5.1% kernel / faults: 38 minor
+  5.8% 14/rcu_preempt: 0% user + 5.8% kernel
+  5.1% 740/com.android.systemui: 1.8% user + 3.2% kernel / faults: 117 minor 1 major
+  5.2% 3920/com.android.phone: 0.7% user + 4.4% kernel / faults: 22 minor
+  4.8% 4773/kworker/1:1-virtio_vsock: 0% user + 4.8% kernel
+  3.7% 4754/com.google.android.apps.messaging: 1.7% user + 1.9% kernel / faults: 416 minor 1 major
+  3.4% 4152/com.google.android.gms.unstable: 1.1% user + 2.3% kernel / faults: 5 minor
+  3% 415/adbd: 0.4% user + 2.5% kernel / faults: 581 minor
+  2% 133/logd: 0.2% user + 1.8% kernel / faults: 5 minor
+  2% 456/logcat: 0.1% user + 1.9% kernel
+  1.8% 1755/com.google.android.permissioncontroller: 0.4% user + 1.4% kernel / faults: 3 minor
+  1.5% 968/com.android.settings: 0.5% user + 0.9% kernel / faults: 547 minor 1461 major
+  1.4% 3867/com.quietsentry.app: 0.2% user + 1.1% kernel / faults: 32 minor
+  0.9% 6/kworker/0:0-events: 0% user + 0.9% kernel
+  0.3% 331/zygote64: 0% user + 0.3% kernel / faults: 47 minor
+  0.2% 13/ksoftirqd/0: 0% user + 0.2% kernel
+  0.2% 135/servicemanager: 0% user + 0.2% kernel
+  0.2% 329/statsd: 0.1% user + 0.1% kernel
+  0.2% 5008/logcat: 0% user + 0.2% kernel
+  0.1% 31/kcompactd0: 0% user + 0.1% kernel
+  0.1% 56/kworker/u4:3-loop36: 0% user + 0.1% kernel
+  0.1% 2435/com.google.android.googlequicksearchbox:search: 0% user + 0.1% kernel / faults: 2 minor 2 major
+ +0% 5024/<pre-initialized>: 0% user + 0% kernel
+ +0% 5036/dumpsys: 0% user + 0% kernel
+97% TOTAL: 17% user + 77% kernel + 3.1% softirq
+## battery
+Current Battery Service state:
+  AC powered: true
+  USB powered: false
+  Wireless powered: false
+  Dock powered: false
+  Max charging current: 5000000
+  Max charging voltage: 5000000
+  Charge counter: 10000
+  status: 2
+  health: 2
+  present: true
+  level: 100
+  scale: 100
+  voltage: 5000
+  temperature: 250
+  technology: Li-ion

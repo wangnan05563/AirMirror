@@ -1,0 +1,14 @@
+时间：2026-11-25 13:46:00
+设备：emulator-5554
+厂商：Google
+型号：sdk_gphone64_x86_64
+Android：14 / API 34
+ABI：x86_64
+分辨率：Physical size: 720x1280
+密度：Physical density: 320
+MemTotal：2534552 kB
+包名：com.android.settings
+APK 路径：package:/system_ext/priv-app/SettingsGoogle/SettingsGoogle.apk
+当前 PID：920
+run-as：不可用（release 包或非 debuggable）
+备注：本脚本只采样，不启动投屏；开跑前请人工开始一次真实投屏。

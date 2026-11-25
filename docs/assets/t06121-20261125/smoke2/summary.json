@@ -1,0 +1,34 @@
+{
+  "generated_at": "2026-11-25T13:50:33+08:00",
+  "label": "T06121-tool-smoke",
+  "samples": {
+    "available": true,
+    "rows": 3,
+    "valid_pss_rows": 3,
+    "duration_s": 60.0,
+    "pss_baseline_kb": 48105.0,
+    "pss_final_kb": 46194.0,
+    "pss_peak_kb": 48105.0,
+    "pss_growth_kb": -1911.0,
+    "pss_growth_mb": -1.87,
+    "last10_slope_kb_per_min": -1911.0,
+    "cpu_avg_pct": 0.05,
+    "cpu_max_pct": 0.1,
+    "battery_temp_max_c": 25.0,
+    "checks": {
+      "pss_growth_le_80mb": true,
+      "last10_slope_le_2mb_min": true
+    }
+  },
+  "perf": {
+    "available": false,
+    "session_id": "",
+    "reason": "没有 perf.jsonl"
+  },
+  "checks": {},
+  "verdict": "insufficient",
+  "notes": [
+    "本摘要只汇总本机采样与 perf JSONL，不代表 AC-09 通过。",
+    "AC-09 还需 A/B/C 代表设备、真实 1080p60 链路、音画偏差测量和现场操作记录。"
+  ]
+}

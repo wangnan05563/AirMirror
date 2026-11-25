@@ -1,0 +1,183 @@
+# 2026-11-25T13:46:15.1681127+08:00
+## meminfo
+Applications Memory Usage (in Kilobytes):
+Uptime: 144235 Realtime: 144235
+
+** MEMINFO in pid 920 [com.android.settings] **
+                   Pss  Private  Private  SwapPss      Rss     Heap     Heap     Heap
+                 Total    Dirty    Clean    Dirty    Total     Size    Alloc     Free
+                ------   ------   ------   ------   ------   ------   ------   ------
+  Native Heap      617      392      184     8096     3984    17884    11050     2521
+  Dalvik Heap      153       24       24     3856     7760     6133     4600     1533
+ Dalvik Other     1988     1956        0      104     2568                           
+        Stack      200      140       60      404      204                           
+       Ashmem       10        0        0        0      720                           
+    Other dev       77        0       72        0      336                           
+     .so mmap     1599      272      132        0    28792                           
+    .jar mmap     3894        0     1348        0    36988                           
+    .apk mmap    20029        0    14060        0    27896                           
+    .ttf mmap       52        0        0        0      360                           
+    .dex mmap      350       12      328        0     1196                           
+    .oat mmap      563        0        0        0    14164                           
+    .art mmap      417        8       16      724    26348                           
+   Other mmap      152        8      100        0     1732                           
+      Unknown      518      500       16      252     1092                           
+        TOTAL    44055     3312    16340    13436   154140    24017    15650     4054
+ 
+ App Summary
+                       Pss(KB)                        Rss(KB)
+                        ------                         ------
+           Java Heap:       48                          34108
+         Native Heap:      392                           3984
+                Code:    16152                         109468
+               Stack:      140                            204
+            Graphics:        0                              0
+       Private Other:     2920
+              System:    24403
+             Unknown:                                    6376
+ 
+           TOTAL PSS:    44055            TOTAL RSS:   154140       TOTAL SWAP PSS:    13436
+ 
+ Objects
+               Views:        0         ViewRootImpl:        0
+         AppContexts:        3           Activities:        0
+              Assets:       23        AssetManagers:        0
+       Local Binders:       74        Proxy Binders:       90
+       Parcel memory:       16         Parcel count:       62
+    Death Recipients:        5             WebViews:        0
+ 
+ SQL
+         MEMORY_USED:       97
+  PAGECACHE_OVERFLOW:       37          MALLOC_SIZE:       46
+ 
+ DATABASES
+      pgsz     dbsz   Lookaside(b) cache hits cache misses cache size  Dbname
+PER CONNECTION STATS
+         4       28             40    43    20     4  /data/user_de/0/com.android.settings/databases/homepage_cards.db
+POOL STATS
+     cache hits  cache misses    cache size  Dbname
+             43            21            64  /data/user_de/0/com.android.settings/databases/homepage_cards.db
+## cpuinfo
+Load: 23.32 / 7.76 / 2.75
+CPU usage from 60988ms to 27956ms ago (2026-11-25 05:45:14.629 to 2026-11-25 05:45:47.661):
+  54% 518/system_server: 5.5% user + 48% kernel / faults: 24006 minor 298 major
+  14% 735/com.android.systemui: 5.8% user + 8.2% kernel / faults: 48282 minor 112 major
+  7.9% 1925/com.google.android.gms: 2.9% user + 4.9% kernel / faults: 15352 minor 202 major
+  5.2% 1250/com.google.android.apps.wellbeing: 1% user + 4.1% kernel / faults: 8412 minor 226 major
+  5% 1637/com.google.android.googlequicksearchbox:search: 1.5% user + 3.5% kernel / faults: 14115 minor 96 major
+  4.5% 378/android.hardware.graphics.composer3-service.ranchu: 0% user + 4.4% kernel / faults: 6 minor
+  3.2% 920/com.android.settings: 1.1% user + 2.1% kernel / faults: 7578 minor 1105 major
+  3.2% 450/logcat: 0% user + 3.1% kernel
+  3.1% 394/surfaceflinger: 0.1% user + 2.9% kernel / faults: 257 minor 4 major
+  2.9% 918/com.android.phone: 0.7% user + 2.1% kernel / faults: 3362 minor 50 major
+  2.3% 1837/com.google.android.permissioncontroller: 0.4% user + 1.9% kernel / faults: 4789 minor 14 major
+  2.6% 41/kswapd0: 0% user + 2.6% kernel
+  2.3% 2676/com.google.android.apps.messaging:rcs: 0.5% user + 1.8% kernel / faults: 5972 minor 19 major
+  2% 131/logd: 0% user + 2% kernel / faults: 589 minor 5 major
+  1.9% 351/android.hardware.sensors-service.multihal: 0% user + 1.9% kernel / faults: 4 minor 3 major
+  1.8% 1618/com.google.android.apps.youtube.music: 1% user + 0.8% kernel / faults: 12933 minor 3099 major
+  1.7% 2491/com.google.android.dialer: 0.5% user + 1.1% kernel / faults: 4115 minor 1 major
+  1.6% 328/statsd: 0% user + 1.5% kernel / faults: 28 minor 8 major
+  1.5% 965/com.google.android.apps.nexuslauncher: 0.5% user + 0.9% kernel / faults: 3433 minor 25 major
+  1.4% 2463/com.google.android.googlequicksearchbox:interactor: 0.3% user + 1.1% kernel / faults: 3113 minor 8 major
+  1.4% 179/jbd2/dm-40-8: 0% user + 1.4% kernel
+  1.3% 248/kworker/0:2H-kverityd: 0% user + 1.3% kernel
+  1% 1788/com.google.process.gservices: 0.3% user + 0.7% kernel / faults: 726 minor
+  0.8% 330/zygote64: 0% user + 0.8% kernel / faults: 1248 minor
+  0.7% 132/lmkd: 0% user + 0.7% kernel
+  0.7% 1647/com.google.android.youtube: 0.2% user + 0.5% kernel / faults: 4106 minor 2631 major
+  0.2% 42/kworker/u4:2-loop13: 0% user + 0.2% kernel
+  0.7% 1311/com.google.android.providers.media.module: 0.2% user + 0.4% kernel / faults: 1000 minor 1 major
+  0.6% 14/rcu_preempt: 0% user + 0.6% kernel
+  0.3% 31/kcompactd0: 0% user + 0.3% kernel
+  0.5% 1/init: 0% user + 0.5% kernel / faults: 72 minor 10 major
+  0.5% 134/servicemanager: 0.1% user + 0.3% kernel / faults: 4 minor 7 major
+  0.5% 146/kworker/1:3-virtio_vsock: 0% user + 0.5% kernel
+  0.5% 855/com.android.networkstack.process: 0.1% user + 0.3% kernel / faults: 591 minor 11 major
+  0.4% 329/netd: 0% user + 0.4% kernel / faults: 449 minor 8 major
+  0.4% 2446/com.google.android.devicelockcontroller: 0.1% user + 0.3% kernel / faults: 804 minor 8 major
+  0.4% 247/kworker/u4:3-ext4-rsv-conversion: 0% user + 0.4% kernel
+  0.3% 43/kworker/u5:0-fscrypt_read_queue: 0% user + 0.3% kernel
+  0.3% 173/kworker/u5:1-blk_crypto_wq: 0% user + 0.3% kernel
+  0.3% 2182/com.google.process.gapps: 0% user + 0.3% kernel / faults: 340 minor
+  0.3% 23/ksoftirqd/1: 0% user + 0.3% kernel
+  0.3% 1219/com.google.android.inputmethod.latin: 0.1% user + 0.1% kernel / faults: 2316 minor 1628 major
+  0.3% 67/kworker/1:2H-kverityd: 0% user + 0.3% kernel
+  0.2% 886/com.google.android.bluetooth: 0% user + 0.2% kernel / faults: 125 minor 73 major
+  0.2% 2416/com.google.android.deskclock: 0% user + 0.2% kernel / faults: 806 minor 3 major
+  0.2% 1385/android.process.acore: 0.1% user + 0.1% kernel / faults: 302 minor 1 major
+  0.2% 54/kworker/0:2-events: 0% user + 0.2% kernel
+  0.2% 275/kworker/u4:5-loop19: 0% user + 0.2% kernel
+  0.2% 2548/com.android.chrome: 0% user + 0.1% kernel / faults: 1149 minor 741 major
+  0.1% 2244/com.google.android.as.oss: 0% user + 0.1% kernel / faults: 860 minor 605 major
+  0.1% 13/ksoftirqd/0: 0% user + 0.1% kernel
+  0.1% 389/audioserver: 0% user + 0.1% kernel / faults: 13 minor 9 major
+  0.1% 414/adbd: 0% user + 0.1% kernel / faults: 2517 minor 6 major
+  0.1% 468/libgoldfish-rild: 0% user + 0.1% kernel / faults: 13 minor 23 major
+  0.1% 1096/com.google.android.cellbroadcastreceiver: 0% user + 0% kernel / faults: 158 minor 26 major
+  0.1% 2555/com.android.keychain: 0% user + 0% kernel / faults: 712 minor 12 major
+  0% 340/android.hardware.graphics.allocator@3.0-service.ranchu: 0% user + 0% kernel / faults: 5 minor 3 major
+  0% 461/mediaserver: 0% user + 0% kernel / faults: 25 minor
+  0% 960/android.hardware.biometrics.fingerprint-service.ranchu: 0% user + 0% kernel
+  0% 1324/com.emoreply.poc: 0% user + 0% kernel / faults: 120 minor
+  0% 1711/com.google.android.projection.gearhead:shared: 0% user + 0% kernel / faults: 456 minor 333 major
+  0% 1826/com.google.android.apps.wallpaper: 0% user + 0% kernel / faults: 468 minor 10 major
+  0% 1980/android.process.media: 0% user + 0% kernel / faults: 293 minor 2 major
+  0% 16/rcu_exp_gp_kthread_worker: 0% user + 0% kernel
+  0% 125/prng_seeder: 0% user + 0% kernel
+  0% 348/android.hardware.neuralnetworks-service-sample-all: 0% user + 0% kernel / faults: 10 minor 10 major
+  0% 427/mdnsd: 0% user + 0% kernel / faults: 2 minor
+  0% 452/cameraserver: 0% user + 0% kernel / faults: 25 minor 12 major
+  0% 457/media.extractor: 0% user + 0% kernel / faults: 16 minor
+  0% 1639/com.android.traceur: 0% user + 0% kernel / faults: 219 minor 322 major
+  0% 1701/com.google.android.onetimeinitializer: 0% user + 0% kernel / faults: 258 minor
+  0% 157/keystore2: 0% user + 0% kernel / faults: 154 minor 8 major
+  0% 346/ip6tables-restore: 0% user + 0% kernel / faults: 9 minor
+  0% 371/android.hardware.bluetooth-service.default: 0% user + 0% kernel / faults: 2 minor 2 major
+  0% 432/drmserver: 0% user + 0% kernel
+  0% 463/wificond: 0% user + 0% kernel / faults: 3 minor 4 major
+  0% 1945/com.android.localtransport: 0% user + 0% kernel / faults: 490 minor 389 major
+ +0% 2800/com.google.android.gms.persistent: 0% user + 0% kernel
+ +0% 2885/com.google.android.gms.unstable: 0% user + 0% kernel
+ +0% 2920/com.android.imsserviceentitlement: 0% user + 0% kernel
+ +0% 2945/com.google.android.apps.messaging: 0% user + 0% kernel
+ +0% 2984/com.android.carrierdefaultapp: 0% user + 0% kernel
+ +0% 3009/com.google.android.as: 0% user + 0% kernel
+ +0% 3045/com.android.camera2: 0% user + 0% kernel
+ +0% 3066/com.android.dynsystem: 0% user + 0% kernel
+ +0% 3095/com.android.dynsystem:dynsystem: 0% user + 0% kernel
+ +0% 3107/com.android.managedprovisioning: 0% user + 0% kernel
+ +0% 3149/com.android.providers.calendar: 0% user + 0% kernel
+ +0% 3185/com.android.shell: 0% user + 0% kernel
+ +0% 3210/com.google.android.configupdater: 0% user + 0% kernel
+ +0% 3263/com.google.android.contacts: 0% user + 0% kernel
+ +0% 3410/com.google.android.gm: 0% user + 0% kernel
+ +0% 3414/kworker/1:4H-kverityd: 0% user + 0% kernel
+ +0% 3430/com.google.android.packageinstaller: 0% user + 0% kernel
+ +0% 3454/com.google.android.partnersetup: 0% user + 0% kernel
+ +0% 3554/kworker/1:5H-kblockd: 0% user + 0% kernel
+ +0% 3558/com.google.android.rkpdapp: 0% user + 0% kernel
+ +0% 3562/com.google.android.tts: 0% user + 0% kernel
+ +0% 3673/com.google.android.settings.intelligence: 0% user + 0% kernel
+ +0% 3698/com.quietsentry.app: 0% user + 0% kernel
+ +0% 3886/com.android.emergency: 0% user + 0% kernel
+ +0% 3906/com.google.android.gms.ui: 0% user + 0% kernel
+ +0% 3920/com.google.android.healthconnect.controller: 0% user + 0% kernel
+98% TOTAL: 20% user + 76% kernel + 0.1% iowait + 0.8% softirq
+## battery
+Current Battery Service state:
+  AC powered: true
+  USB powered: false
+  Wireless powered: false
+  Dock powered: false
+  Max charging current: 5000000
+  Max charging voltage: 5000000
+  Charge counter: 10000
+  status: 2
+  health: 2
+  present: true
+  level: 100
+  scale: 100
+  voltage: 5000
+  temperature: 250
+  technology: Li-ion

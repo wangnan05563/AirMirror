@@ -1,0 +1,20 @@
+{
+  "generated_at": "2026-11-25T13:47:23+08:00",
+  "label": "unlabeled",
+  "samples": {
+    "available": false,
+    "rows": 3,
+    "reason": "没有有效 PSS 样本"
+  },
+  "perf": {
+    "available": false,
+    "session_id": "",
+    "reason": "没有 perf.jsonl"
+  },
+  "checks": {},
+  "verdict": "insufficient",
+  "notes": [
+    "本摘要只汇总本机采样与 perf JSONL，不代表 AC-09 通过。",
+    "AC-09 还需 A/B/C 代表设备、真实 1080p60 链路、音画偏差测量和现场操作记录。"
+  ]
+}

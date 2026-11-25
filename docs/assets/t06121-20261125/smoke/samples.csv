@@ -1,0 +1,4 @@
+"sample","timestamp","elapsed_s","pid","pss_total_kb","java_heap_kb","native_heap_kb","graphics_kb","cpu_pct","battery_temp_c"
+"0","2026-11-25T13:46:15.1681127+08:00","0","920",,,,,"3.2","25"
+"1","2026-11-25T13:46:45.1947294+08:00","30","920",,,,,,
+"2","2026-11-25T13:47:15.1739268+08:00","60","adb.exe: device offline",,,,,,

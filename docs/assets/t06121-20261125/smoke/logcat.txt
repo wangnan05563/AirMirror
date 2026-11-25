@@ -1,0 +1,1042 @@
+--------- beginning of main
+11-25 05:46:12.629  1925  1925 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.checkin.START pkg=com.google.android.gms }
+--------- beginning of system
+11-25 05:46:12.820   518  1133 D PackageManager: Instant App installer not found with android.intent.action.INSTALL_INSTANT_APP_PACKAGE
+11-25 05:46:12.820   518  1133 D PackageManager: Clear ephemeral installer activity
+11-25 05:46:12.837   518  1527 D PackageManager: Instant App installer not found with android.intent.action.INSTALL_INSTANT_APP_PACKAGE
+11-25 05:46:12.837   518  1527 D PackageManager: Clear ephemeral installer activity
+11-25 05:46:12.855   518  1497 W JobScheduler: Job didn't exist in JobStore: 5bf68bc #u0a152/100029 com.google.android.contacts/androidx.work.impl.background.systemjob.SystemJobService
+11-25 05:46:12.885  2800  2877 W SQLiteConnectionPool: The connection pool for database '/data/user/0/com.google.android.gms/databases/phenotype.db' has been unable to grant a connection to thread 51 (highpool[1]) with flags 0x2 for 30.003002 seconds.
+11-25 05:46:12.885  2800  2877 W SQLiteConnectionPool: Connections: 0 active, 1 idle, 2 available.
+11-25 05:46:13.029   329  4191 I resolv  : GetAddrInfoHandler::run: {100 983140 100 983140 1073 1}
+11-25 05:46:13.032   329  4193 I resolv  : res_nmkquery: (QUERY, IN, A)
+11-25 05:46:13.032   329  4193 I resolv  : resolv_cache_lookup: FOUND IN CACHE entry=0x7fea898d67c0
+11-25 05:46:13.033   329  4193 I resolv  : doQuery: rcode=0, ancount=1, return value=48
+11-25 05:46:13.034   329  4192 I resolv  : res_nmkquery: (QUERY, IN, AAAA)
+11-25 05:46:13.034   329  4192 I resolv  : resolv_cache_lookup: FOUND IN CACHE entry=0x7fead98de1d0
+11-25 05:46:13.034   329  4192 I resolv  : doQuery: rcode=0, ancount=1, return value=308
+11-25 05:46:13.038   855  4156 D TrafficStats: tagSocket(99) with statsTag=0xffffff81, statsUid=-1
+--------- beginning of kernel
+11-25 05:46:13.266     0     0 I logd    : logdr: UID=2000 GID=2000 PID=4194 b tail=0 logMask=99 pid=0 start=0ns deadline=0ns
+11-25 05:46:13.561  2945  3032 W Bugle   : Failed to refresh firebase instance ID null
+11-25 05:46:13.561  2945  3032 W Bugle   : java.io.IOException: SERVICE_NOT_AVAILABLE
+11-25 05:46:13.561  2945  3032 W Bugle   : 	at com.google.firebase.iid.FirebaseInstanceId.q(PG:2)
+11-25 05:46:13.561  2945  3032 W Bugle   : 	at com.google.firebase.iid.FirebaseInstanceId.h(PG:4)
+11-25 05:46:13.561  2945  3032 W Bugle   : 	at vxl.a(PG:1)
+11-25 05:46:13.561  2945  3032 W Bugle   : 	at atiu.call(PG:2)
+11-25 05:46:13.561  2945  3032 W Bugle   : 	at cnsg.a(PG:1)
+11-25 05:46:13.561  2945  3032 W Bugle   : 	at cnpm.a(PG:3)
+11-25 05:46:13.561  2945  3032 W Bugle   : 	at ctfv.a(PG:1)
+11-25 05:46:13.561  2945  3032 W Bugle   : 	at ctet.run(PG:4)
+11-25 05:46:13.561  2945  3032 W Bugle   : 	at ctfx.run(PG:1)
+11-25 05:46:13.561  2945  3032 W Bugle   : 	at bxfd.run(PG:1)
+11-25 05:46:13.561  2945  3032 W Bugle   : 	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1145)
+11-25 05:46:13.561  2945  3032 W Bugle   : 	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:644)
+11-25 05:46:13.561  2945  3032 W Bugle   : 	at bxho.run(PG:3)
+11-25 05:46:13.561  2945  3032 W Bugle   : 	at bxei.run(PG:2)
+11-25 05:46:13.561  2945  3032 W Bugle   : 	at java.lang.Thread.run(Thread.java:1012)
+11-25 05:46:13.561  2945  3032 W Bugle   : 	at bxfj.run(PG:5)
+11-25 05:46:13.654  2885  2897 I DynamiteModule: Considering local module com.google.android.gms.googlecertificates:7 and remote module com.google.android.gms.googlecertificates:7
+11-25 05:46:13.655  2885  2897 I DynamiteModule: Selected local version of com.google.android.gms.googlecertificates
+11-25 05:46:13.716  2885  3846 W DG      : [flow tachyon_registration] DroidGuardRunner.newVmProcessForFastSignalCollection(): Fast program not found [CONTEXT service_id=25 ]
+11-25 05:46:13.737  2885  3124 D TrafficStats: tagSocket(6) with statsTag=0x1803, statsUid=10131
+11-25 05:46:13.826   518   577 I AppsFilter: interaction: PackageSetting{9a0cd02 com.emoreply.harness/10193} -> PackageSetting{5051206 com.google.android.contacts/10152} BLOCKED
+11-25 05:46:13.826   518   577 I AppsFilter: interaction: PackageSetting{1676050 com.emoreply.poc/10192} -> PackageSetting{5051206 com.google.android.contacts/10152} BLOCKED
+11-25 05:46:13.914  1837  1885 I PermissionControllerServiceImpl: Updating user sensitive for uid 10152
+11-25 05:46:13.938   518   614 I InputReader: Reconfiguring input devices, changes=KEYBOARD_LAYOUTS
+11-25 05:46:13.940   918   918 D CarrierSvcBindHelper: onPackageModified: com.google.android.contacts
+11-25 05:46:13.951   918   918 D CarrierSvcBindHelper: No carrier app for: 0
+11-25 05:46:13.960   735   784 D StylusManager: Stylus InputDevice changed: 14 virtio_input_multi_touch_11
+11-25 05:46:13.965   735   784 D StylusManager: Stylus InputDevice changed: 13 virtio_input_multi_touch_10
+11-25 05:46:13.977   886   886 V MediaPlayerList: mPackageChangedBroadcastReceiver: action: android.intent.action.PACKAGE_CHANGED
+11-25 05:46:13.981   735   784 D StylusManager: Stylus InputDevice changed: 4 virtio_input_multi_touch_1
+11-25 05:46:13.983   886   886 V MediaPlayerList: mPackageChangedBroadcastReceiver: action: android.intent.action.PACKAGE_CHANGED
+11-25 05:46:13.985   518  1527 W system_server: Long monitor contention with owner ActivityManager (551) at void com.android.server.am.BroadcastQueueModernImpl.checkPendingColdStartValidity()(BroadcastQueueModernImpl.java:551) waiters=0 in void com.android.server.am.ActivityManagerService.serviceDoneExecuting(android.os.IBinder, int, int, int) for 137ms
+11-25 05:46:13.991   735   784 D StylusManager: Stylus InputDevice changed: 11 virtio_input_multi_touch_8
+11-25 05:46:13.995   735   784 D StylusManager: Stylus InputDevice changed: 10 virtio_input_multi_touch_7
+11-25 05:46:14.004   518  1497 D ActivityManager: freezer override set to true
+11-25 05:46:14.012   518  1497 D ActivityManager: sync unfroze 1639 com.android.traceur for 19
+11-25 05:46:14.017   518  1497 D ActivityManager: sync unfroze 1701 com.google.android.onetimeinitializer for 19
+11-25 05:46:14.020   518  1497 D ActivityManager: sync unfroze 1868 com.android.externalstorage for 19
+11-25 05:46:14.034   518  1497 D ActivityManager: sync unfroze 1945 com.android.localtransport for 19
+11-25 05:46:14.037   518  1497 D ActivityManager: sync unfroze 2016 com.android.printspooler for 19
+11-25 05:46:14.037   518  1497 D ActivityManager: sync unfroze 2491 com.google.android.dialer for 19
+11-25 05:46:14.050   518  1497 D ActivityManager: sync unfroze 2555 com.android.keychain for 19
+11-25 05:46:14.053  2885  3124 D TrafficStats: tagSocket(107) with statsTag=0x1803, statsUid=10131
+11-25 05:46:14.060   735   784 D StylusManager: Stylus InputDevice changed: 9 virtio_input_multi_touch_6
+11-25 05:46:14.065   518  1497 D ActivityManager: sync unfroze 2984 com.android.carrierdefaultapp for 19
+11-25 05:46:14.080   518  1497 D ActivityManager: sync unfroze 2920 com.android.imsserviceentitlement for 19
+11-25 05:46:14.082   518  1497 D ActivityManager: sync unfroze 1096 com.google.android.cellbroadcastreceiver for 19
+11-25 05:46:14.083   518  1497 D ActivityManager: sync unfroze 3045 com.android.camera2 for 19
+11-25 05:46:14.098   518  1497 D ActivityManager: sync unfroze 3066 com.android.dynsystem for 19
+11-25 05:46:14.108   518  1497 D ActivityManager: sync unfroze 3095 com.android.dynsystem:dynsystem for 19
+11-25 05:46:14.121   918  1149 D ImsResolver: maybeAddedImsService, packageName: com.google.android.contacts
+11-25 05:46:14.126   518  1497 D ActivityManager: sync unfroze 1826 com.google.android.apps.wallpaper for 19
+11-25 05:46:14.128   518  1497 D ActivityManager: sync unfroze 3210 com.google.android.configupdater for 19
+11-25 05:46:14.135   518  1497 D ActivityManager: sync unfroze 1618 com.google.android.apps.youtube.music for 19
+11-25 05:46:14.142   518  1497 D ActivityManager: sync unfroze 1711 com.google.android.projection.gearhead:shared for 19
+11-25 05:46:14.142   518  1497 D ActivityManager: sync unfroze 3149 com.android.providers.calendar for 19
+11-25 05:46:14.143   518  1497 D ActivityManager: sync unfroze 3558 com.google.android.rkpdapp for 19
+11-25 05:46:14.151   518  1497 D ActivityManager: sync unfroze 3562 com.google.android.tts for 19
+11-25 05:46:14.151   518  1497 D ActivityManager: sync unfroze 1647 com.google.android.youtube for 19
+11-25 05:46:14.152   518  1497 D ActivityManager: sync unfroze 2548 com.android.chrome for 19
+11-25 05:46:14.152   518  1497 D ActivityManager: sync unfroze 3410 com.google.android.gm for 19
+11-25 05:46:14.153   518  1497 D ActivityManager: sync unfroze 3698 com.quietsentry.app for 19
+11-25 05:46:14.153   518  1497 D ActivityManager: sync unfroze 1219 com.google.android.inputmethod.latin for 19
+11-25 05:46:14.175   518  1497 D ActivityManager: sync unfroze 3454 com.google.android.partnersetup for 19
+11-25 05:46:14.177   518  1497 D ActivityManager: sync unfroze 3886 com.android.emergency for 19
+11-25 05:46:14.178   518  1497 D ActivityManager: sync unfroze 3934 com.google.android.marvin.talkback for 19
+11-25 05:46:14.179   518  1497 D ActivityManager: sync unfroze 3920 com.google.android.healthconnect.controller for 19
+11-25 05:46:14.180   518  1497 D ActivityManager: sync unfroze 2416 com.google.android.deskclock for 19
+11-25 05:46:14.180   518  1497 D ActivityManager: sync unfroze 3673 com.google.android.settings.intelligence for 19
+11-25 05:46:14.180   518  1497 D ActivityManager: sync unfroze 920 com.android.settings for 19
+11-25 05:46:14.188   518  1527 D OomAdjuster: Not killing cached processes
+11-25 05:46:14.189   735   784 D StylusManager: Stylus InputDevice changed: 6 virtio_input_multi_touch_3
+11-25 05:46:14.270  1925  1925 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.auth.cryptauth.cryptauthservice.START dat=chimera-action:/... cmp=com.google.android.gms/.chimera.GmsBoundBrokerService }
+11-25 05:46:14.325   518   550 E system_server: No package ID 7f found for resource ID 0x7f080107.
+11-25 05:46:14.325   518   550 E system_server: No package ID 7f found for resource ID 0x7f150560.
+11-25 05:46:14.362   735   784 D StylusManager: Stylus InputDevice changed: 8 virtio_input_multi_touch_5
+11-25 05:46:14.364   735   784 D StylusManager: Stylus InputDevice changed: 5 virtio_input_multi_touch_2
+11-25 05:46:14.365   735   784 D StylusManager: Stylus InputDevice changed: 12 virtio_input_multi_touch_9
+11-25 05:46:14.366   735   784 D StylusManager: Stylus InputDevice changed: 7 virtio_input_multi_touch_4
+11-25 05:46:14.481  2800  2808 I .gms.persistent: Background young concurrent copying GC freed 108207(6555KB) AllocSpace objects, 0(0B) LOS objects, 25% free, 17MB/24MB, paused 969us,116us total 638.551ms
+11-25 05:46:14.496   735   735 D ControlsListingControllerImpl: ServiceConfig reloaded, count: 0
+11-25 05:46:14.499  2800  3501 I LockboxIntentOp: Completed task: true [CONTEXT service_id=26 ]
+11-25 05:46:14.587  3009  3009 I AiAiEcho: AppFetcherImpl onPackageChanged com.google.android.contacts.
+11-25 05:46:14.591  3009  3428 I AiAiEcho: AppIndexer Package:[com.google.android.contacts] UserProfile:[0] Enabled:[true].
+11-25 05:46:14.597  3009  3428 I AiAiEcho: AppFetcherImplV2 updateApps package:[com.google.android.contacts], userId:[0], reason:[package is updated.].
+11-25 05:46:14.624  2800  2800 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.auth.proximity.devicesyncservice.START dat=chimera-action:/... cmp=com.google.android.gms/.chimera.PersistentBoundBrokerService }
+11-25 05:46:14.637   518  1133 W ContentProviderHelper: Slow operation: 70ms so far, now at getContentProviderImpl: after updateOomAdj
+11-25 05:46:14.638   518  1133 W ContentProviderHelper: Slow operation: 71ms so far, now at getContentProviderImpl: done!
+11-25 05:46:14.693   920  4213 I ndroid.settings: Explicit concurrent copying GC freed 14652(857KB) AllocSpace objects, 0(0B) LOS objects, 24% free, 4599KB/6133KB, paused 929us,112us total 138.191ms
+11-25 05:46:14.783   518  1497 D ActivityManager: freezer override set to false
+11-25 05:46:14.835  1219  1219 I AppBase : AppBase.onTrimMemory():497 onTrimMemory(): 40
+11-25 05:46:14.902  2800  4217 I Fitness : OnPackageChangedOperation got intent: Intent { act=android.intent.action.PACKAGE_CHANGED dat=package: flg=0x45000010 pkg=com.google.android.gms cmp=com.google.android.gms/.chimera.PersistentIntentOperationService (has extras) } [CONTEXT service_id=17 ]
+11-25 05:46:15.032  2800  4054 W ChimeraUtils: Module com.google.android.gms.nearby_en missing resource null(0)
+11-25 05:46:15.087   518   551 W system_server: Long monitor contention with owner binder:518_19 (1530) at android.content.ComponentName com.android.server.am.ActivityManagerService.startService(android.app.IApplicationThread, android.content.Intent, java.lang.String, boolean, java.lang.String, java.lang.String, int, boolean, int, java.lang.String, java.lang.String)(ActivityManagerService.java:13195) waiters=1 in boolean com.android.server.am.BroadcastQueueModernImpl.lambda$new$0(android.os.Message) for 242ms
+11-25 05:46:15.198  1925  2144 D SharedPreferencesImpl: Time required to fsync /data/user/0/com.google.android.gms/shared_prefs/proxy-apps-corpus.xml: [<1: 0, <2: 0, <4: 0, <8: 0, <16: 1, <32: 0, <64: 0, <128: 0, <256: 0, <512: 1, <1024: 0, <2048: 0, <4096: 0, <8192: 0, <16384: 0, >=16384: 0]
+11-25 05:46:15.237   518  1014 W system_server: Long monitor contention with owner android.bg (550) at com.android.internal.infra.AndroidFuture com.android.server.pm.ShortcutPackage.fromAppSearch()(ShortcutPackage.java:2675) waiters=0 in void com.android.server.pm.ShortcutPackage.forEachShortcutStopWhen(java.util.function.Function) for 198ms
+11-25 05:46:15.300   735   742 I ndroid.systemui: Background young concurrent copying GC freed 142598(6715KB) AllocSpace objects, 0(0B) LOS objects, 21% free, 22MB/28MB, paused 4.586ms,121us total 246.118ms
+11-25 05:46:15.311  1925  3361 I Icing   : IndexChimeraService.getServiceInterface callingPackage=com.google.android.gms componentName=AppsCorpus serviceId=36
+11-25 05:46:15.321   735   753 W Looper  : Slow delivery took 45ms wmshell.main h=android.content.pm.LauncherApps$CallbackMessageHandler c=null m=8
+11-25 05:46:15.324  2800  4224 I Fitness : FitCleanupIntentOperation received Intent android.intent.action.PACKAGE_CHANGED [CONTEXT service_id=17 ]
+11-25 05:46:15.368  2800  4054 W ChimeraUtils: Module com.google.android.gms.nearby_en missing resource null(0)
+11-25 05:46:15.446  2800  4054 W ChimeraUtils: Module com.google.android.gms.nearby_en missing resource null(0)
+11-25 05:46:15.619   965  1575 D EGL_emulation: app_time_stats: avg=11107.60ms min=11107.60ms max=11107.60ms count=1
+11-25 05:46:15.703  1925  2771 W Icing   : No valid account for uploading user actions
+11-25 05:46:15.777   518   540 W Looper  : Slow dispatch took 106ms android.ui h=com.android.server.am.ActivityManagerService$UiHandler c=com.android.server.am.UidObserverController$$ExternalSyntheticLambda0@d2eb967 m=0
+11-25 05:46:15.928  1925  2771 I Icing   : Usage reports ok 0, Failed Usage reports 0, indexed 0, rejected 0
+11-25 05:46:16.061   518   540 W Looper  : Slow dispatch took 129ms android.ui h=com.android.server.am.ActivityManagerService$UiHandler c=com.android.server.am.UidObserverController$$ExternalSyntheticLambda0@d2eb967 m=0
+11-25 05:46:16.062  1925  2126 I Icing   : IndexChimeraService.getServiceInterface callingPackage=com.google.android.gms componentName=null serviceId=30
+11-25 05:46:16.158  1925  2771 W Icing   : No valid account for uploading user actions
+11-25 05:46:16.179  1925  2771 I Icing   : Usage reports ok 0, Failed Usage reports 0, indexed 0, rejected 0
+11-25 05:46:16.303  1925  2771 I Icing   : Indexing com.google.android.gms-internal.3p:MobileApplication from com.google.android.gms
+11-25 05:46:16.395  1925  2771 I Icing   : Indexing done com.google.android.gms-internal.3p:MobileApplication
+11-25 05:46:16.879   518   550 W ProcessStats: Tracking association SourceState{c83348d com.google.android.gms.persistent/10130 BTop #2486} whose proc state 2 is better than process ProcessState{d9f70c5 com.google.android.gms/10130 pkg=com.google.android.gms} proc state 8 (746 skipped)
+11-25 05:46:16.915  1925  1925 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.mdd.service.START dat=chimera-action:/... cmp=com.google.android.gms/.chimera.GmsBoundBrokerService }
+11-25 05:46:17.046  1925  2771 I Icing   : Indexing com.google.android.gms-apps from com.google.android.gms
+11-25 05:46:17.075  1925  2771 I Icing   : Indexing done com.google.android.gms-apps
+11-25 05:46:17.414   518   531 I system_server: Background young concurrent copying GC freed 1035133(21MB) AllocSpace objects, 15(300KB) LOS objects, 43% free, 29MB/52MB, paused 3.090ms,159us total 116.751ms
+11-25 05:46:17.632   518   601 D ActivityManager: freezing 2945 com.google.android.apps.messaging
+11-25 05:46:17.645   518   601 D ActivityManager: Reschedule freeze for process 2945 com.google.android.apps.messaging (outstanding txns), timeout=2751
+11-25 05:46:17.615     0     0 I binder  : 518:601 ioctl 400c620e 703ec5fce700 returned -11
+11-25 05:46:17.649  2945  3039 W Bugle   : TextClassifierLibManagerImpl: Reclaiming memory at level: 40
+11-25 05:46:17.682  2800  2800 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.scheduler.ACTION_PROXY_SCHEDULE dat=chimera-action:/... cmp=com.google.android.gms/.chimera.PersistentApiService }
+11-25 05:46:18.547   735   742 I ndroid.systemui: Background young concurrent copying GC freed 127871(6020KB) AllocSpace objects, 0(0B) LOS objects, 17% free, 23MB/28MB, paused 41.342ms,129us total 127.677ms
+11-25 05:46:18.750  2800  2808 I .gms.persistent: Background young concurrent copying GC freed 87941(5425KB) AllocSpace objects, 0(0B) LOS objects, 20% free, 19MB/24MB, paused 987us,694us total 106.071ms
+11-25 05:46:18.878   735   735 D StatusBarIconController: ignoring old pipeline callbacks, because the new mobile icons are enabled
+11-25 05:46:18.961   735   787 D EGL_emulation: app_time_stats: avg=18804.47ms min=18804.47ms max=18804.47ms count=1
+11-25 05:46:19.184   735   742 I ndroid.systemui: Background young concurrent copying GC freed 119877(5722KB) AllocSpace objects, 1(20KB) LOS objects, 17% free, 23MB/28MB, paused 856us,128us total 297.230ms
+11-25 05:46:19.198   329  4236 I resolv  : GetAddrInfoHandler::run: {100 786532 100 983140 10130 0}
+11-25 05:46:19.202   329  4238 I resolv  : res_nmkquery: (QUERY, IN, A)
+11-25 05:46:19.202   329  4238 I resolv  : resolv_cache_lookup: FOUND IN CACHE entry=0x7fec698d89e0
+11-25 05:46:19.202   329  4238 I resolv  : doQuery: rcode=0, ancount=8, return value=422
+11-25 05:46:19.216   329  4237 I resolv  : res_nmkquery: (QUERY, IN, AAAA)
+11-25 05:46:19.216   329  4237 I resolv  : resolv_cache_lookup: FOUND IN CACHE entry=0x7fec798dd010
+11-25 05:46:19.216   329  4237 I resolv  : doQuery: rcode=0, ancount=8, return value=490
+11-25 05:46:19.226  1925  2771 D TrafficStats: tagSocket(144) with statsTag=0x30003000, statsUid=-1
+11-25 05:46:19.269   518  1497 D OomAdjuster: Not killing cached processes
+11-25 05:46:19.647   518   601 D ActivityManager: freezing 3906 com.google.android.gms.ui
+11-25 05:46:19.786   518   648 W BestClock: java.time.DateTimeException: Missing network time fix
+11-25 05:46:19.814   518   648 W BestClock: java.time.DateTimeException: Missing network time fix
+11-25 05:46:19.901  2676  3240 I BugleRcsEngine: [68] brqh.handleMessage: RcsEngineImpl[DUAL_REG]:[a2027ac3-9de1]>Handler: handleMessage processing message:[NOTIFY_UPTIME_IGNORE_STATE_CHANGED] with [non-null]:RcsEngineImpl reference
+11-25 05:46:19.909  2676  2902 I BugleRcsEngine: [55] bqvv.c: Connected state: [1], networkType: [MOBILE]
+11-25 05:46:19.919  2676  3240 I BugleRcsEngine: [68] brnl.h: RCS Configuration storage in Bugle is disabled by p/h flag, using ProvisioningEngineStateCacheUtil.getProvisioningConfigurationForGivenSimIfExist()
+11-25 05:46:20.102  3410  3519 D TrafficStats: tagSocket(6) with statsTag=0x8001, statsUid=-1
+11-25 05:46:20.112   855  4157 D TrafficStats: tagSocket(98) with statsTag=0xffffff81, statsUid=-1
+11-25 05:46:20.125   735   742 I ndroid.systemui: Background young concurrent copying GC freed 120037(5641KB) AllocSpace objects, 0(0B) LOS objects, 18% free, 23MB/28MB, paused 110.785ms,1.565ms total 407.815ms
+11-25 05:46:20.559     0     0 I binder  : 518:601 ioctl 400c620e 703ec5fce700 returned -11
+11-25 05:46:20.587   518   601 D ActivityManager: freezing 2945 com.google.android.apps.messaging
+11-25 05:46:20.589   518   601 D ActivityManager: Reschedule freeze for process 2945 com.google.android.apps.messaging (outstanding txns), timeout=1000
+11-25 05:46:20.679  2945  3032 W Bugle   : TextClassifierLibManagerImpl: Reclaiming memory at level: 40
+11-25 05:46:20.752  2800  2808 I .gms.persistent: Background young concurrent copying GC freed 81786(4918KB) AllocSpace objects, 0(0B) LOS objects, 20% free, 19MB/24MB, paused 4.129ms,103us total 316.408ms
+11-25 05:46:21.217  2945  3810 D TrafficStats: tagSocket(90) with statsTag=0x8001, statsUid=-1
+11-25 05:46:21.669   735   742 I ndroid.systemui: Background young concurrent copying GC freed 115675(5574KB) AllocSpace objects, 0(0B) LOS objects, 18% free, 22MB/28MB, paused 3ms,130us total 194.631ms
+11-25 05:46:21.673   518   601 D ActivityManager: freezing 2945 com.google.android.apps.messaging
+11-25 05:46:21.675   518   601 D ActivityManager: Kill app due to repeated failure to freeze binder: 2945 com.google.android.apps.messaging
+11-25 05:46:21.645     0     0 I binder  : 518:601 ioctl 400c620e 703ec5fce700 returned -11
+11-25 05:46:21.700   518   551 I ActivityManager: Killing 2945:com.google.android.apps.messaging/u0a131 (adj 905): excessive binder traffic during cached
+11-25 05:46:21.712   518   553 I libprocessgroup: Successfully killed process cgroup uid 10131 pid 2945 in 0ms
+11-25 05:46:21.751     0     0 I binder  : release 2945:4199 transaction 152036 out, still active
+11-25 05:46:21.752     0     0 I binder  : undelivered TRANSACTION_COMPLETE
+11-25 05:46:21.832   518   659 D ConnectivityService: releasing NetworkRequest [ REQUEST id=103, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10131 RequestorUid: 10131 RequestorPkg: com.google.android.apps.messaging UnderlyingNetworks: Null] ] (release request)
+11-25 05:46:21.926   330   330 I Zygote  : Process 2945 exited due to signal 9 (Killed)
+11-25 05:46:22.358  1925  4042 E WorkSourceUtil: Could not find package: com.google.android.gms.westworld
+11-25 05:46:23.106   855  4156 D TrafficStats: tagSocket(99) with statsTag=0xffffff81, statsUid=-1
+11-25 05:46:23.263  1647  3696 D TrafficStats: tagSocket(90) with statsTag=0x8001, statsUid=-1
+11-25 05:46:23.301  2800  2808 I .gms.persistent: Background young concurrent copying GC freed 81630(4914KB) AllocSpace objects, 0(0B) LOS objects, 19% free, 19MB/24MB, paused 1.853ms,105us total 108.025ms
+11-25 05:46:23.513   329  4240 I resolv  : GetAddrInfoHandler::run: {100 786532 100 983140 10130 0}
+11-25 05:46:23.518   329  4242 I resolv  : res_nmkquery: (QUERY, IN, A)
+11-25 05:46:23.518   329  4242 I resolv  : resolv_cache_lookup: FOUND IN CACHE entry=0x7fec698d89e0
+11-25 05:46:23.523   329  4242 I resolv  : doQuery: rcode=0, ancount=8, return value=422
+11-25 05:46:23.527   329  4241 I resolv  : res_nmkquery: (QUERY, IN, AAAA)
+11-25 05:46:23.528   329  4241 I resolv  : resolv_cache_lookup: FOUND IN CACHE entry=0x7fec798dd010
+11-25 05:46:23.529   329  4241 I resolv  : doQuery: rcode=0, ancount=8, return value=490
+11-25 05:46:23.534  2885  3124 D TrafficStats: tagSocket(108) with statsTag=0x1803, statsUid=10130
+11-25 05:46:23.934  2885  3124 D TrafficStats: tagSocket(109) with statsTag=0x1803, statsUid=10130
+11-25 05:46:24.241  1618  3346 D TrafficStats: tagSocket(111) with statsTag=0x8001, statsUid=-1
+11-25 05:46:24.251   518   601 D ActivityManager: freezing 3673 com.google.android.settings.intelligence
+11-25 05:46:24.264   518   601 D ActivityManager: freezing 2416 com.google.android.deskclock
+11-25 05:46:24.268   518   601 D ActivityManager: freezing 3410 com.google.android.gm
+11-25 05:46:24.275   518   601 D ActivityManager: freezing 2491 com.google.android.dialer
+11-25 05:46:24.462   518  1133 D OomAdjuster: Not killing cached processes
+11-25 05:46:24.911  2800  2880 W DroidguardProvider: droidguard took a lot of time : 60243 millis [CONTEXT service_id=257 ]
+11-25 05:46:24.916   735   742 I ndroid.systemui: Background young concurrent copying GC freed 114751(5386KB) AllocSpace objects, 0(0B) LOS objects, 17% free, 23MB/28MB, paused 7.330ms,130us total 981.552ms
+11-25 05:46:25.457   518   539 W Looper  : Slow delivery took 490ms android.fg h=android.os.Handler c=com.android.server.power.hint.HintManagerService$MyUidObserver$$ExternalSyntheticLambda0@44616ca m=0
+11-25 05:46:25.465   735   735 I Choreographer: Skipped 30 frames!  The application may be doing too much work on its main thread.
+11-25 05:46:25.478   518   714 W Looper  : Slow dispatch took 1044ms android.perm h=android.os.Handler c=com.android.internal.infra.ServiceConnector$Impl$$ExternalSyntheticLambda1@705703b m=0
+11-25 05:46:25.613  2800  3229 W IsDeviceCompliantOp: failed to get future: allow [CONTEXT service_id=257 ]
+11-25 05:46:25.613  2800  3229 W IsDeviceCompliantOp: java.util.concurrent.TimeoutException: Waited 60 seconds (plus 396259400 nanoseconds delay) for dlny@9007094[status=PENDING, info=[inputFuture=[dlnx@df5373d[status=PENDING, setFuture=[dlnx@e6b4b32[status=PENDING, setFuture=[dlny@f447083[status=PENDING, info=[inputFuture=[dlny@2be0200[status=PENDING, info=[inputFuture=[dlnx@b830a39[status=PENDING, info=[inputFuture=[dlne@4fee87e[status=PENDING, info=[inputFuture=[dlny@ad391df[status=PENDING, info=[inputFuture=[aplc@4013e2c], function=[apmt@78110f5]]]], exceptionType=[class enms], fallback=[apmu@79d0e8a]]]], function=[aplq@1096cfb]]]], function=[apms@55a1118]]]], function=[aplo@91ec771]]]]]]]], function=[apml@5458956]]]
+11-25 05:46:25.613  2800  3229 W IsDeviceCompliantOp: 	at dlnv.get(:com.google.android.gms@231818047@23.18.18 (190800-535401451):30)
+11-25 05:46:25.613  2800  3229 W IsDeviceCompliantOp: 	at apmo.b(:com.google.android.gms@231818047@23.18.18 (190800-535401451):1)
+11-25 05:46:25.613  2800  3229 W IsDeviceCompliantOp: 	at apmo.f(:com.google.android.gms@231818047@23.18.18 (190800-535401451):17)
+11-25 05:46:25.613  2800  3229 W IsDeviceCompliantOp: 	at avsy.eo(:com.google.android.gms@231818047@23.18.18 (190800-535401451):1)
+11-25 05:46:25.613  2800  3229 W IsDeviceCompliantOp: 	at avtf.run(:com.google.android.gms@231818047@23.18.18 (190800-535401451):14)
+11-25 05:46:25.613  2800  3229 W IsDeviceCompliantOp: 	at dfhf.run(:com.google.android.gms@231818047@23.18.18 (190800-535401451):2)
+11-25 05:46:25.613  2800  3229 W IsDeviceCompliantOp: 	at aced.c(:com.google.android.gms@231818047@23.18.18 (190800-535401451):6)
+11-25 05:46:25.613  2800  3229 W IsDeviceCompliantOp: 	at aced.run(:com.google.android.gms@231818047@23.18.18 (190800-535401451):7)
+11-25 05:46:25.613  2800  3229 W IsDeviceCompliantOp: 	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1145)
+11-25 05:46:25.613  2800  3229 W IsDeviceCompliantOp: 	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:644)
+11-25 05:46:25.613  2800  3229 W IsDeviceCompliantOp: 	at acjn.run(:com.google.android.gms@231818047@23.18.18 (190800-535401451):0)
+11-25 05:46:25.613  2800  3229 W IsDeviceCompliantOp: 	at java.lang.Thread.run(Thread.java:1012)
+11-25 05:46:25.800  1637  1794 I A       : Device Compliance Fetch time taken = 89793ms
+11-25 05:46:25.814  1637  1794 I A       : Device is compliant!
+11-25 05:46:25.817  1637  1794 I A       : Invoking "compliant" action...
+11-25 05:46:25.847   735   735 D StatusBarIconController: ignoring old pipeline callbacks, because the new mobile icons are enabled
+11-25 05:46:26.046   518  1525 W system_server: Long monitor contention with owner binder:518_4 (588) at void com.android.server.am.ActivityManagerService.serviceDoneExecuting(android.os.IBinder, int, int, int)(ActivityManagerService.java:13465) waiters=2 in void com.android.server.am.ActivityManagerService.unbindFinished(android.os.IBinder, android.content.Intent, boolean) for 588ms
+11-25 05:46:26.366   518   601 D ActivityManager: freezing 1639 com.android.traceur
+11-25 05:46:27.375   735   735 D StatusBarIconController: ignoring old pipeline callbacks, because the new mobile icons are enabled
+11-25 05:46:27.408   518  2314 W ProcessStats: Tracking association SourceState{fa1ed04 com.google.android.gms.persistent/10130 BTop #2524} whose proc state 2 is better than process ProcessState{d9f70c5 com.google.android.gms/10130 pkg=com.google.android.gms} proc state 8 (307 skipped)
+11-25 05:46:27.416  2800  2880 W GoogleHttpServiceClient: Interrupted waiting for binder: java.lang.InterruptedException
+11-25 05:46:27.495  2800  2935 W .gms.persistent: Long monitor contention with owner highpool[2] (2880) at boolean abnp.d(abno, android.content.ServiceConnection, java.lang.String, java.util.concurrent.Executor)(:com.google.android.gms@231818047@23.18.18 (190800-535401451):15) waiters=0 in void abnp.e(abno, android.content.ServiceConnection) for 1.651s
+11-25 05:46:27.545   518   539 W Looper  : Drained
+11-25 05:46:27.708   329  4245 I resolv  : GetAddrInfoHandler::run: {100 786532 100 983140 10130 0}
+11-25 05:46:27.709   329  4247 I resolv  : res_nmkquery: (QUERY, IN, A)
+11-25 05:46:27.873   329  4246 I resolv  : res_nmkquery: (QUERY, IN, AAAA)
+11-25 05:46:27.995   329  4246 I resolv  : res_nsend: used send_dg 499 terrno: 0
+11-25 05:46:27.924   329  4247 I resolv  : res_nsend: used send_dg 435 terrno: 0
+11-25 05:46:27.996   329  4246 I resolv  : doQuery: rcode=0, ancount=8, return value=499
+11-25 05:46:27.996   329  4247 I resolv  : doQuery: rcode=0, ancount=8, return value=435
+11-25 05:46:28.127  1925  1925 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.auth.service.START pkg=com.google.android.gms }
+11-25 05:46:28.128  1925  2160 W gle.android.gms: Long monitor contention with owner main (1925) at boolean abnr.handleMessage(android.os.Message)(:com.google.android.gms@231818047@23.18.18 (190800-535401451):16) waiters=0 in void abnp.e(abno, android.content.ServiceConnection) for 1.773s
+11-25 05:46:28.150   518   601 D ActivityManager: freezing 1701 com.google.android.onetimeinitializer
+11-25 05:46:28.162   518   588 W system_server: Long monitor contention with owner binder:518_A (1133) at boolean com.android.server.am.ActivityManagerService.unbindService(android.app.IServiceConnection)(ActivityManagerService.java:13426) waiters=4 in void com.android.server.am.ActivityManagerService.serviceDoneExecuting(android.os.IBinder, int, int, int) for 550ms
+11-25 05:46:28.366   518   518 W Looper  : Slow dispatch took 216ms main h=android.app.ActivityThread$H c=android.app.LoadedApk$ReceiverDispatcher$Args$$ExternalSyntheticLambda0@a62b522 m=0
+11-25 05:46:28.375   518   594 W system_server: Long monitor contention with owner AlarmManager (605) at void com.android.server.alarm.AlarmManagerService$AlarmThread.run()(AlarmManagerService.java:4891) waiters=0 in void com.android.server.alarm.AlarmManagerService$9.handleUidCachedChanged(int, boolean) for 700ms
+11-25 05:46:28.375   735   735 D StatusBarIconController: ignoring old pipeline callbacks, because the new mobile icons are enabled
+11-25 05:46:28.394   518   601 D ActivityManager: freezing 1868 com.android.externalstorage
+11-25 05:46:28.416   518   601 D ActivityManager: freezing 1945 com.android.localtransport
+11-25 05:46:28.465   518   601 D ActivityManager: freezing 2016 com.android.printspooler
+11-25 05:46:28.466   518   601 D ActivityManager: freezing 2555 com.android.keychain
+11-25 05:46:28.467   518   601 D ActivityManager: freezing 2984 com.android.carrierdefaultapp
+11-25 05:46:28.474   518   601 D ActivityManager: freezing 2920 com.android.imsserviceentitlement
+11-25 05:46:28.477   518   601 D ActivityManager: freezing 1096 com.google.android.cellbroadcastreceiver
+11-25 05:46:28.478   518   601 D ActivityManager: freezing 3045 com.android.camera2
+11-25 05:46:28.479   518   601 D ActivityManager: freezing 3066 com.android.dynsystem
+11-25 05:46:28.480   518   601 D ActivityManager: freezing 3095 com.android.dynsystem:dynsystem
+11-25 05:46:28.481   518   601 D ActivityManager: freezing 1826 com.google.android.apps.wallpaper
+11-25 05:46:28.483   518   601 D ActivityManager: freezing 3210 com.google.android.configupdater
+11-25 05:46:28.610   518   601 D ActivityManager: freezing 1618 com.google.android.apps.youtube.music
+11-25 05:46:28.612   518   601 D ActivityManager: freezing 1711 com.google.android.projection.gearhead:shared
+11-25 05:46:28.615   518   601 D ActivityManager: freezing 3149 com.android.providers.calendar
+11-25 05:46:28.616   518   601 D ActivityManager: freezing 3558 com.google.android.rkpdapp
+11-25 05:46:28.620   518   601 D ActivityManager: freezing 3562 com.google.android.tts
+11-25 05:46:28.625   518   601 D ActivityManager: freezing 1647 com.google.android.youtube
+11-25 05:46:28.628   518   601 D ActivityManager: freezing 2548 com.android.chrome
+11-25 05:46:28.629   518   601 D ActivityManager: freezing 3698 com.quietsentry.app
+11-25 05:46:28.638   518   601 D ActivityManager: freezing 1219 com.google.android.inputmethod.latin
+11-25 05:46:28.639   518   601 D ActivityManager: freezing 3454 com.google.android.partnersetup
+11-25 05:46:28.642   518   601 D ActivityManager: freezing 3886 com.android.emergency
+11-25 05:46:28.644   518   601 D ActivityManager: freezing 3934 com.google.android.marvin.talkback
+11-25 05:46:28.646   518   601 D ActivityManager: freezing 3920 com.google.android.healthconnect.controller
+11-25 05:46:28.650   518   601 D ActivityManager: freezing 920 com.android.settings
+11-25 05:46:28.696   329  4248 I resolv  : GetAddrInfoHandler::run: {100 983140 100 983140 1000 1}
+11-25 05:46:28.708   329  4250 I resolv  : res_nmkquery: (QUERY, IN, A)
+11-25 05:46:28.710   329  4250 I resolv  : resolv_cache_lookup: FOUND IN CACHE entry=0x7fec698d6e20
+11-25 05:46:28.711   329  4250 I resolv  : doQuery: rcode=0, ancount=4, return value=356
+11-25 05:46:28.721   329  4249 I resolv  : res_nmkquery: (QUERY, IN, AAAA)
+11-25 05:46:28.722   329  4249 I resolv  : resolv_cache_lookup: FOUND IN CACHE entry=0x7fec698d5df0
+11-25 05:46:28.796   329  4249 I resolv  : doQuery: rcode=0, ancount=4, return value=404
+11-25 05:46:28.801   518   689 D TrafficStats: tagSocket(444) with statsTag=0xffffff41, statsUid=-1
+11-25 05:46:29.044  1925  2870 D TrafficStats: tagSocket(97) with statsTag=0x30001803, statsUid=-1
+11-25 05:46:29.056   518   689 D SntpClient: round trip: 222ms, clock offset: 4929ms
+11-25 05:46:29.184   735   735 D StatusBarIconController: ignoring old pipeline callbacks, because the new mobile icons are enabled
+11-25 05:46:29.189   518   551 W system_server: Long monitor contention with owner binder:518_4 (588) at void com.android.server.am.ActivityManagerService.finishReceiver(android.os.IBinder, int, java.lang.String, android.os.Bundle, boolean, int)(ActivityManagerService.java:15446) waiters=1 in void com.android.server.am.BroadcastQueueModernImpl.updateRunningList() for 325ms
+11-25 05:46:29.208   518  1468 W system_server: Long monitor contention with owner binder:518_4 (588) at void com.android.server.am.ActivityManagerService.finishReceiver(android.os.IBinder, int, java.lang.String, android.os.Bundle, boolean, int)(ActivityManagerService.java:15446) waiters=2 in int com.android.server.am.ActivityManagerService.broadcastIntentWithFeature(android.app.IApplicationThread, java.lang.String, android.content.Intent, java.lang.String, android.content.IIntentReceiver, int, java.lang.String, android.os.Bundle, java.lang.String[], java.lang.String[], java.lang.String[], int, android.os.Bundle, boolean, boolean, int) for 229ms
+11-25 05:46:29.433  2800  4235 D TrafficStats: tagSocket(102) with statsTag=0x30008100, statsUid=-1
+11-25 05:46:29.574   518   601 D ActivityManager: freezing 1250 com.google.android.apps.wellbeing
+11-25 05:46:29.649   518  1468 D OomAdjuster: Not killing cached processes
+11-25 05:46:29.662   518   539 W Looper  : Slow dispatch took 583ms android.fg h=android.os.Handler c=com.android.server.timedetector.TimeDetectorInternalImpl$$ExternalSyntheticLambda1@a83500f m=0
+11-25 05:46:29.909  2800  4253 I NetworkScheduler.Stats: Task com.google.android.gms/com.google.android.gms.auth.account.be.legacy.AuthCronService finished executing. cause:5 result: 3 elapsed_millis: 40277 uptime_millis: 40277 exec_start_elapsed_seconds: 119 [CONTEXT service_id=218 ]
+11-25 05:46:30.194   855  4157 D NetworkMonitor/100: PROBE_HTTPS https://www.google.com/generate_204 Probe failed with exception java.net.SocketTimeoutException: failed to connect to www.google.com/2001::1 (port 443) from /fec0::5054:ff:fe12:3456 (port 58224) after 10000ms
+11-25 05:46:30.811  2800  4231 E WakeLock: GCM_HB_ALARM release without a matched acquire!
+11-25 05:46:30.811  2800  4231 W WakeLock: GCM_HB_ALARM counter does not exist
+11-25 05:46:31.075  2800  3661 W SQLiteConnectionPool: The connection pool for database '/data/user/0/com.google.android.gms/databases/phenotype.db' has been unable to grant a connection to thread 140 (lowpool[10]) with flags 0x2 for 30.177002 seconds.
+11-25 05:46:31.075  2800  3661 W SQLiteConnectionPool: Connections: 0 active, 1 idle, 1 available.
+11-25 05:46:31.146  2885  2899 W DG      : [flow devicekey] DroidGuardRunner.newVmProcessForFastSignalCollection(): Fast program not found [CONTEXT service_id=25 ]
+11-25 05:46:31.342  2885  3124 D TrafficStats: tagSocket(110) with statsTag=0x1803, statsUid=10130
+11-25 05:46:31.557  2800  4231 E WakeLock: GCM_HB_ALARM release without a matched acquire!
+11-25 05:46:31.559  2800  4231 W WakeLock: GCM_HB_ALARM counter does not exist
+11-25 05:46:31.625  2800  4231 I AlarmManager: setExactAndAllowWhileIdle [name: GCM_CONN_ALARM type: 2 triggerAtMillis: 210873]
+11-25 05:46:31.643   518  1466 D CompatibilityChangeReporter: Compat change id reported: 171306433; UID 10130; state: ENABLED
+11-25 05:46:31.645   518  1466 D CompatibilityChangeReporter: Compat change id reported: 218533173; UID 10130; state: ENABLED
+11-25 05:46:31.691  2800  3033 I NetworkScheduler.Stats: Task com.google.android.gms/com.google.android.gms.languageprofile.GcmTaskService started execution. cause:5 exec_start_elapsed_seconds: 161 [CONTEXT service_id=218 ]
+11-25 05:46:31.728  2885  3124 D TrafficStats: tagSocket(111) with statsTag=0x1803, statsUid=10130
+11-25 05:46:31.908  1925  1925 I NearbySharing: SharingTileService destroyed [CONTEXT service_id=194 ]
+11-25 05:46:32.325   735   742 I ndroid.systemui: Background concurrent copying GC freed 335969(16MB) AllocSpace objects, 4(80KB) LOS objects, 49% free, 16MB/32MB, paused 2.152ms,494us total 1.781s
+11-25 05:46:32.748   735   735 D StatusBarIconController: ignoring old pipeline callbacks, because the new mobile icons are enabled
+11-25 05:46:32.908  2800  4231 W .gms.persistent: Long monitor contention with owner netscheduler-queue-handler (3612) at boolean byqm.handleMessage(android.os.Message)(:com.google.android.gms@231818047@23.18.18 (190800-535401451):8) waiters=0 in void byqp.a(byqm) for 281ms
+11-25 05:46:32.979   518   601 D ActivityManager: freezing 3263 com.google.android.contacts
+11-25 05:46:33.094  2800  3033 I NetworkScheduler.Stats: Task com.google.android.gms/com.google.android.gms.languageprofile.GcmTaskService finished executing. cause:5 result: 1 elapsed_millis: 1541 uptime_millis: 1541 exec_start_elapsed_seconds: 161 [CONTEXT service_id=218 ]
+11-25 05:46:33.184   518   540 W Looper  : Slow delivery took 201ms android.ui h=com.android.server.am.ActivityManagerService$UiHandler c=com.android.server.am.UidObserverController$$ExternalSyntheticLambda0@d2eb967 m=0
+11-25 05:46:33.186   855  4156 D NetworkMonitor/100: PROBE_FALLBACK http://www.google.com/gen_204 Probe failed with exception java.net.SocketTimeoutException: failed to connect to www.google.com/2001::1 (port 80) from /fec0::5054:ff:fe12:3456 (port 34740) after 10000ms
+11-25 05:46:33.281   855  4156 D NetworkMonitor/100: isCaptivePortal: isSuccessful()=false isPortal()=false RedirectUrl=null isPartialConnectivity()=true Time=23258ms
+11-25 05:46:33.344   518   659 D ConnectivityService: [100 CELLULAR] validation failed
+11-25 05:46:33.388   518   659 I ConnectivityService: Update capabilities for net 100 : +PARTIAL_CONNECTIVITY
+11-25 05:46:33.581  2676  3240 I BugleRcsEngine: [68] brqh.handleMessage: RcsEngineImpl[DUAL_REG]:[a2027ac3-9de1]>Handler: handleMessage processing message:[NOTIFY_UPTIME_IGNORE_STATE_CHANGED] with [non-null]:RcsEngineImpl reference
+11-25 05:46:33.618   518   659 D NetworkNotificationManager: showNotification tag=ConnectivityNotification:100 event=PARTIAL_CONNECTIVITY transport=mobile data name=epc.tmobile.com highPriority=false
+11-25 05:46:33.643  2676  2902 I BugleRcsEngine: [55] bqvv.c: Connected state: [1], networkType: [MOBILE]
+11-25 05:46:33.710  2676  3240 I BugleRcsEngine: [68] brnl.h: RCS Configuration storage in Bugle is disabled by p/h flag, using ProvisioningEngineStateCacheUtil.getProvisioningConfigurationForGivenSimIfExist()
+11-25 05:46:33.788   518   540 W Looper  : Drained
+11-25 05:46:34.328  2800  2808 I .gms.persistent: Background young concurrent copying GC freed 72429(4330KB) AllocSpace objects, 0(0B) LOS objects, 14% free, 20MB/24MB, paused 1.346ms,217us total 448.532ms
+11-25 05:46:34.443  2800  4231 I NetworkScheduler.Stats: Task com.google.android.gms/com.google.android.gms.clearcut.uploader.QosUploaderService started execution. cause:5 exec_start_elapsed_seconds: 163 [CONTEXT service_id=218 ]
+11-25 05:46:34.609   518   531 I system_server: Background young concurrent copying GC freed 1096765(22MB) AllocSpace objects, 0(0B) LOS objects, 42% free, 29MB/52MB, paused 17.142ms,174us total 246.834ms
+11-25 05:46:35.929   518  1466 D OomAdjuster: Not killing cached processes
+11-25 05:46:35.974  2800  4253 I NetworkScheduler.Stats: Task com.google.android.gms/com.google.android.gms.clearcut.uploader.QosUploaderService finished executing. cause:5 result: 1 elapsed_millis: 1887 uptime_millis: 1887 exec_start_elapsed_seconds: 163 [CONTEXT service_id=218 ]
+11-25 05:46:36.218   735   735 D StatusBarIconController: ignoring old pipeline callbacks, because the new mobile icons are enabled
+11-25 05:46:36.529  2800  3487 W SQLiteConnectionPool: The connection pool for database '/data/user/0/com.google.android.gms/databases/phenotype.db' has been unable to grant a connection to thread 107 (lowpool[4]) with flags 0x2 for 30.070002 seconds.
+11-25 05:46:36.529  2800  3487 W SQLiteConnectionPool: Connections: 0 active, 1 idle, 1 available.
+11-25 05:46:37.237  1925  4254 I GCM-GMS : Registering GMS for direct boot.
+11-25 05:46:37.238  2800  3033 I NetworkScheduler.Stats: Task com.google.android.gms/com.google.android.gms.gcm.gmsproc.GcmInGmsTaskService started execution. cause:5 exec_start_elapsed_seconds: 166 [CONTEXT service_id=218 ]
+11-25 05:46:37.368   735   735 D StatusBarIconController: ignoring old pipeline callbacks, because the new mobile icons are enabled
+11-25 05:46:37.442   855  4259 D TrafficStats: tagSocket(98) with statsTag=0xffffff81, statsUid=-1
+11-25 05:46:37.447   855  4260 D TrafficStats: tagSocket(99) with statsTag=0xffffff81, statsUid=-1
+11-25 05:46:37.479   855  4260 D TrafficStats: tagSocket(99) with statsTag=0xffffff81, statsUid=-1
+11-25 05:46:37.497   329  4261 I resolv  : ResNSendHandler::run: 0 / {100 983140 100 983140 1073 1}
+11-25 05:46:37.511   518   588 W ProcessStats: Tracking association SourceState{450d6f6 com.google.android.gms.persistent/10130 ImpBg #2571} whose proc state 6 is better than process ProcessState{d9f70c5 com.google.android.gms/10130 pkg=com.google.android.gms} proc state 8 (268 skipped)
+11-25 05:46:37.527   329  4261 I resolv  : res_nsend: used send_dg 107 terrno: 0
+11-25 05:46:37.534   329  4262 I resolv  : ResNSendHandler::run: 0 / {100 983140 100 983140 1073 1}
+11-25 05:46:37.534   329  4262 I resolv  : resolv_cache_lookup: FOUND IN CACHE entry=0x7fec698d6730
+11-25 05:46:37.547   855  4259 D TrafficStats: tagSocket(98) with statsTag=0xffffff81, statsUid=-1
+11-25 05:46:37.618   855   855 D TrafficStats: tagSocket(99) with statsTag=0xffffffff, statsUid=-1
+11-25 05:46:37.752   329  4264 I resolv  : ResNSendHandler::run: 0 / {100 983140 100 983140 1073 1}
+11-25 05:46:37.763   329  4264 I resolv  : resolv_cache_lookup: FOUND IN CACHE entry=0x7fead98de1d0
+11-25 05:46:37.778   329  4265 I resolv  : ResNSendHandler::run: 0 / {100 983140 100 983140 1073 1}
+11-25 05:46:37.788   329  4265 I resolv  : resolv_cache_lookup: FOUND IN CACHE entry=0x7fea898d67c0
+11-25 05:46:37.854   518  1133 W system_server: Long monitor contention with owner binder:518_4 (588) at int com.android.server.am.ActivityManagerService.bindServiceInstance(android.app.IApplicationThread, android.os.IBinder, android.content.Intent, java.lang.String, android.app.IServiceConnection, long, java.lang.String, boolean, int, java.lang.String, android.app.IApplicationThread, java.lang.String, int)(ActivityManagerService.java:13404) waiters=3 in void com.android.server.am.ActivityManagerService.serviceDoneExecuting(android.os.IBinder, int, int, int) for 177ms
+11-25 05:46:37.863   518   601 D ActivityManager: freezing 1837 com.google.android.permissioncontroller
+11-25 05:46:38.129   855  4260 D NetworkMonitor/100: PROBE_DNS connectivitycheck.gstatic.com 699ms OK 220.181.174.98
+11-25 05:46:38.172   855   855 D TrafficStats: tagSocket(98) with statsTag=0xffffffff, statsUid=-1
+11-25 05:46:38.245  1925  4254 W GCM-GMS : Failed to get direct boot token: java.io.IOException: AUTHENTICATION_FAILED
+11-25 05:46:38.291   518  1466 W system_server: Long monitor contention with owner binder:518_A (1133) at android.util.Pair com.android.server.am.ProcessList.getNumForegroundServices()(ProcessList.java:5416) waiters=1 in void com.android.server.am.ActivityManagerService.serviceDoneExecuting(android.os.IBinder, int, int, int) for 129ms
+11-25 05:46:38.305   329  4266 I resolv  : GetAddrInfoHandler::run: {100 983140 100 983140 1073 1}
+11-25 05:46:38.308   329  4267 I resolv  : res_nmkquery: (QUERY, IN, AAAA)
+11-25 05:46:38.309   329  4267 I resolv  : resolv_cache_lookup: FOUND IN CACHE entry=0x7fec498cf130
+11-25 05:46:38.310   329  4267 I resolv  : doQuery: rcode=0, ancount=0, return value=107
+11-25 05:46:38.330   329  4268 I resolv  : res_nmkquery: (QUERY, IN, A)
+11-25 05:46:38.341   329  4268 I resolv  : resolv_cache_lookup: FOUND IN CACHE entry=0x7fec698d6730
+11-25 05:46:38.341   329  4268 I resolv  : doQuery: rcode=0, ancount=1, return value=321
+11-25 05:46:38.358   855  4260 D TrafficStats: tagSocket(98) with statsTag=0xffffff81, statsUid=-1
+11-25 05:46:38.363  2800  4253 I NetworkScheduler.Stats: Task com.google.android.gms/com.google.android.gms.gcm.gmsproc.GcmInGmsTaskService finished executing. cause:5 result: 3 elapsed_millis: 1831 uptime_millis: 1831 exec_start_elapsed_seconds: 166 [CONTEXT service_id=218 ]
+11-25 05:46:38.395   855   855 D TrafficStats: tagSocket(100) with statsTag=0xffffffff, statsUid=-1
+11-25 05:46:38.530   855  4259 D NetworkMonitor/100: PROBE_DNS www.google.com 1100ms OK 157.240.7.20,2001::1
+11-25 05:46:38.572   329  4269 I resolv  : GetAddrInfoHandler::run: {100 983140 100 983140 1073 1}
+11-25 05:46:38.578   329  4270 I resolv  : res_nmkquery: (QUERY, IN, AAAA)
+11-25 05:46:38.578   329  4270 I resolv  : resolv_cache_lookup: FOUND IN CACHE entry=0x7fead98de1d0
+11-25 05:46:38.578   329  4270 I resolv  : doQuery: rcode=0, ancount=1, return value=308
+11-25 05:46:38.597   329  4271 I resolv  : res_nmkquery: (QUERY, IN, A)
+11-25 05:46:38.607   329  4271 I resolv  : resolv_cache_lookup: FOUND IN CACHE entry=0x7fea898d67c0
+11-25 05:46:38.607   329  4271 I resolv  : doQuery: rcode=0, ancount=1, return value=48
+11-25 05:46:38.613   855  4259 D TrafficStats: tagSocket(99) with statsTag=0xffffff81, statsUid=-1
+11-25 05:46:38.659   735   735 D StatusBarIconController: ignoring old pipeline callbacks, because the new mobile icons are enabled
+11-25 05:46:38.735   855  4260 D NetworkMonitor/100: PROBE_HTTP http://connectivitycheck.gstatic.com/generate_204 time=443ms ret=204 request={Connection=[close], User-Agent=[Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.32 Safari/537.36]} headers={null=[HTTP/1.1 204 No Content], Connection=[close], Content-Length=[0], Cross-Origin-Resource-Policy=[cross-origin], Date=[Wed, 25 Nov 2026 05:46:43 GMT], X-Android-Received-Millis=[1795585598734], X-Android-Response-Source=[NETWORK 204], X-Android-Selected-Protocol=[http/1.1], X-Android-Sent-Millis=[1795585598523]}
+11-25 05:46:39.062   735   735 D StatusBarIconController: ignoring old pipeline callbacks, because the new mobile icons are enabled
+11-25 05:46:39.590  2800  3033 I NetworkScheduler.Stats: Task com.google.android.gms/com.google.android.gms.auth.account.be.legacy.AuthCronService started execution. cause:5 exec_start_elapsed_seconds: 168 [CONTEXT service_id=218 ]
+11-25 05:46:39.880  2800  3661 I bwdg    : No Heterodyne serving version in database [CONTEXT service_id=51 ]
+11-25 05:46:39.957  2800  2808 I .gms.persistent: Background young concurrent copying GC freed 63070(3454KB) AllocSpace objects, 2(40KB) LOS objects, 14% free, 20MB/24MB, paused 48.994ms,109us total 185.626ms
+11-25 05:46:40.150   735   742 I ndroid.systemui: Background young concurrent copying GC freed 397629(18MB) AllocSpace objects, 5(100KB) LOS objects, 56% free, 13MB/32MB, paused 765us,140us total 201.732ms
+11-25 05:46:40.369   735   735 D StatusBarIconController: ignoring old pipeline callbacks, because the new mobile icons are enabled
+11-25 05:46:40.408   855  4258 D TrafficStats: tagSocket(98) with statsTag=0xffffff81, statsUid=-1
+11-25 05:46:40.360     0     0 I binder  : 3661:2800 cannot find target node
+11-25 05:46:40.362     0     0 I binder  : 2800:3661 transaction async to 0:0 failed 157875/29189/-22, size 176-0 line 3210
+11-25 05:46:40.423  2800  3661 E IPCThreadState: Binder transaction failure: 157875/29189/-22
+11-25 05:46:40.509  3009  3329 I IPCThreadState: oneway function results for code 2 on binder at 0x704112ae42d0 will be dropped but finished with status UNKNOWN_TRANSACTION
+11-25 05:46:40.696   518   540 W Looper  : Slow dispatch took 117ms android.ui h=com.android.server.am.ActivityManagerService$UiHandler c=com.android.server.am.UidObserverController$$ExternalSyntheticLambda0@d2eb967 m=0
+11-25 05:46:41.147     0     0 I binder  : 3661:2800 cannot find target node
+11-25 05:46:41.212     0     0 I binder  : 2800:3661 transaction async to 0:0 failed 157936/29189/-22, size 176-0 line 3210
+11-25 05:46:41.260  2800  3661 E IPCThreadState: Binder transaction failure: 157936/29189/-22
+11-25 05:46:41.332     0     0 I binder  : 3661:2800 cannot find target node
+11-25 05:46:41.333     0     0 I binder  : 2800:3661 transaction async to 0:0 failed 157969/29189/-22, size 176-0 line 3210
+11-25 05:46:41.384  2800  3661 E IPCThreadState: Binder transaction failure: 157969/29189/-22
+11-25 05:46:41.367     0     0 I binder  : 3661:2800 cannot find target node
+11-25 05:46:41.368     0     0 I binder  : 2800:3661 transaction async to 0:0 failed 157974/29189/-22, size 176-0 line 3210
+11-25 05:46:41.409  2800  3661 E IPCThreadState: Binder transaction failure: 157974/29189/-22
+11-25 05:46:43.339   735   735 D StatusBarIconController: ignoring old pipeline callbacks, because the new mobile icons are enabled
+11-25 05:46:44.478   735   735 D StatusBarIconController: ignoring old pipeline callbacks, because the new mobile icons are enabled
+11-25 05:46:44.491     0     0 I init    : Received sys.powerctl='reboot,shell' from pid: 4277 (/system/bin/reboot)
+11-25 05:46:44.507     0     0 I init    : Got shutdown_command 'reboot,shell' Calling HandlePowerctlMessage()
+11-25 05:46:44.511     0     0 I init    : Clear action queue and start shutdown trigger
+11-25 05:46:44.579     0     0 I init    : Entering shutdown mode
+11-25 05:46:44.582     0     0 I init    : processing action (shutdown_done) from (<Builtin Action>:0)
+11-25 05:46:44.591     0     0 I init    : Reboot start, reason: reboot,shell, reboot_target: shell
+11-25 05:46:44.595     0     0 I init    : Shutdown timeout: 6000 ms
+11-25 05:46:44.596     0     0 I init    : Create reboot monitor thread.
+11-25 05:46:44.641     0     0 I init    : shutdown_timeout_timespec.tv_sec: 480
+11-25 05:46:44.766     0     0 I init    : service 'ueventd' requested start, but it is already running (flags: 2084)
+11-25 05:46:44.783     0     0 I init    : starting service 'blank_screen'...
+11-25 05:46:44.990     0     0 I init    : ... started service 'blank_screen' has pid 4282
+11-25 05:46:44.992     0     0 I init    : service 'hwservicemanager' requested start, but it is already running (flags: 2212)
+11-25 05:46:45.032     0     0 I init    : service 'servicemanager' requested start, but it is already running (flags: 2084)
+11-25 05:46:45.046     0     0 I init    : service 'vold' requested start, but it is already running (flags: 2052)
+11-25 05:46:45.048     0     0 I init    : service 'vendor.light-default' requested start, but it is already running (flags: 2052)
+11-25 05:46:45.155     0     0 I init    : Stopping 125 services by sending SIGTERM
+11-25 05:46:45.160     0     0 I init    : Sending signal 15 to service 'vendor.biometrics.fingerprint-service.ranchu' (pid 960) process group...
+11-25 05:46:45.179     0     0 W servicemanager: a service was removed when there are clients
+11-25 05:46:45.179     0     0 I init    : Sending signal 15 to service 'vendor.gnss.ranchu' (pid 790) process group...
+11-25 05:46:45.218   518  1133 E FingerprintProvider/default: HAL died
+11-25 05:46:45.257     0     0 I servicemanager: Found android.hardware.light.ILights/default in device VINTF manifest.
+11-25 05:46:45.340   380   380 I android.hardware.lights-service.example: Lights reporting supported lights
+11-25 05:46:45.311     0     0 W servicemanager: a service was removed when there are clients
+11-25 05:46:45.352   380   380 I android.hardware.lights-service.example: Lights setting state for id=1 to color 0
+11-25 05:46:45.358   380   380 I android.hardware.lights-service.example: Lights setting state for id=2 to color 0
+11-25 05:46:45.359   380   380 I android.hardware.lights-service.example: Lights setting state for id=3 to color 0
+11-25 05:46:45.410   518  1468 E GnssJni : GNSS AIDL service failed, trying to recover...
+11-25 05:46:45.417   518  1468 E GnssManager: gnss hal died - restarting shortly...
+11-25 05:46:45.359     0     0 I init    : Sending signal 15 to service 'wpa_supplicant' (pid 718) process group...
+11-25 05:46:45.429     0     0 I init    : Sending signal 15 to service 'gatekeeperd' (pid 470) process group...
+11-25 05:46:45.482     0     0 I init    : Sending signal 15 to service 'media.swcodec' (pid 469) process group...
+11-25 05:46:45.499     0     0 I init    : Sending signal 15 to service 'vendor.ril-daemon' (pid 468) process group...
+11-25 05:46:45.519     0     0 I servicemanager: Found android.hardware.gnss.IGnss/default in device VINTF manifest.
+11-25 05:46:45.532     0     0 I servicemanager: Since 'android.hardware.gnss.IGnss/default' could not be found, trying to start it as a lazy AIDL service. (if it's not configured to be a lazy service, it may be stuck starting or still starting).
+11-25 05:46:45.582   735  1160 D BufferPoolAccessor2.0: bufferpool2 0x704102ab07b8 : 0(0 size) total buffers - 0(0 size) used buffers - 2/7 (recycle/alloc) - 5/36 (fetch/transfer)
+11-25 05:46:45.583   718   718 I wpa_supplicant: p2p-dev-wlan0: CTRL-EVENT-DSCP-POLICY clear_all
+11-25 05:46:45.584   718   718 I wpa_supplicant: Deinit sm=0x708138078d90
+11-25 05:46:45.612   463   463 I wificond: wificond is about to exit
+11-25 05:46:45.579     0     0 I init    : Sending signal 15 to service 'wificond' (pid 463) process group...
+11-25 05:46:45.718   718   718 I wpa_supplicant: p2p-dev-wlan0: CTRL-EVENT-DSCP-POLICY clear_all
+11-25 05:46:45.727   134  4283 W libc    : Unable to set property "ctl.interface_start" to "aidl/android.hardware.gnss.IGnss/default": error code: 0x20
+11-25 05:46:45.692     0     0 E init    : Unable to set property 'ctl.interface_start' from uid:1000 gid:1000 pid:134: Received control message after shutdown, ignoring
+11-25 05:46:45.710     0     0 I init    : Sending signal 15 to service 'storaged' (pid 462) process group...
+11-25 05:46:45.716     0     0 I servicemanager: Tried to start aidl service android.hardware.gnss.IGnss/default as a lazy service, but was unable to. Usually this happens when a service is not installed, but if the service is intended to be used as a lazy service, then it may be configured incorrectly.
+11-25 05:46:45.746     0     0 I init    : Sending signal 15 to service 'media' (pid 461) process group...
+11-25 05:46:45.749     0     0 I init    : Sending signal 15 to service 'mediametrics' (pid 458) process group...
+11-25 05:46:45.766     0     0 I init    : Sending signal 15 to service 'mediaextractor' (pid 457) process group...
+11-25 05:46:45.819   343   343 E android.hardware.health-service.example: unlinkToDeath: removed reference to death recipient but unlink failed: DEAD_OBJECT
+11-25 05:46:45.819   343   343 E IPCThreadState: attemptIncStrongHandle(1): Not supported
+11-25 05:46:45.828   518  1133 W StorageManagerService: storaged died; reconnecting
+11-25 05:46:45.840   518  1133 W StorageManagerService: storaged not found; trying again
+11-25 05:46:45.859   718   718 I wpa_supplicant: nl80211: deinit ifname=p2p-dev-wlan0 disabled_11b_rates=0
+11-25 05:46:45.831     0     0 I init    : Sending signal 15 to service 'installd' (pid 456) process group...
+11-25 05:46:45.901   735  1160 D BufferPoolConnection: connection 3158596548003 closed on death
+11-25 05:46:45.902   735  1160 D BufferPoolAccessor2.0: bufferpool2 0x704102ab10f8 : 0(0 size) total buffers - 0(0 size) used buffers - 2/7 (recycle/alloc) - 5/38 (fetch/transfer)
+11-25 05:46:45.902   735  1160 D BufferPoolConnection: connection 3158596548005 closed on death
+11-25 05:46:45.903   735  1160 D BufferPoolAccessor2.0: bufferpool2 0x704102ab1c88 : 0(0 size) total buffers - 0(0 size) used buffers - 1/7 (recycle/alloc) - 6/18 (fetch/transfer)
+11-25 05:46:45.903   735  1160 D BufferPoolConnection: connection 3158596548007 closed on death
+11-25 05:46:45.866     0     0 I init    : Sending signal 15 to service 'incidentd' (pid 455) process group...
+11-25 05:46:45.923   735  1160 D BufferPoolAccessor2.0: Destruction - bufferpool2 0x704102ab07b8 cached: 0/0M, 0/0% in use; allocs: 7, 29% recycled; transfers: 36, 86% unfetched
+11-25 05:46:45.927   389   406 W mediametrics::Item: Reacquire service connection on next request
+11-25 05:46:45.940  1311  1544 W mediametrics::Item: Reacquire service connection on next request
+11-25 05:46:45.950   518   588 W Installer: installd died; reconnecting
+11-25 05:46:45.927     0     0 I init    : Sending signal 15 to service 'cameraserver' (pid 452) process group...
+11-25 05:46:45.948     0     0 I servicemanager: Found android.hardware.radio.ims.IRadioIms/slot1 in device VINTF manifest.
+11-25 05:46:45.979     0     0 I init    : Sending signal 15 to service 'bt_vhci_forwarder' (pid 451) process group...
+11-25 05:46:46.017     0     0 I init    : Sending signal 15 to service 'goldfish-logcat' (pid 450) process group...
+11-25 05:46:46.048     0     0 I init    : Sending signal 15 to service 'traced' (pid 445) process group...
+11-25 05:46:46.150   443   443 I perfetto:  probes_producer.cc:382 Disconnected from tracing service
+11-25 05:46:46.151   443   443 I perfetto:  probes_producer.cc:382 Disconnected from tracing service
+11-25 05:46:46.099     0     0 I init    : Sending signal 15 to service 'traced_probes' (pid 443) process group...
+11-25 05:46:46.195     0     0 I init    : Sending signal 15 to service 'drm' (pid 432) process group...
+11-25 05:46:46.208     0     0 I init    : Sending signal 15 to service 'mdnsd' (pid 427) process group...
+11-25 05:46:46.214     0     0 I init    : Sending signal 15 to service 'surfaceflinger' (pid 394) process group...
+11-25 05:46:46.262     0     0 I init    : Sending signal 15 to service 'gpu' (pid 392) process group...
+11-25 05:46:46.331   718   718 I wpa_supplicant: p2p-dev-wlan0: CTRL-EVENT-TERMINATING 
+11-25 05:46:46.339   718   718 I wpa_supplicant: wlan0: CTRL-EVENT-DSCP-POLICY clear_all
+11-25 05:46:46.357   371  1019 W android.hardware.bluetooth.hci-h4: error reading from UART (Broken pipe)
+11-25 05:46:46.361   735   802 W mediametrics::Item: Reacquire service connection on next request
+11-25 05:46:46.332     0     0 I init    : Sending signal 15 to service 'credstore' (pid 391) process group...
+11-25 05:46:46.394  1311  1544 W DrmManagerClientImpl(Native): DrmManager server died!
+11-25 05:46:46.363     0     0 I init    : Sending signal 15 to service 'audioserver' (pid 389) process group...
+11-25 05:46:46.428     0     0 I servicemanager: Found android.hardware.radio.ims.IRadioIms/slot1 in device VINTF manifest.
+11-25 05:46:46.476   718   718 I wpa_supplicant: Deinit sm=0x708138079d50
+11-25 05:46:46.509   735  1160 D BufferPoolAccessor2.0: Destruction - bufferpool2 0x704102ab10f8 cached: 0/0M, 0/0% in use; allocs: 7, 29% recycled; transfers: 38, 87% unfetched
+11-25 05:46:46.510   735  1160 D BufferPoolAccessor2.0: Destruction - bufferpool2 0x704102ab1c88 cached: 0/0M, 0/0% in use; allocs: 7, 14% recycled; transfers: 18, 67% unfetched
+11-25 05:46:46.443     0     0 I servicemanager: Since 'android.hardware.radio.ims.IRadioIms/slot1' could not be found, trying to start it as a lazy AIDL service. (if it's not configured to be a lazy service, it may be stuck starting or still starting).
+11-25 05:46:46.498     0     0 I init    : Sending signal 15 to service 'vendor.drm-widevine-hal' (pid 388) process group...
+11-25 05:46:46.513     0     0 I init    : Sending signal 15 to service 'vendor.vibrator-default' (pid 387) process group...
+11-25 05:46:46.540     0     0 I init    : Sending signal 15 to service 'vendor.rebootescrow-default' (pid 384) process group...
+11-25 05:46:46.570     0     0 E init    : Unable to set property 'ctl.interface_start' from uid:1000 gid:1000 pid:134: Received control message after shutdown, ignoring
+11-25 05:46:46.609   735   735 I Choreographer: Skipped 60 frames!  The application may be doing too much work on its main thread.
+11-25 05:46:46.610   134  4287 W libc    : Unable to set property "ctl.interface_start" to "aidl/android.hardware.radio.ims.IRadioIms/slot1": error code: 0x20
+11-25 05:46:46.615   518  1505 W mediametrics::Item: Reacquire service connection on next request
+11-25 05:46:46.620   518  1474 W ContentProviderHelper: Slow operation: 1151ms so far, now at getContentProviderImpl: after updateOomAdj
+11-25 05:46:46.582     0     0 I servicemanager: Tried to start aidl service android.hardware.radio.ims.IRadioIms/slot1 as a lazy service, but was unable to. Usually this happens when a service is not installed, but if the service is intended to be used as a lazy service, then it may be configured incorrectly.
+11-25 05:46:46.628   518   588 W Installer: installd not found; trying again
+11-25 05:46:46.632   518   588 W Installer: installd died; reconnecting
+11-25 05:46:46.632   518  1474 W ContentProviderHelper: Slow operation: 1163ms so far, now at getContentProviderImpl: done!
+11-25 05:46:46.598     0     0 I init    : Sending signal 15 to service 'vendor.power.stats-default' (pid 383) process group...
+11-25 05:46:46.624     0     0 I init    : Sending signal 15 to service 'vendor.power-default' (pid 382) process group...
+11-25 05:46:46.654     0     0 I init    : Sending signal 15 to service 'vendor.identity-default' (pid 379) process group...
+11-25 05:46:46.751   518   551 W system_server: Long monitor contention with owner binder:518_F (1474) at android.app.ContentProviderHolder com.android.server.am.ContentProviderHelper.getContentProviderImpl(android.app.IApplicationThread, java.lang.String, android.os.IBinder, int, java.lang.String, java.lang.String, boolean, int)(ContentProviderHelper.java:614) waiters=0 in boolean com.android.server.am.BroadcastQueueModernImpl.lambda$new$0(android.os.Message) for 1.119s
+11-25 05:46:46.765   518   588 W Installer: installd not found; trying again
+11-25 05:46:46.724     0     0 I init    : Sending signal 15 to service 'vendor.hwcomposer-3' (pid 378) process group...
+11-25 05:46:46.773   518  1474 W PowerStatsHALWrapper: PowerStats HAL died
+11-25 05:46:46.776   518   588 W Installer: installd died; reconnecting
+11-25 05:46:46.780     0     0 I init    : Sending signal 15 to service 'vendor.face-default' (pid 377) process group...
+11-25 05:46:46.837   518  1474 E FaceProvider/default: HAL died
+11-25 05:46:46.807     0     0 I init    : Sending signal 15 to service 'vendor.contexthub-default' (pid 376) process group...
+11-25 05:46:46.850   518   518 E UaBiometricScheduler/FingerprintProvider/default/0: Recorded crash state: 2026-11-25 05:46:45.567: Current Operation: {null}, Pending Operations(0)
+11-25 05:46:46.857   518   518 D UaBiometricScheduler/FingerprintProvider/default/0: Resetting scheduler
+11-25 05:46:46.858   518   518 W Looper  : Slow dispatch took 1468ms main h=android.os.Handler c=com.android.server.biometrics.sensors.fingerprint.aidl.FingerprintProvider$$ExternalSyntheticLambda1@418ff93 m=0
+11-25 05:46:46.885   518   518 E WifiNl80211Manager: Wificond died!
+11-25 05:46:46.894   735   784 W Looper  : Slow delivery took 1304ms SysUiBg h=android.os.Handler c=com.android.systemui.settings.brightness.BrightnessController$2@ba39435 m=0
+11-25 05:46:46.881     0     0 I init    : Sending signal 15 to service 'vendor.cas-default' (pid 372) process group...
+11-25 05:46:46.899     0     0 I init    : Sending signal 15 to service 'vendor.bluetooth-default' (pid 371) process group...
+11-25 05:46:46.944   518   535 D ActivityManager: freezer override set to true
+11-25 05:46:46.954   518   535 D ActivityManager: sync unfroze 1639 com.android.traceur for 19
+11-25 05:46:46.930     0     0 I init    : Sending signal 15 to service 'vendor.wifi_hal_legacy' (pid 370) process group...
+11-25 05:46:46.985   518   550 W StorageManagerService: storaged not found; trying again
+11-25 05:46:46.990   518   539 W ServiceManagerCppClient: Waited one second for android.hardware.gnss.IGnss/default (is service started? Number of threads started in the threadpool: 31. Are binder threads started and available?)
+11-25 05:46:47.008   518  1505 W WifiHalAidlImpl: IWifi binder died.
+11-25 05:46:47.016   518  1468 E UsbPortManager: Usb AIDL hal service died
+11-25 05:46:47.017   518   588 W Installer: installd not found; trying again
+11-25 05:46:47.017   518   588 W Installer: installd died; reconnecting
+11-25 05:46:47.032   518  1477 W AudioSystem: AudioPolicyService server died!
+11-25 05:46:47.033   518  1477 W CaptureStateTracker: Audio policy service died
+11-25 05:46:47.038   518  2310 W SensorService: Sensors HAL died, attempting to reconnect.
+11-25 05:46:47.038   518   592 D SensorService: Event FMQ internal wake, returning from poll with no events
+11-25 05:46:46.948     0     0 I init    : Sending signal 15 to service 'vendor.usb_default' (pid 360) process group...
+11-25 05:46:46.958     0     0 I init    : Sending signal 15 to service 'vendor.thermal-hal-2-0-mock' (pid 357) process group...
+11-25 05:46:46.963     0     0 I servicemanager: Since 'android.hardware.gnss.IGnss/default' could not be found, trying to start it as a lazy AIDL service. (if it's not configured to be a lazy service, it may be stuck starting or still starting).
+11-25 05:46:46.989     0     0 I init    : Sending signal 15 to service 'vendor.sensors-hal-multihal' (pid 351) process group...
+11-25 05:46:46.994     0     0 I servicemanager: Since 'android.hardware.usb.IUsb/default' could not be found, trying to start it as a lazy AIDL service. (if it's not configured to be a lazy service, it may be stuck starting or still starting).
+11-25 05:46:47.007     0     0 I init    : Sending signal 15 to service 'neuralnetworks_hal_service_shim_sample' (pid 350) process group...
+11-25 05:46:47.039   518  2310 E IPCThreadState: attemptIncStrongHandle(21): Not supported
+11-25 05:46:47.045  1637  1695 E AudioSystem-JNI: Command failed for android_media_AudioSystem_error_callback: -32
+11-25 05:46:47.046  1637  1695 W AudioSystem: AudioFlinger server died!
+11-25 05:46:47.021     0     0 I init    : Sending signal 15 to service 'neuralnetworks_hal_service_aidl_sample_limited' (pid 349) process group...
+11-25 05:46:47.062     0     0 I servicemanager: Found android.hardware.sensors.ISensors/default in device VINTF manifest.
+11-25 05:46:47.140   735  4285 I CameraManagerGlobal: Connecting to camera service
+11-25 05:46:47.201   718   718 I wpa_supplicant: wlan0: CTRL-EVENT-DSCP-POLICY clear_all
+11-25 05:46:47.201   718   718 I wpa_supplicant: nl80211: deinit ifname=wlan0 disabled_11b_rates=0
+11-25 05:46:47.132     0     0 I servicemanager: Since 'android.hardware.sensors.ISensors/default' could not be found, trying to start it as a lazy AIDL service. (if it's not configured to be a lazy service, it may be stuck starting or still starting).
+11-25 05:46:47.162     0     0 E init    : Unable to set property 'ctl.interface_start' from uid:1000 gid:1000 pid:134: Received control message after shutdown, ignoring
+11-25 05:46:47.180     0     0 E init    : Unable to set property 'ctl.interface_start' from uid:1000 gid:1000 pid:134: Received control message after shutdown, ignoring
+11-25 05:46:47.182     0     0 I servicemanager: Tried to start aidl service android.hardware.usb.IUsb/default as a lazy service, but was unable to. Usually this happens when a service is not installed, but if the service is intended to be used as a lazy service, then it may be configured incorrectly.
+11-25 05:46:47.194     0     0 I servicemanager: Tried to start aidl service android.hardware.gnss.IGnss/default as a lazy service, but was unable to. Usually this happens when a service is not installed, but if the service is intended to be used as a lazy service, then it may be configured incorrectly.
+11-25 05:46:47.215   134  4293 W libc    : Unable to set property "ctl.interface_start" to "aidl/android.hardware.usb.IUsb/default": error code: 0x20
+11-25 05:46:47.222   134  4291 W libc    : Unable to set property "ctl.interface_start" to "aidl/android.hardware.gnss.IGnss/default": error code: 0x20
+11-25 05:46:47.258  3009  3020 E ogle.android.as: unlinkToDeath: removed reference to death recipient but unlink failed: DEAD_OBJECT
+11-25 05:46:47.258   718   718 I BpBinder: onLastStrongRef automatically unlinking death recipients: android.hardware.wifi.supplicant.ISupplicantStaIfaceCallback
+11-25 05:46:47.258   718   718 I wpa_supplicant: wlan0: CTRL-EVENT-TERMINATING 
+11-25 05:46:47.258  3009  3020 E ogle.android.as: unlinkToDeath: removed reference to death recipient but unlink failed: DEAD_OBJECT
+11-25 05:46:47.259   735  4285 E CameraManagerGlobal: Camera service is unavailable
+11-25 05:46:47.303   886  1073 E bluetooth: packages/modules/Bluetooth/system/gd/hal/hci_hal_android_hidl.cc:420 operator(): Bluetooth HAL service died. Calling exit(0);
+11-25 05:46:47.310   886  1073 I BtStopWatch: packages/modules/Bluetooth/system/gd/common/stop_watch.cc:58 DumpStopWatchLog: =-----------------------------------=
+11-25 05:46:47.310   886  1073 I BtStopWatch: packages/modules/Bluetooth/system/gd/common/stop_watch.cc:59 DumpStopWatchLog: bluetooth stopwatch log history:
+11-25 05:46:47.231     0     0 I init    : Sending signal 15 to service 'neuralnetworks_hal_service_aidl_sample_all' (pid 348) process group...
+11-25 05:46:47.310     0     0 E init    : Unable to set property 'ctl.interface_start' from uid:1000 gid:1000 pid:134: Received control message after shutdown, ignoring
+11-25 05:46:47.343   134  4294 W libc    : Unable to set property "ctl.interface_start" to "aidl/android.hardware.sensors.ISensors/default": error code: 0x20
+11-25 05:46:47.315     0     0 I servicemanager: Tried to start aidl service android.hardware.sensors.ISensors/default as a lazy service, but was unable to. Usually this happens when a service is not installed, but if the service is intended to be used as a lazy service, then it may be configured incorrectly.
+11-25 05:46:47.350  3009  3021 E ogle.android.as: unlinkToDeath: removed reference to death recipient but unlink failed: DEAD_OBJECT
+11-25 05:46:47.323     0     0 I init    : Sending signal 15 to service 'android-hardware-media-c2-goldfish-hal-1-0' (pid 344) process group...
+11-25 05:46:47.382   518  1133 E AudioSystem-JNI: Command failed for android_media_AudioSystem_error_callback: -32
+11-25 05:46:47.386   518   672 I ServiceManagerCppClient: Waiting for service 'media.audio_policy' on '/dev/binder'...
+11-25 05:46:47.389   518   535 D ActivityManager: sync unfroze 1701 com.google.android.onetimeinitializer for 19
+11-25 05:46:47.393   335   368 I r_submix: adev_close()
+11-25 05:46:47.402   518   588 W Installer: installd not found; trying again
+11-25 05:46:47.403   518   518 I WifiNative: wificond died. Cleaning up internal state.
+11-25 05:46:47.360     0     0 I init    : Sending signal 15 to service 'vendor.health-default' (pid 343) process group...
+11-25 05:46:47.407   518  4286 I CameraManagerGlobal: Connecting to camera service
+11-25 05:46:47.410   518  4286 E CameraManagerGlobal: Camera service is unavailable
+11-25 05:46:47.440   518  1164 E HardwarePropertiesManagerService-JNI: Thermal HAL just died
+11-25 05:46:47.402     0     0 I init    : Sending signal 15 to service 'vendor.gralloc-3-0' (pid 340) process group...
+11-25 05:46:47.447     0     0 I init    : Sending signal 15 to service 'vendor.gatekeeper-1-0' (pid 339) process group...
+11-25 05:46:47.483   518  1133 W AudioSystem: AudioFlinger server died!
+11-25 05:46:47.505   518   535 D ActivityManager: sync unfroze 1868 com.android.externalstorage for 19
+11-25 05:46:47.474     0     0 I init    : Sending signal 15 to service 'vendor.camera-provider-2-7-google' (pid 338) process group...
+11-25 05:46:47.507   518   535 D ActivityManager: sync unfroze 1945 com.android.localtransport for 19
+11-25 05:46:47.510   518   670 E AudioSystem-JNI: Command failed for android_media_AudioSystem_checkAudioFlinger: -32
+11-25 05:46:47.489     0     0 I init    : Sending signal 15 to service 'vendor.camera-provider-ranchu' (pid 337) process group...
+11-25 05:46:47.506     0     0 I servicemanager: Could not find android.hardware.thermal.IThermal/default in the VINTF manifest.
+11-25 05:46:47.539   518   535 D ActivityManager: sync unfroze 2016 com.android.printspooler for 19
+11-25 05:46:47.539   518  1164 I HardwarePropertiesManagerService-JNI: Thermal AIDL service is not declared, trying HIDL
+11-25 05:46:47.540   135   135 I hwservicemanager: Since android.hardware.thermal@1.0::IThermal/default is not registered, trying to start it as a lazy HAL (if it's not configured to be a lazy HAL, it may be stuck starting or still starting).
+11-25 05:46:47.544   518   535 D ActivityManager: sync unfroze 2491 com.google.android.dialer for 19
+11-25 05:46:47.553  2491  2543 E AudioSystem-JNI: Command failed for android_media_AudioSystem_error_callback: -32
+11-25 05:46:47.553  2491  2543 W AudioSystem: AudioFlinger server died!
+11-25 05:46:47.556   135   135 I hwservicemanager: Since android.hardware.thermal@1.0::IThermal/default is not registered, trying to start it as a lazy HAL (if it's not configured to be a lazy HAL, it may be stuck starting or still starting).
+11-25 05:46:47.587   918   918 W ServiceManagerCppClient: Waited one second for android.hardware.radio.ims.IRadioIms/slot1 (is service started? Number of threads started in the threadpool: 15. Are binder threads started and available?)
+11-25 05:46:47.590   518  1164 I HidlServiceManagement: getService: Trying again for android.hardware.thermal@1.0::IThermal/default...
+11-25 05:46:47.609  1311  1544 W MediaMetadataRetriever: MediaMetadataRetriever server died!
+11-25 05:46:47.619   134  4298 W libc    : Unable to set property "ctl.interface_start" to "aidl/android.hardware.radio.ims.IRadioIms/slot1": error code: 0x20
+11-25 05:46:47.675   518   550 W Installer: installd not found; trying again
+11-25 05:46:47.677   135  4297 W libc    : Unable to set property "ctl.interface_start" to "android.hardware.thermal@1.0::IThermal/default": error code: 0x20
+11-25 05:46:47.677   135  4297 I hwservicemanager: Tried to start android.hardware.thermal@1.0::IThermal/default as a lazy service, but was unable to. Usually this happens when a service is not installed, but if the service is intended to be used as a lazy service, then it may be configured incorrectly.
+11-25 05:46:47.684   886  1073 I BtStopWatch: packages/modules/Bluetooth/system/gd/common/stop_watch.cc:84 DumpStopWatchLog: 2026-11-25 05:46:01.000: hciEventReceived: len 6, 1st 5 bytes '0e04014220': took 560 us
+11-25 05:46:47.684   886  1073 I BtStopWatch: packages/modules/Bluetooth/system/gd/common/stop_watch.cc:84 DumpStopWatchLog: 2026-11-25 05:46:01.001: hciEventReceived: len 6, 1st 5 bytes '0e04014220': took 1296 us
+11-25 05:46:47.686   886  1073 I BtStopWatch: packages/modules/Bluetooth/system/gd/common/stop_watch.cc:84 DumpStopWatchLog: 2026-11-25 05:46:01.004: hciEventReceived: len 6, 1st 5 bytes '0e04014120': took 1025 us
+11-25 05:46:47.686   886  1073 I BtStopWatch: packages/modules/Bluetooth/system/gd/common/stop_watch.cc:84 DumpStopWatchLog: 2026-11-25 05:46:01.006: hciEventReceived: len 6, 1st 5 bytes '0e04014220': took 142 us
+11-25 05:46:47.686   886  1073 I BtStopWatch: packages/modules/Bluetooth/system/gd/common/stop_watch.cc:84 DumpStopWatchLog: 2026-11-25 05:46:06.917: hciEventReceived: len 6, 1st 5 bytes '0e04014220': took 261 us
+11-25 05:46:47.686   886  1073 I BtStopWatch: packages/modules/Bluetooth/system/gd/common/stop_watch.cc:84 DumpStopWatchLog: 2026-11-25 05:46:06.919: hciEventReceived: len 9, 1st 5 bytes '0e070157fd': took 976 us
+11-25 05:46:47.686   886  1073 I BtStopWatch: packages/modules/Bluetooth/system/gd/common/stop_watch.cc:84 DumpStopWatchLog: 2026-11-25 05:46:06.922: hciEventReceived: len 9, 1st 5 bytes '0e070157fd': took 343 us
+11-25 05:46:47.687   886  1073 I BtStopWatch: packages/modules/Bluetooth/system/gd/common/stop_watch.cc:84 DumpStopWatchLog: 2026-11-25 05:46:06.927: hciEventReceived: len 9, 1st 5 bytes '0e070157fd': took 556 us
+11-25 05:46:47.689   886  1073 I BtStopWatch: packages/modules/Bluetooth/system/gd/common/stop_watch.cc:84 DumpStopWatchLog: 2026-11-25 05:46:06.932: hciEventReceived: len 9, 1st 5 bytes '0e070157fd': took 502 us
+11-25 05:46:47.689   886  1073 I BtStopWatch: packages/modules/Bluetooth/system/gd/common/stop_watch.cc:84 DumpStopWatchLog: 2026-11-25 05:46:06.935: hciEventReceived: len 9, 1st 5 bytes '0e070157fd': took 47 us
+11-25 05:46:47.775   328   328 W statsd  : statsd terminated on receiving signal 15.
+11-25 05:46:47.786   328   508 I statsd  : StatsService::Terminating
+11-25 05:46:47.866   328   508 I BpBinder: onLastStrongRef automatically unlinking death recipients: android.os.IPendingIntentRef
+11-25 05:46:48.216   135  4295 W libc    : Unable to set property "ctl.interface_start" to "android.hardware.thermal@1.0::IThermal/default": error code: 0x20
+11-25 05:46:48.216   135  4295 I hwservicemanager: Tried to start android.hardware.thermal@1.0::IThermal/default as a lazy service, but was unable to. Usually this happens when a service is not installed, but if the service is intended to be used as a lazy service, then it may be configured incorrectly.
+11-25 05:46:47.514     0     0 I init    : Sending signal 15 to service 'vendor.authsecret_default' (pid 336) process group...
+11-25 05:46:47.559     0     0 I servicemanager: Since 'android.hardware.radio.ims.IRadioIms/slot1' could not be found, trying to start it as a lazy AIDL service. (if it's not configured to be a lazy service, it may be stuck starting or still starting).
+11-25 05:46:47.580     0     0 E init    : Unable to set property 'ctl.interface_start' from uid:1000 gid:1000 pid:134: Received control message after shutdown, ignoring
+11-25 05:46:47.591     0     0 I init    : Sending signal 15 to service 'vendor.audio-hal' (pid 335) process group...
+11-25 05:46:47.591     0     0 I servicemanager: Tried to start aidl service android.hardware.radio.ims.IRadioIms/slot1 as a lazy service, but was unable to. Usually this happens when a service is not installed, but if the service is intended to be used as a lazy service, then it may be configured incorrectly.
+11-25 05:46:47.615     0     0 I init    : Sending signal 15 to service 'hidl_memory' (pid 334) process group...
+11-25 05:46:47.645     0     0 E init    : Unable to set property 'ctl.interface_start' from uid:1000 gid:1000 pid:135: Received control message after shutdown, ignoring
+11-25 05:46:47.659     0     0 I init    : Sending signal 15 to service 'zygote' (pid 330) process group...
+11-25 05:46:47.729     0     0 I init    : Sending signal 15 to service 'netd' (pid 329) process group...
+11-25 05:46:47.739     0     0 I init    : Sending signal 15 to service 'statsd' (pid 328) process group...
+11-25 05:46:47.777     0     0 I init    : Sending signal 15 to service 'dhcpclient_wifi' (pid 315) process group...
+11-25 05:46:47.804     0     0 I init    : Sending signal 15 to service 'vendor.keymint-default' (pid 160) process group...
+11-25 05:46:47.831     0     0 I init    : Sending signal 15 to service 'vendor.atrace-hal-1-0' (pid 158) process group...
+11-25 05:46:47.881     0     0 I init    : Sending signal 15 to service 'keystore2' (pid 157) process group...
+11-25 05:46:47.941     0     0 I binder  : undelivered death notification, 00007081d806f140
+11-25 05:46:47.946     0     0 I init    : Sending signal 15 to service 'system_suspend' (pid 156) process group...
+11-25 05:46:47.972     0     0 I init    : Sending signal 15 to service 'qemu-props' (pid 142) process group...
+11-25 05:46:47.995     0     0 I init    : Sending signal 15 to service 'lmkd' (pid 132) process group...
+11-25 05:46:48.038     0     0 I init    : Sending signal 15 to service 'prng_seeder' (pid 125) process group...
+11-25 05:46:48.063     0     0 I init    : Service 'prng_seeder' (pid 125) received signal 15
+11-25 05:46:48.064     0     0 I init    : Sending signal 9 to service 'prng_seeder' (pid 125) process group...
+11-25 05:46:48.094     0     0 I libprocessgroup: Successfully killed process cgroup uid 1092 pid 125 in 0ms
+11-25 05:46:48.159     0     0 I init    : Service 'lmkd' (pid 132) received signal 15
+11-25 05:46:48.180     0     0 E init    : Unable to set property 'ctl.interface_start' from uid:1000 gid:1000 pid:135: Received control message after shutdown, ignoring
+11-25 05:46:48.192     0     0 I init    : Sending signal 9 to service 'lmkd' (pid 132) process group...
+11-25 05:46:48.196     0     0 I libprocessgroup: Successfully killed process cgroup uid 1069 pid 132 in 0ms
+11-25 05:46:48.228     0     0 I init    : Service 'qemu-props' (pid 142) received signal 15 oneshot service took 171.848999 seconds in background
+11-25 05:46:48.231     0     0 I init    : Sending signal 9 to service 'qemu-props' (pid 142) process group...
+11-25 05:46:48.237     0     0 I libprocessgroup: Successfully killed process cgroup uid 0 pid 142 in 0ms
+11-25 05:46:48.290     0     0 I init    : Service 'system_suspend' (pid 156) received signal 15
+11-25 05:46:48.291     0     0 I init    : Sending signal 9 to service 'system_suspend' (pid 156) process group...
+11-25 05:46:48.295     0     0 I libprocessgroup: Successfully killed process cgroup uid 1000 pid 156 in 0ms
+11-25 05:46:48.380     0     0 I init    : Service 'keystore2' (pid 157) received signal 15
+11-25 05:46:48.397     0     0 I init    : Sending signal 9 to service 'keystore2' (pid 157) process group...
+11-25 05:46:48.429     0     0 I libprocessgroup: Successfully killed process cgroup uid 1017 pid 157 in 0ms
+11-25 05:46:48.441     0     0 I init    : Service 'vendor.atrace-hal-1-0' (pid 158) received signal 15
+11-25 05:46:48.446     0     0 I init    : Sending signal 9 to service 'vendor.atrace-hal-1-0' (pid 158) process group...
+11-25 05:46:48.448     0     0 I libprocessgroup: Successfully killed process cgroup uid 1000 pid 158 in 0ms
+11-25 05:46:48.480     0     0 I init    : Service 'vendor.keymint-default' (pid 160) received signal 15
+11-25 05:46:48.505     0     0 I init    : Sending signal 9 to service 'vendor.keymint-default' (pid 160) process group...
+11-25 05:46:48.513     0     0 I libprocessgroup: Successfully killed process cgroup uid 9999 pid 160 in 0ms
+11-25 05:46:48.543     0     0 I init    : Service 'dhcpclient_wifi' (pid 315) received signal 15
+11-25 05:46:48.562     0     0 I init    : Sending signal 9 to service 'dhcpclient_wifi' (pid 315) process group...
+11-25 05:46:48.564     0     0 I libprocessgroup: Successfully killed process cgroup uid 0 pid 315 in 0ms
+11-25 05:46:48.622     0     0 I binder  : undelivered transaction 157934, process died.
+11-25 05:46:48.624     0     0 I binder  : undelivered transaction 157994, process died.
+11-25 05:46:48.630     0     0 I init    : Service 'statsd' (pid 328) exited with status 1
+11-25 05:46:48.647     0     0 I init    : Sending signal 9 to service 'statsd' (pid 328) process group...
+11-25 05:46:48.656     0     0 I binder  : release 1925:1925 transaction 158487 out, still active
+11-25 05:46:48.658     0     0 I binder  : undelivered TRANSACTION_COMPLETE
+11-25 05:46:48.663     0     0 I libprocessgroup: Successfully killed process cgroup uid 1066 pid 328 in 0ms
+11-25 05:46:48.676     0     0 I binder  : release 1925:2776 transaction 136767 out, still active
+11-25 05:46:48.689     0     0 I binder  : undelivered TRANSACTION_COMPLETE
+11-25 05:46:48.692     0     0 I init    : Service 'netd' (pid 329) received signal 15
+11-25 05:46:48.695     0     0 I init    : Sending signal 9 to service 'netd' (pid 329) process group...
+11-25 05:46:48.698     0     0 I binder  : release 1925:2871 transaction 156163 out, still active
+11-25 05:46:48.699     0     0 I binder  : undelivered TRANSACTION_COMPLETE
+11-25 05:46:48.709     0     0 I libprocessgroup: Successfully killed process cgroup uid 0 pid 329 in 0ms
+11-25 05:46:48.724     0     0 I init    : Service 'zygote' (pid 330) received signal 15
+11-25 05:46:48.727     0     0 I init    : Sending signal 9 to service 'zygote' (pid 330) process group...
+11-25 05:46:48.743     0     0 I binder  : release 2885:2898 transaction 156163 in, still active
+11-25 05:46:49.089     0     0 E libprocessgroup: Failed to kill process cgroup uid 0 pid 330 in 351ms, 1 processes remain
+11-25 05:46:49.319     0     0 I init    : Service 'hidl_memory' (pid 334) received signal 15
+11-25 05:46:49.335     0     0 I init    : Sending signal 9 to service 'hidl_memory' (pid 334) process group...
+11-25 05:46:49.339     0     0 I libprocessgroup: Successfully killed process cgroup uid 1000 pid 334 in 0ms
+11-25 05:46:49.358     0     0 I init    : Service 'vendor.audio-hal' (pid 335) received signal 15
+11-25 05:46:49.360     0     0 I init    : Sending signal 9 to service 'vendor.audio-hal' (pid 335) process group...
+11-25 05:46:49.373     0     0 I libprocessgroup: Successfully killed process cgroup uid 1041 pid 335 in 0ms
+11-25 05:46:49.387     0     0 I init    : Service 'vendor.authsecret_default' (pid 336) received signal 15
+11-25 05:46:49.389     0     0 I init    : Sending signal 9 to service 'vendor.authsecret_default' (pid 336) process group...
+11-25 05:46:49.993   414   420 I adbd    : adbd_auth: hit EOF on framework fd
+11-25 05:46:49.999   414   420 I adbd    : adbd_auth: received new framework fd -1 (current = 22)
+11-25 05:46:49.397     0     0 I libprocessgroup: Successfully killed process cgroup uid 1064 pid 336 in 0ms
+11-25 05:46:49.422     0     0 I init    : Service 'vendor.camera-provider-ranchu' (pid 337) received signal 15
+11-25 05:46:49.503     0     0 I init    : Sending signal 9 to service 'vendor.camera-provider-ranchu' (pid 337) process group...
+11-25 05:46:49.511     0     0 I libprocessgroup: Successfully killed process cgroup uid 1000 pid 337 in 0ms
+11-25 05:46:49.608     0     0 I init    : Service 'vendor.camera-provider-2-7-google' (pid 338) received signal 15
+11-25 05:46:49.612     0     0 I init    : Sending signal 9 to service 'vendor.camera-provider-2-7-google' (pid 338) process group...
+11-25 05:46:49.614     0     0 I libprocessgroup: Successfully killed process cgroup uid 1000 pid 338 in 0ms
+11-25 05:46:49.641     0     0 I init    : Service 'vendor.gatekeeper-1-0' (pid 339) received signal 15
+11-25 05:46:49.642     0     0 I init    : Sending signal 9 to service 'vendor.gatekeeper-1-0' (pid 339) process group...
+11-25 05:46:49.647     0     0 I libprocessgroup: Successfully killed process cgroup uid 1000 pid 339 in 0ms
+11-25 05:46:49.676     0     0 I init    : Service 'vendor.gralloc-3-0' (pid 340) received signal 15
+11-25 05:46:49.678     0     0 I init    : Sending signal 9 to service 'vendor.gralloc-3-0' (pid 340) process group...
+11-25 05:46:49.680     0     0 I libprocessgroup: Successfully killed process cgroup uid 1000 pid 340 in 0ms
+11-25 05:46:49.714     0     0 I init    : Service 'vendor.health-default' (pid 343) received signal 15
+11-25 05:46:49.715     0     0 I init    : Sending signal 9 to service 'vendor.health-default' (pid 343) process group...
+11-25 05:46:49.738     0     0 I libprocessgroup: Successfully killed process cgroup uid 1000 pid 343 in 0ms
+11-25 05:46:49.773     0     0 I init    : Service 'android-hardware-media-c2-goldfish-hal-1-0' (pid 344) received signal 15
+11-25 05:46:49.775     0     0 I init    : Sending signal 9 to service 'android-hardware-media-c2-goldfish-hal-1-0' (pid 344) process group...
+11-25 05:46:49.779     0     0 I libprocessgroup: Successfully killed process cgroup uid 1013 pid 344 in 0ms
+11-25 05:46:49.790     0     0 I init    : Service 'neuralnetworks_hal_service_aidl_sample_all' (pid 348) received signal 15
+11-25 05:46:49.794     0     0 I init    : Sending signal 9 to service 'neuralnetworks_hal_service_aidl_sample_all' (pid 348) process group...
+11-25 05:46:49.798     0     0 I libprocessgroup: Successfully killed process cgroup uid 1000 pid 348 in 0ms
+11-25 05:46:49.876     0     0 I init    : Service 'neuralnetworks_hal_service_aidl_sample_limited' (pid 349) received signal 15
+11-25 05:46:49.888     0     0 I init    : Sending signal 9 to service 'neuralnetworks_hal_service_aidl_sample_limited' (pid 349) process group...
+11-25 05:46:49.890     0     0 I libprocessgroup: Successfully killed process cgroup uid 1000 pid 349 in 0ms
+11-25 05:46:49.923     0     0 I init    : Service 'neuralnetworks_hal_service_shim_sample' (pid 350) received signal 15
+11-25 05:46:49.927     0     0 I init    : Sending signal 9 to service 'neuralnetworks_hal_service_shim_sample' (pid 350) process group...
+11-25 05:46:49.931     0     0 I libprocessgroup: Successfully killed process cgroup uid 1000 pid 350 in 0ms
+11-25 05:46:49.978     0     0 I init    : Service 'vendor.sensors-hal-multihal' (pid 351) received signal 15
+11-25 05:46:49.981     0     0 I init    : Sending signal 9 to service 'vendor.sensors-hal-multihal' (pid 351) process group...
+11-25 05:46:50.003     0     0 I libprocessgroup: Successfully killed process cgroup uid 1000 pid 351 in 0ms
+11-25 05:46:50.024     0     0 I init    : Service 'vendor.thermal-hal-2-0-mock' (pid 357) received signal 15
+11-25 05:46:50.027     0     0 I init    : Sending signal 9 to service 'vendor.thermal-hal-2-0-mock' (pid 357) process group...
+11-25 05:46:50.039     0     0 I libprocessgroup: Successfully killed process cgroup uid 1000 pid 357 in 0ms
+11-25 05:46:50.044     0     0 I init    : Service 'vendor.usb_default' (pid 360) received signal 15
+11-25 05:46:50.046     0     0 I init    : Sending signal 9 to service 'vendor.usb_default' (pid 360) process group...
+11-25 05:46:50.074     0     0 I libprocessgroup: Successfully killed process cgroup uid 1000 pid 360 in 9ms
+11-25 05:46:50.089     0     0 I init    : Service 'vendor.wifi_hal_legacy' (pid 370) received signal 15
+11-25 05:46:50.091     0     0 I init    : Sending signal 9 to service 'vendor.wifi_hal_legacy' (pid 370) process group...
+11-25 05:46:50.098     0     0 I libprocessgroup: Successfully killed process cgroup uid 1010 pid 370 in 0ms
+11-25 05:46:50.129     0     0 I init    : Service 'vendor.bluetooth-default' (pid 371) received signal 15
+11-25 05:46:50.131     0     0 I init    : Sending signal 9 to service 'vendor.bluetooth-default' (pid 371) process group...
+11-25 05:46:50.151     0     0 I libprocessgroup: Successfully killed process cgroup uid 1002 pid 371 in 0ms
+11-25 05:46:50.164     0     0 I init    : Service 'vendor.cas-default' (pid 372) received signal 15
+11-25 05:46:50.172     0     0 I init    : Sending signal 9 to service 'vendor.cas-default' (pid 372) process group...
+11-25 05:46:50.177     0     0 I libprocessgroup: Successfully killed process cgroup uid 1013 pid 372 in 0ms
+11-25 05:46:50.191     0     0 I init    : Service 'vendor.contexthub-default' (pid 376) received signal 15
+11-25 05:46:50.197     0     0 I init    : Sending signal 9 to service 'vendor.contexthub-default' (pid 376) process group...
+11-25 05:46:50.207     0     0 I libprocessgroup: Successfully killed process cgroup uid 1080 pid 376 in 0ms
+11-25 05:46:50.213     0     0 I init    : Service 'vendor.face-default' (pid 377) received signal 15
+11-25 05:46:50.214     0     0 I init    : Sending signal 9 to service 'vendor.face-default' (pid 377) process group...
+11-25 05:46:50.222     0     0 I libprocessgroup: Successfully killed process cgroup uid 9999 pid 377 in 0ms
+11-25 05:46:50.230     0     0 I init    : Service 'vendor.hwcomposer-3' (pid 378) received signal 15
+11-25 05:46:50.231     0     0 I init    : Sending signal 9 to service 'vendor.hwcomposer-3' (pid 378) process group...
+11-25 05:46:50.241     0     0 I libprocessgroup: Successfully killed process cgroup uid 1000 pid 378 in 0ms
+11-25 05:46:50.248     0     0 I init    : Service 'vendor.identity-default' (pid 379) received signal 15
+11-25 05:46:50.256     0     0 I init    : Sending signal 9 to service 'vendor.identity-default' (pid 379) process group...
+11-25 05:46:50.261     0     0 I libprocessgroup: Successfully killed process cgroup uid 9999 pid 379 in 1ms
+11-25 05:46:50.275     0     0 I init    : Service 'vendor.power-default' (pid 382) received signal 15
+11-25 05:46:50.278     0     0 I init    : Sending signal 9 to service 'vendor.power-default' (pid 382) process group...
+11-25 05:46:50.280     0     0 I libprocessgroup: Successfully killed process cgroup uid 9999 pid 382 in 0ms
+11-25 05:46:50.293     0     0 I init    : Service 'vendor.power.stats-default' (pid 383) received signal 15
+11-25 05:46:50.295     0     0 I init    : Sending signal 9 to service 'vendor.power.stats-default' (pid 383) process group...
+11-25 05:46:50.301     0     0 I libprocessgroup: Successfully killed process cgroup uid 1000 pid 383 in 0ms
+11-25 05:46:50.325     0     0 I init    : Service 'vendor.rebootescrow-default' (pid 384) received signal 15
+11-25 05:46:50.329     0     0 I init    : Sending signal 9 to service 'vendor.rebootescrow-default' (pid 384) process group...
+11-25 05:46:50.331     0     0 I libprocessgroup: Successfully killed process cgroup uid 1000 pid 384 in 0ms
+11-25 05:46:50.346     0     0 I init    : Service 'vendor.vibrator-default' (pid 387) received signal 15
+11-25 05:46:50.347     0     0 I init    : Sending signal 9 to service 'vendor.vibrator-default' (pid 387) process group...
+11-25 05:46:50.361     0     0 I libprocessgroup: Successfully killed process cgroup uid 9999 pid 387 in 0ms
+11-25 05:46:50.378     0     0 I init    : Service 'vendor.drm-widevine-hal' (pid 388) received signal 15
+11-25 05:46:50.381     0     0 I init    : Sending signal 9 to service 'vendor.drm-widevine-hal' (pid 388) process group...
+11-25 05:46:50.397     0     0 I libprocessgroup: Successfully killed process cgroup uid 1013 pid 388 in 0ms
+11-25 05:46:50.407     0     0 I init    : Service 'audioserver' (pid 389) received signal 15
+11-25 05:46:50.410     0     0 I init    : Sending signal 9 to service 'audioserver' (pid 389) process group...
+11-25 05:46:50.411     0     0 I libprocessgroup: Successfully killed process cgroup uid 1041 pid 389 in 0ms
+11-25 05:46:50.422     0     0 I init    : Service 'credstore' (pid 391) received signal 15
+11-25 05:46:50.425     0     0 I init    : Sending signal 9 to service 'credstore' (pid 391) process group...
+11-25 05:46:50.427     0     0 I libprocessgroup: Successfully killed process cgroup uid 1076 pid 391 in 0ms
+11-25 05:46:50.438     0     0 I init    : Service 'gpu' (pid 392) received signal 15
+11-25 05:46:50.439     0     0 I init    : Sending signal 9 to service 'gpu' (pid 392) process group...
+11-25 05:46:50.445     0     0 I libprocessgroup: Successfully killed process cgroup uid 1072 pid 392 in 0ms
+11-25 05:46:50.448     0     0 I init    : Service 'surfaceflinger' (pid 394) received signal 15
+11-25 05:46:50.455     0     0 I init    : Sending signal 9 to service 'surfaceflinger' (pid 394) process group...
+11-25 05:46:50.461     0     0 I libprocessgroup: Successfully killed process cgroup uid 1000 pid 394 in 0ms
+11-25 05:46:50.471     0     0 I init    : Service 'mdnsd' (pid 427) exited with status 4 oneshot service took 166.602005 seconds in background
+11-25 05:46:50.475     0     0 I init    : Sending signal 9 to service 'mdnsd' (pid 427) process group...
+11-25 05:46:50.478     0     0 I libprocessgroup: Successfully killed process cgroup uid 1020 pid 427 in 0ms
+11-25 05:46:50.490     0     0 I init    : Service 'drm' (pid 432) received signal 15
+11-25 05:46:50.491     0     0 I init    : Sending signal 9 to service 'drm' (pid 432) process group...
+11-25 05:46:50.497     0     0 I libprocessgroup: Successfully killed process cgroup uid 1019 pid 432 in 0ms
+11-25 05:46:50.529     0     0 I init    : Service 'traced_probes' (pid 443) received signal 15
+11-25 05:46:50.530     0     0 I init    : Sending signal 9 to service 'traced_probes' (pid 443) process group...
+11-25 05:46:50.539     0     0 I libprocessgroup: Successfully killed process cgroup uid 9999 pid 443 in 0ms
+11-25 05:46:50.546     0     0 I init    : Service 'traced' (pid 445) received signal 15
+11-25 05:46:50.547     0     0 I init    : Sending signal 9 to service 'traced' (pid 445) process group...
+11-25 05:46:50.554     0     0 I libprocessgroup: Successfully killed process cgroup uid 9999 pid 445 in 0ms
+11-25 05:46:50.564     0     0 I init    : Service 'goldfish-logcat' (pid 450) received signal 15
+11-25 05:46:50.570     0     0 I init    : Sending signal 9 to service 'goldfish-logcat' (pid 450) process group...
+11-25 05:46:50.574     0     0 I libprocessgroup: Successfully killed process cgroup uid 1036 pid 450 in 0ms
+11-25 05:46:50.587     0     0 I init    : Service 'bt_vhci_forwarder' (pid 451) received signal 15
+11-25 05:46:50.590     0     0 I init    : Sending signal 9 to service 'bt_vhci_forwarder' (pid 451) process group...
+11-25 05:46:50.591     0     0 I libprocessgroup: Successfully killed process cgroup uid 1002 pid 451 in 0ms
+11-25 05:46:50.604     0     0 I init    : Service 'cameraserver' (pid 452) received signal 15
+11-25 05:46:50.607     0     0 I init    : Sending signal 9 to service 'cameraserver' (pid 452) process group...
+11-25 05:46:50.610     0     0 I libprocessgroup: Successfully killed process cgroup uid 1047 pid 452 in 0ms
+11-25 05:46:50.622     0     0 I init    : Service 'incidentd' (pid 455) received signal 15
+11-25 05:46:50.626     0     0 I init    : Sending signal 9 to service 'incidentd' (pid 455) process group...
+11-25 05:46:50.629     0     0 I libprocessgroup: Successfully killed process cgroup uid 1067 pid 455 in 0ms
+11-25 05:46:50.635     0     0 I init    : Service 'installd' (pid 456) received signal 15
+11-25 05:46:50.636     0     0 I init    : Sending signal 9 to service 'installd' (pid 456) process group...
+11-25 05:46:50.639     0     0 I libprocessgroup: Successfully killed process cgroup uid 0 pid 456 in 0ms
+11-25 05:46:50.646     0     0 I init    : Service 'mediaextractor' (pid 457) received signal 15
+11-25 05:46:50.648     0     0 I init    : Sending signal 9 to service 'mediaextractor' (pid 457) process group...
+11-25 05:46:50.652     0     0 I libprocessgroup: Successfully killed process cgroup uid 1040 pid 457 in 0ms
+11-25 05:46:50.658     0     0 I init    : Service 'mediametrics' (pid 458) received signal 15
+11-25 05:46:50.660     0     0 I init    : Sending signal 9 to service 'mediametrics' (pid 458) process group...
+11-25 05:46:50.662     0     0 I libprocessgroup: Successfully killed process cgroup uid 1013 pid 458 in 0ms
+11-25 05:46:50.671     0     0 I init    : Service 'media' (pid 461) received signal 15
+11-25 05:46:50.673     0     0 I init    : Sending signal 9 to service 'media' (pid 461) process group...
+11-25 05:46:50.675     0     0 I libprocessgroup: Successfully killed process cgroup uid 1013 pid 461 in 0ms
+11-25 05:46:50.696     0     0 I init    : Service 'storaged' (pid 462) received signal 15
+11-25 05:46:50.698     0     0 I init    : Sending signal 9 to service 'storaged' (pid 462) process group...
+11-25 05:46:50.701     0     0 I libprocessgroup: Successfully killed process cgroup uid 0 pid 462 in 0ms
+11-25 05:46:50.707     0     0 I init    : Service 'wificond' (pid 463) exited with status 0
+11-25 05:46:50.708     0     0 I init    : Sending signal 9 to service 'wificond' (pid 463) process group...
+11-25 05:46:50.711     0     0 I libprocessgroup: Successfully killed process cgroup uid 1010 pid 463 in 0ms
+11-25 05:46:50.719     0     0 I init    : Service 'vendor.ril-daemon' (pid 468) received signal 15
+11-25 05:46:50.721     0     0 I init    : Sending signal 9 to service 'vendor.ril-daemon' (pid 468) process group...
+11-25 05:46:50.724     0     0 I libprocessgroup: Successfully killed process cgroup uid 1001 pid 468 in 0ms
+11-25 05:46:50.736     0     0 I init    : Service 'media.swcodec' (pid 469) received signal 15
+11-25 05:46:50.741     0     0 I init    : Sending signal 9 to service 'media.swcodec' (pid 469) process group...
+11-25 05:46:50.746     0     0 I libprocessgroup: Successfully killed process cgroup uid 1046 pid 469 in 0ms
+11-25 05:46:50.756     0     0 I init    : Service 'gatekeeperd' (pid 470) received signal 15
+11-25 05:46:50.762     0     0 I init    : Sending signal 9 to service 'gatekeeperd' (pid 470) process group...
+11-25 05:46:50.770     0     0 I libprocessgroup: Successfully killed process cgroup uid 1000 pid 470 in 0ms
+11-25 05:46:50.776     0     0 I init    : Service 'wpa_supplicant' (pid 718) exited with status 0 oneshot service took 147.317993 seconds in background
+11-25 05:46:50.780     0     0 I init    : Sending signal 9 to service 'wpa_supplicant' (pid 718) process group...
+11-25 05:46:50.783     0     0 I libprocessgroup: Successfully killed process cgroup uid 0 pid 718 in 0ms
+11-25 05:46:50.789     0     0 I init    : Service 'vendor.gnss.ranchu' (pid 790) received signal 15 oneshot service took 144.100998 seconds in background
+11-25 05:46:50.792     0     0 I init    : Sending signal 9 to service 'vendor.gnss.ranchu' (pid 790) process group...
+11-25 05:46:50.797     0     0 I libprocessgroup: Successfully killed process cgroup uid 1021 pid 790 in 0ms
+11-25 05:46:50.803     0     0 I init    : Service 'vendor.biometrics.fingerprint-service.ranchu' (pid 960) received signal 15 oneshot service took 141.449997 seconds in background
+11-25 05:46:50.809     0     0 I init    : Sending signal 9 to service 'vendor.biometrics.fingerprint-service.ranchu' (pid 960) process group...
+11-25 05:46:50.813     0     0 I libprocessgroup: Successfully killed process cgroup uid 1000 pid 960 in 0ms
+11-25 05:46:50.826     0     0 I init    : Service 'blank_screen' (pid 4282) exited with status 0 oneshot service took 5.960000 seconds in background
+11-25 05:46:50.830     0     0 I init    : Sending signal 9 to service 'blank_screen' (pid 4282) process group...
+11-25 05:46:50.833     0     0 I libprocessgroup: Successfully killed process cgroup uid 1000 pid 4282 in 0ms
+11-25 05:46:50.842     0     0 I init    : Untracked pid 345 received signal 15
+11-25 05:46:50.843     0     0 I init    : Untracked pid 345 did not have an associated service entry and will not be reaped
+11-25 05:46:50.849     0     0 I init    : Untracked pid 346 received signal 15
+11-25 05:46:50.850     0     0 I init    : Untracked pid 346 did not have an associated service entry and will not be reaped
+11-25 05:46:50.857     0     0 I init    : Untracked pid 518 received signal 15
+11-25 05:46:50.858     0     0 I init    : Untracked pid 518 did not have an associated service entry and will not be reaped
+11-25 05:46:50.862     0     0 I init    : Untracked pid 735 received signal 15
+11-25 05:46:50.864     0     0 I init    : Untracked pid 735 did not have an associated service entry and will not be reaped
+11-25 05:46:50.871     0     0 I init    : Untracked pid 825 received signal 15
+11-25 05:46:50.875     0     0 I init    : Untracked pid 825 did not have an associated service entry and will not be reaped
+11-25 05:46:50.880     0     0 I init    : Untracked pid 855 received signal 15
+11-25 05:46:50.886     0     0 I init    : Untracked pid 855 did not have an associated service entry and will not be reaped
+11-25 05:46:50.888     0     0 I init    : Untracked pid 886 received signal 15
+11-25 05:46:50.890     0     0 I init    : Untracked pid 886 did not have an associated service entry and will not be reaped
+11-25 05:46:50.895     0     0 I init    : Untracked pid 904 received signal 15
+11-25 05:46:50.904     0     0 I init    : Untracked pid 904 did not have an associated service entry and will not be reaped
+11-25 05:46:50.907     0     0 I init    : Untracked pid 918 received signal 15
+11-25 05:46:50.914     0     0 I init    : Untracked pid 918 did not have an associated service entry and will not be reaped
+11-25 05:46:50.922     0     0 I init    : Untracked pid 920 received signal 15
+11-25 05:46:50.925     0     0 I init    : Untracked pid 920 did not have an associated service entry and will not be reaped
+11-25 05:46:50.930     0     0 I init    : Untracked pid 965 received signal 15
+11-25 05:46:50.932     0     0 I init    : Untracked pid 965 did not have an associated service entry and will not be reaped
+11-25 05:46:50.941     0     0 I init    : Untracked pid 975 received signal 15
+11-25 05:46:50.943     0     0 I init    : Untracked pid 975 did not have an associated service entry and will not be reaped
+11-25 05:46:50.953     0     0 I init    : Untracked pid 1096 received signal 15
+11-25 05:46:50.955     0     0 I init    : Untracked pid 1096 did not have an associated service entry and will not be reaped
+11-25 05:46:50.959     0     0 I init    : Untracked pid 1219 received signal 15
+11-25 05:46:50.963     0     0 I init    : Untracked pid 1219 did not have an associated service entry and will not be reaped
+11-25 05:46:50.969     0     0 I init    : Untracked pid 1250 received signal 15
+11-25 05:46:50.971     0     0 I init    : Untracked pid 1250 did not have an associated service entry and will not be reaped
+11-25 05:46:50.974     0     0 I init    : Untracked pid 1311 received signal 15
+11-25 05:46:50.978     0     0 I init    : Untracked pid 1311 did not have an associated service entry and will not be reaped
+11-25 05:46:50.980     0     0 I init    : Untracked pid 1324 received signal 15
+11-25 05:46:50.987     0     0 I init    : Untracked pid 1324 did not have an associated service entry and will not be reaped
+11-25 05:46:50.989     0     0 I init    : Untracked pid 1385 received signal 15
+11-25 05:46:50.991     0     0 I init    : Untracked pid 1385 did not have an associated service entry and will not be reaped
+11-25 05:46:50.993     0     0 I init    : Untracked pid 1507 received signal 15
+11-25 05:46:50.997     0     0 I init    : Untracked pid 1507 did not have an associated service entry and will not be reaped
+11-25 05:46:51.005     0     0 I init    : Untracked pid 1618 received signal 15
+11-25 05:46:51.007     0     0 I init    : Untracked pid 1618 did not have an associated service entry and will not be reaped
+11-25 05:46:51.013     0     0 I init    : Untracked pid 1637 received signal 15
+11-25 05:46:51.025     0     0 I init    : Untracked pid 1637 did not have an associated service entry and will not be reaped
+11-25 05:46:51.030     0     0 I init    : Untracked pid 1639 received signal 15
+11-25 05:46:51.037     0     0 I init    : Untracked pid 1639 did not have an associated service entry and will not be reaped
+11-25 05:46:51.042     0     0 I init    : Untracked pid 1647 received signal 15
+11-25 05:46:51.043     0     0 I init    : Untracked pid 1647 did not have an associated service entry and will not be reaped
+11-25 05:46:51.048     0     0 I init    : Untracked pid 1701 received signal 15
+11-25 05:46:51.055     0     0 I init    : Untracked pid 1701 did not have an associated service entry and will not be reaped
+11-25 05:46:51.080     0     0 I init    : Untracked pid 1711 received signal 15
+11-25 05:46:51.100     0     0 I init    : Untracked pid 1711 did not have an associated service entry and will not be reaped
+11-25 05:46:51.107     0     0 I init    : Untracked pid 1788 received signal 15
+11-25 05:46:51.108     0     0 I init    : Untracked pid 1788 did not have an associated service entry and will not be reaped
+11-25 05:46:51.112     0     0 I init    : Untracked pid 1826 received signal 15
+11-25 05:46:51.114     0     0 I init    : Untracked pid 1826 did not have an associated service entry and will not be reaped
+11-25 05:46:51.121     0     0 I init    : Untracked pid 1837 received signal 15
+11-25 05:46:51.122     0     0 I init    : Untracked pid 1837 did not have an associated service entry and will not be reaped
+11-25 05:46:51.148     0     0 I init    : Untracked pid 1868 received signal 15
+11-25 05:46:51.156     0     0 I init    : Untracked pid 1868 did not have an associated service entry and will not be reaped
+11-25 05:46:51.159     0     0 I init    : Untracked pid 1925 received signal 15
+11-25 05:46:51.162     0     0 I init    : Untracked pid 1925 did not have an associated service entry and will not be reaped
+11-25 05:46:51.172     0     0 I init    : Untracked pid 1945 received signal 15
+11-25 05:46:51.179     0     0 I init    : Untracked pid 1945 did not have an associated service entry and will not be reaped
+11-25 05:46:51.188     0     0 I init    : Untracked pid 1980 received signal 15
+11-25 05:46:51.191     0     0 I init    : Untracked pid 1980 did not have an associated service entry and will not be reaped
+11-25 05:46:51.198     0     0 I init    : Untracked pid 2016 received signal 15
+11-25 05:46:51.203     0     0 I init    : Untracked pid 2016 did not have an associated service entry and will not be reaped
+11-25 05:46:51.207     0     0 I init    : Untracked pid 2182 received signal 15
+11-25 05:46:51.208     0     0 I init    : Untracked pid 2182 did not have an associated service entry and will not be reaped
+11-25 05:46:51.214     0     0 I init    : Untracked pid 2244 received signal 15
+11-25 05:46:51.220     0     0 I init    : Untracked pid 2244 did not have an associated service entry and will not be reaped
+11-25 05:46:51.223     0     0 I init    : Untracked pid 2416 received signal 15
+11-25 05:46:51.226     0     0 I init    : Untracked pid 2416 did not have an associated service entry and will not be reaped
+11-25 05:46:51.228     0     0 I init    : Untracked pid 2446 received signal 15
+11-25 05:46:51.230     0     0 I init    : Untracked pid 2446 did not have an associated service entry and will not be reaped
+11-25 05:46:51.234     0     0 I init    : Untracked pid 2463 received signal 15
+11-25 05:46:51.237     0     0 I init    : Untracked pid 2463 did not have an associated service entry and will not be reaped
+11-25 05:46:51.241     0     0 I init    : Untracked pid 2491 received signal 15
+11-25 05:46:51.256     0     0 I init    : Untracked pid 2491 did not have an associated service entry and will not be reaped
+11-25 05:46:51.260     0     0 I init    : Untracked pid 2548 received signal 15
+11-25 05:46:51.262     0     0 I init    : Untracked pid 2548 did not have an associated service entry and will not be reaped
+11-25 05:46:51.269     0     0 I init    : Untracked pid 2555 received signal 15
+11-25 05:46:51.277     0     0 I init    : Untracked pid 2555 did not have an associated service entry and will not be reaped
+11-25 05:46:51.284     0     0 I init    : Untracked pid 2676 received signal 15
+11-25 05:46:51.286     0     0 I init    : Untracked pid 2676 did not have an associated service entry and will not be reaped
+11-25 05:46:51.293     0     0 I init    : Untracked pid 2800 received signal 15
+11-25 05:46:51.294     0     0 I init    : Untracked pid 2800 did not have an associated service entry and will not be reaped
+11-25 05:46:51.301     0     0 I init    : Untracked pid 2885 received signal 15
+11-25 05:46:51.302     0     0 I init    : Untracked pid 2885 did not have an associated service entry and will not be reaped
+11-25 05:46:51.307     0     0 I init    : Untracked pid 2920 received signal 15
+11-25 05:46:51.309     0     0 I init    : Untracked pid 2920 did not have an associated service entry and will not be reaped
+11-25 05:46:51.313     0     0 I init    : Untracked pid 2984 received signal 15
+11-25 05:46:51.314     0     0 I init    : Untracked pid 2984 did not have an associated service entry and will not be reaped
+11-25 05:46:51.323     0     0 I init    : Untracked pid 3009 received signal 15
+11-25 05:46:51.327     0     0 I init    : Untracked pid 3009 did not have an associated service entry and will not be reaped
+11-25 05:46:51.331     0     0 I init    : Untracked pid 3045 received signal 15
+11-25 05:46:51.338     0     0 I init    : Untracked pid 3045 did not have an associated service entry and will not be reaped
+11-25 05:46:51.341     0     0 I init    : Untracked pid 3066 received signal 15
+11-25 05:46:51.343     0     0 I init    : Untracked pid 3066 did not have an associated service entry and will not be reaped
+11-25 05:46:51.346     0     0 I init    : Untracked pid 3095 received signal 15
+11-25 05:46:51.347     0     0 I init    : Untracked pid 3095 did not have an associated service entry and will not be reaped
+11-25 05:46:51.353     0     0 I init    : Untracked pid 3107 received signal 15
+11-25 05:46:51.354     0     0 I init    : Untracked pid 3107 did not have an associated service entry and will not be reaped
+11-25 05:46:51.358     0     0 I init    : Untracked pid 3149 received signal 15
+11-25 05:46:51.359     0     0 I init    : Untracked pid 3149 did not have an associated service entry and will not be reaped
+11-25 05:46:51.361     0     0 I init    : Untracked pid 3185 received signal 15
+11-25 05:46:51.363     0     0 I init    : Untracked pid 3185 did not have an associated service entry and will not be reaped
+11-25 05:46:51.371     0     0 I init    : Untracked pid 3210 received signal 15
+11-25 05:46:51.376     0     0 I init    : Untracked pid 3210 did not have an associated service entry and will not be reaped
+11-25 05:46:51.388     0     0 I init    : Untracked pid 3263 received signal 15
+11-25 05:46:51.395     0     0 I init    : Untracked pid 3263 did not have an associated service entry and will not be reaped
+11-25 05:46:51.422     0     0 I init    : Untracked pid 3410 received signal 15
+11-25 05:46:51.426     0     0 I init    : Untracked pid 3410 did not have an associated service entry and will not be reaped
+11-25 05:46:51.429     0     0 I init    : Untracked pid 3430 received signal 15
+11-25 05:46:51.430     0     0 I init    : Untracked pid 3430 did not have an associated service entry and will not be reaped
+11-25 05:46:51.439     0     0 I init    : Untracked pid 3454 received signal 15
+11-25 05:46:51.440     0     0 I init    : Untracked pid 3454 did not have an associated service entry and will not be reaped
+11-25 05:46:51.453     0     0 I init    : Untracked pid 3558 received signal 15
+11-25 05:46:51.458     0     0 I init    : Untracked pid 3558 did not have an associated service entry and will not be reaped
+11-25 05:46:51.470     0     0 I init    : Untracked pid 3562 received signal 15
+11-25 05:46:51.471     0     0 I init    : Untracked pid 3562 did not have an associated service entry and will not be reaped
+11-25 05:46:51.476     0     0 I init    : Untracked pid 3673 received signal 15
+11-25 05:46:51.478     0     0 I init    : Untracked pid 3673 did not have an associated service entry and will not be reaped
+11-25 05:46:51.497     0     0 I init    : Untracked pid 3698 received signal 15
+11-25 05:46:51.503     0     0 I init    : Untracked pid 3698 did not have an associated service entry and will not be reaped
+11-25 05:46:51.507     0     0 I init    : Untracked pid 3886 received signal 15
+11-25 05:46:51.509     0     0 I init    : Untracked pid 3886 did not have an associated service entry and will not be reaped
+11-25 05:46:51.513     0     0 I init    : Untracked pid 3906 received signal 15
+11-25 05:46:51.521     0     0 I init    : Untracked pid 3906 did not have an associated service entry and will not be reaped
+11-25 05:46:51.524     0     0 I init    : Untracked pid 3920 received signal 15
+11-25 05:46:51.531     0     0 I init    : Untracked pid 3920 did not have an associated service entry and will not be reaped
+11-25 05:46:51.540     0     0 I init    : Untracked pid 3934 received signal 15
+11-25 05:46:51.547     0     0 I init    : Untracked pid 3934 did not have an associated service entry and will not be reaped
+11-25 05:46:51.555     0     0 I init    : Waiting for 62 pids to be reaped took 3492ms with 0 of them still running
+11-25 05:46:51.560     0     0 I init    : Still running: 960
+11-25 05:46:51.561     0     0 I init    : Still running: 790
+11-25 05:46:51.567     0     0 I init    : Still running: 718
+11-25 05:46:51.571     0     0 I init    : Still running: 470
+11-25 05:46:51.572     0     0 I init    : Still running: 469
+11-25 05:46:51.573     0     0 I init    : Still running: 468
+11-25 05:46:51.575     0     0 I init    : Still running: 463
+11-25 05:46:51.575     0     0 I init    : Still running: 462
+11-25 05:46:51.576     0     0 I init    : Still running: 461
+11-25 05:46:51.577     0     0 I init    : Still running: 458
+11-25 05:46:51.580     0     0 I init    : Still running: 457
+11-25 05:46:51.592     0     0 I init    : Still running: 456
+11-25 05:46:51.596     0     0 I init    : Still running: 455
+11-25 05:46:51.597     0     0 I init    : Still running: 452
+11-25 05:46:51.602     0     0 I init    : Still running: 451
+11-25 05:46:51.603     0     0 I init    : Still running: 450
+11-25 05:46:51.603     0     0 I init    : Still running: 445
+11-25 05:46:51.605     0     0 I init    : Still running: 443
+11-25 05:46:51.606     0     0 I init    : Still running: 432
+11-25 05:46:51.610     0     0 I init    : Still running: 427
+11-25 05:46:51.611     0     0 I init    : Still running: 394
+11-25 05:46:51.611     0     0 I init    : Still running: 392
+11-25 05:46:51.613     0     0 I init    : Still running: 391
+11-25 05:46:51.622     0     0 I init    : Still running: 389
+11-25 05:46:51.626     0     0 I init    : Still running: 388
+11-25 05:46:51.629     0     0 I init    : Still running: 387
+11-25 05:46:51.631     0     0 I init    : Still running: 384
+11-25 05:46:51.635     0     0 I init    : Still running: 383
+11-25 05:46:51.637     0     0 I init    : Still running: 382
+11-25 05:46:51.639     0     0 I init    : Still running: 379
+11-25 05:46:51.640     0     0 I init    : Still running: 378
+11-25 05:46:51.642     0     0 I init    : Still running: 377
+11-25 05:46:51.643     0     0 I init    : Still running: 376
+11-25 05:46:51.643     0     0 I init    : Still running: 372
+11-25 05:46:51.647     0     0 I init    : Still running: 371
+11-25 05:46:51.648     0     0 I init    : Still running: 370
+11-25 05:46:51.651     0     0 I init    : Still running: 360
+11-25 05:46:51.652     0     0 I init    : Still running: 357
+11-25 05:46:51.654     0     0 I init    : Still running: 351
+11-25 05:46:51.655     0     0 I init    : Still running: 350
+11-25 05:46:51.659     0     0 I init    : Still running: 349
+11-25 05:46:51.661     0     0 I init    : Still running: 348
+11-25 05:46:51.669     0     0 I init    : Still running: 344
+11-25 05:46:51.671     0     0 I init    : Still running: 343
+11-25 05:46:51.673     0     0 I init    : Still running: 340
+11-25 05:46:51.675     0     0 I init    : Still running: 339
+11-25 05:46:51.678     0     0 I init    : Still running: 338
+11-25 05:46:51.679     0     0 I init    : Still running: 337
+11-25 05:46:51.704     0     0 I init    : Still running: 336
+11-25 05:46:51.706     0     0 I init    : Still running: 335
+11-25 05:46:51.707     0     0 I init    : Still running: 334
+11-25 05:46:51.721     0     0 I init    : Still running: 330
+11-25 05:46:51.729     0     0 I init    : Still running: 329
+11-25 05:46:51.730     0     0 I init    : Still running: 328
+11-25 05:46:51.730     0     0 I init    : Still running: 315
+11-25 05:46:51.735     0     0 I init    : Still running: 160
+11-25 05:46:51.744     0     0 I init    : Still running: 158
+11-25 05:46:51.747     0     0 I init    : Still running: 157
+11-25 05:46:51.753     0     0 I init    : Still running: 156
+11-25 05:46:51.755     0     0 I init    : Still running: 142
+11-25 05:46:51.757     0     0 I init    : Still running: 132
+11-25 05:46:51.759     0     0 I init    : Still running: 125
+11-25 05:46:51.763     0     0 I init    : Stopping 125 services by sending SIGKILL
+11-25 05:46:51.774     0     0 I init    : Subcontext received signal 15
+11-25 05:46:51.775     0     0 I init    : Subcontext did not have an associated service entry and will not be reaped
+11-25 05:46:52.031   147   147 D vold    : Aborting fuse connection entry /sys/fs/fuse/connections/70/abort
+11-25 05:46:52.049   147   147 W vold    : Skip fsync /sys/fs/fuse/connections/70/abort on a file system does not support synchronization: Invalid argument
+11-25 05:46:51.797     0     0 I init    : Calling /system/bin/vdc volume abort_fuse
+11-25 05:46:51.897     0     0 D vdc     : Waited 0ms for vold
+11-25 05:46:52.023     0     0 I init    : Calling /system/bin/vdc volume shutdown
+11-25 05:46:52.206     0     0 D vdc     : Waited 0ms for vold
+11-25 05:46:52.242   147   147 E IPCThreadState: Binder transaction failure: 158525/29189/-22
+11-25 05:46:52.246   147   147 I vold    : Killing all processes referencing /storage/emulated/0
+11-25 05:46:52.379   147   147 I vold    : fuse-bpf is enabled because of property ro.fuse.bpf.is_running
+11-25 05:46:52.379   147   147 I vold    : Unmounting fuse path /mnt/user/0/emulated
+11-25 05:46:52.385   147   147 I vold    : Unmounting pass_through_path /mnt/pass_through/0/emulated
+11-25 05:46:52.364     0     0 I init    : Sending signal 9 to service 'vold' (pid 147) process group...
+11-25 05:46:52.430     0     0 I libprocessgroup: Successfully killed process cgroup uid 0 pid 147 in 63ms
+11-25 05:46:52.438     0     0 I init    : Stopping 4 services by sending SIGKILL
+11-25 05:46:52.439     0     0 I init    : Sending signal 9 to service 'adbd' (pid 414) process group...

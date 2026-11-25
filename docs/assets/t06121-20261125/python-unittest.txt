@@ -1,0 +1,10 @@
+test_last_session_and_fields (tools.soak.test_summarize_soak.PerfSummaryTest.test_last_session_and_fields) ... ok
+test_no_perf_returns_insufficient (tools.soak.test_summarize_soak.PerfSummaryTest.test_no_perf_returns_insufficient) ... ok
+test_build_summary_checks (tools.soak.test_summarize_soak.SamplesSummaryTest.test_build_summary_checks) ... ok
+test_missing_pss_is_unavailable (tools.soak.test_summarize_soak.SamplesSummaryTest.test_missing_pss_is_unavailable) ... ok
+test_pss_growth_and_slope (tools.soak.test_summarize_soak.SamplesSummaryTest.test_pss_growth_and_slope) ... ok
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.537s
+
+OK

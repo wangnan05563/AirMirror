@@ -1,0 +1,7 @@
+# 2026-11-25T13:46:45.1947294+08:00
+## meminfo
+Error with service 'meminfo' while dumping: DEAD_OBJECT
+## cpuinfo
+Can't find service: cpuinfo
+## battery
+adb.exe: device 'emulator-5554' not found

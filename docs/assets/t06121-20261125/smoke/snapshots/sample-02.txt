@@ -1,0 +1,7 @@
+# 2026-11-25T13:47:15.1739268+08:00
+## meminfo
+adb.exe: device offline
+## cpuinfo
+adb.exe: device offline
+## battery
+adb.exe: device offline
