@@ -9,13 +9,15 @@
     "teal500": "#17C3B2",
     "white": "#FFFFFF",
     "red400": "#FF6B6B",
+    "teal300": "#7FE8DF",
     "white70": "#B5BFD1",
+    "white62": "#A2AAB4",
     "teal500-12": "#14435C",
     "teal500-20": "#134E62"
   },
   "semantic": {
     "brand": "raw.teal500",
-    "brand-ink": "raw.ink950",
+    "brand-ink": "raw.teal300",
     "brand-soft": "raw.teal500-12",
     "bg": "raw.ink950",
     "surface": "raw.ink900",
@@ -23,7 +25,7 @@
     "card": "raw.ink900",
     "ink": "raw.white",
     "ink-2": "raw.white70",
-    "muted": "raw.white70",
+    "muted": "raw.white62",
     "line": "raw.teal500-20",
     "line-strong": "raw.ink800",
     "ff": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Noto Sans SC\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
@@ -45,16 +47,18 @@
   },
   "component": {
     "button.primary.background": "semantic.brand",
-    "button.primary.foreground": "semantic.brand-ink",
+    "button.primary.foreground": "raw.ink950",
     "button.primary.hover.background": "semantic.brand-soft",
-    "button.primary.hover.foreground": "semantic.brand",
+    "button.primary.hover.foreground": "semantic.brand-ink",
+    "button.primary.radius": "semantic.r-md",
     "badge.brand.background": "semantic.brand-soft",
-    "badge.brand.foreground": "semantic.brand",
+    "badge.brand.foreground": "semantic.brand-ink",
     "brandMark.background": "semantic.brand",
-    "brandMark.foreground": "semantic.brand-ink",
+    "brandMark.foreground": "raw.ink950",
     "brandMark.radius": "semantic.r-md",
     "card.background": "semantic.card",
     "card.border": "semantic.line",
-    "card.radius": "semantic.r-lg"
+    "card.radius": "semantic.r-lg",
+    "card.shadow": "semantic.shadow"
   }
 }
