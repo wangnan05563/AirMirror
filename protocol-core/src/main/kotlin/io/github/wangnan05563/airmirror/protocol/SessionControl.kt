@@ -18,6 +18,13 @@ object SessionControl {
     /** 发送端把声音开关拨到开/关（PRD FS-01 参数「音频」）：接收端据此收放音频流水线，避免误判成中断。 */
     const val OP_AUDIO = "audio"
 
+    /**
+     * 发送端连续 10 秒没有可转发的系统声音（WASAPI 静音包）：
+     * 接收端据此给「受保护内容/独占模式」明确说明，而不是静默无声。
+     * 这是条件提示，不是 DRM 判定——Windows 不提供受保护内容的直接查询。
+     */
+    const val OP_AUDIO_SILENT = "audio_silent"
+
     private const val KEY_OP = "op"
     private const val KEY_FROM = "from"
     private const val KEY_ALLOW = "allow"
@@ -33,6 +40,8 @@ object SessionControl {
     fun sync(): ByteArray = encode(Signal(OP_SYNC, "", false))
 
     fun audio(on: Boolean): ByteArray = encode(Signal(OP_AUDIO, "", on))
+
+    fun audioSilent(): ByteArray = encode(Signal(OP_AUDIO_SILENT, "", false))
 
     fun takeover(from: String): ByteArray = encode(Signal(OP_TAKEOVER, from, false))
 

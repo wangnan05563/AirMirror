@@ -105,6 +105,11 @@ object ErrorNotice {
         NO_SPEAKER,
         /** 音频轨被来电或其他应用占用超过 1 秒，画面不受影响 */
         AUDIO_INTERRUPTED,
+        /**
+         * 发送端连续静音：可能是 DRM 受保护内容或音频设备被独占。
+         * 系统没有直接的 DRM 判定 API，所以文案只能写「可能/若」，不能冒充已检测。
+         */
+        AUDIO_PROTECTED,
         /** 声明了解 H.265 硬解却建不起解码器（PRD 8.7 异常表「不支持 H.265 硬解」） */
         CODEC_FALLBACK,
         /** 用户锁了档位又连续超标：只提示，画质一格不动（PRD FS-05「手动锁定」） */
@@ -165,6 +170,10 @@ object ErrorNotice {
         Cause.AUDIO_INTERRUPTED to Notice(
             Category.SESSION, "声音被其他应用占用", "画面继续投，等声音空出来会自动接上，不用重新投屏。",
             listOf(Action.AUTO_RECOVER),
+        ),
+        Cause.AUDIO_PROTECTED to Notice(
+            Category.SESSION, "受保护内容可能无声", "版权保护（DRM）或被独占时系统会禁止采集；换普通内容，画面继续。",
+            listOf(Action.CHANGE_SOURCE, Action.AUTO_RECOVER),
         ),
         Cause.CODEC_FALLBACK to Notice(
             Category.CAPABILITY, "已切换到兼容编码", "这台设备解不动 H.265，改用 H.264 并降一档，画质可能下降。",

@@ -1,6 +1,7 @@
 package io.github.wangnan05563.airmirror.pc.audio
 
 import io.github.wangnan05563.airmirror.protocol.Protocol
+import io.github.wangnan05563.airmirror.protocol.SessionControl
 import io.github.wangnan05563.airmirror.pc.PcConnection
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -20,11 +21,14 @@ class AudioSender(
     initialVolume: Int = 100,
     private val epochNanos: Long = 0L,
     private val onStatus: (String) -> Unit = {},
+    private val onNotice: (String) -> Unit = {},
     private val onError: (String) -> Unit = {},
 ) : AutoCloseable {
     private val running = AtomicBoolean(false)
     private val enabled = AtomicBoolean(initialEnabled)
     private val volume = java.util.concurrent.atomic.AtomicInteger(initialVolume.coerceIn(0, 100))
+    private val silence = AudioSilenceWatch()
+    private val silenceNotified = AtomicBoolean(false)
     private val pending = ByteArrayOutputStream()
     private var capture: WasapiLoopbackCapture? = null
     private var converter: PcmConverter? = null
@@ -35,6 +39,8 @@ class AudioSender(
 
     fun start() {
         if (!running.compareAndSet(false, true)) return
+        silence.reset()
+        silenceNotified.set(false)
         if (!WasapiLoopbackCapture.isSupported()) {
             onError("WASAPI 仅支持 Windows")
             running.set(false)
@@ -50,6 +56,7 @@ class AudioSender(
         val source = WasapiLoopbackCapture(
             onPcm = ::onPcm,
             onFormat = { converter = PcmConverter(it) },
+            onSilent = ::onSilentPacket,
             onError = { message ->
                 if (running.get()) {
                     onError("WASAPI：$message")
@@ -67,6 +74,8 @@ class AudioSender(
         if (!running.get()) return
         val changed = enabled.getAndSet(on) != on
         if (!changed) return
+        silence.reset()
+        silenceNotified.set(false)
         if (on) {
             closeEncoder()
             frameIndex = 0L
@@ -86,6 +95,8 @@ class AudioSender(
 
     private fun onPcm(bytes: ByteArray) {
         if (!running.get()) return
+        // 有真实 PCM 就说明链路有声，静音看门狗清零；不能等转换/编码成功才算恢复
+        silence.onSound()
         val conv = converter ?: return
         val output = conv.convert(bytes, volume.get())
         if (output.pcm.isEmpty()) return
@@ -103,6 +114,39 @@ class AudioSender(
                 pending.write(all, PcAudioFormat.FRAME_BYTES, all.size - PcAudioFormat.FRAME_BYTES)
             }
             enc.feed(frame)
+        }
+    }
+
+    /**
+     * WASAPI 的静音包（`AUDCLNT_BUFFERFLAGS_SILENT` 或本次没有可读数据）。
+     *
+     * 这里不把「静音」说成「已经检测到 DRM」——系统没有给这个判定能力。
+     * 只在连续 10 秒没有声音时提示一次条件句，并通知接收端，避免用户把
+     * 「受保护内容/独占模式」误当成设备坏了而反复重投。
+     */
+    private fun onSilentPacket() {
+        if (!running.get() || !enabled.get()) return
+        // 用户把发送增益拉到 0 是主动静音，不能反过来提示 DRM
+        if (volume.get() <= 0) return
+        val now = System.currentTimeMillis()
+        if (silence.onSilent(now) && silenceNotified.compareAndSet(false, true)) {
+            onNotice("系统声音持续静音：若正在播放受保护内容（DRM）或被独占模式占用，Windows 可能禁止回环采集；画面继续，换普通内容或释放音频设备后自动恢复。")
+            sendAudioSilent()
+        }
+    }
+
+    private fun sendAudioSilent() {
+        try {
+            conn.send(
+                Protocol.Frame(
+                    Protocol.Type.CONTROL,
+                    flags = 0,
+                    ptsUs = 0L,
+                    payload = SessionControl.audioSilent(),
+                ),
+            )
+        } catch (e: IOException) {
+            onError("发送静音提示失败：${e.message}")
         }
     }
 
@@ -176,5 +220,6 @@ class AudioSender(
         capture = null
         closeEncoder()
         pending.reset()
+        silence.reset()
     }
 }

@@ -1,0 +1,15 @@
+T06118 Android 全量单测证据（2026-11-25，VM Linux / JDK17 / Gradle 8.9）
+命令：
+  JAVA_HOME=/home/user/jdk-17.0.21.1+2 ANDROID_HOME=/home/user/android-sdk \
+  /home/user/gradle-8.9/bin/gradle :app:testDebugUnitTest --no-daemon --console=plain
+
+结果：
+  BUILD SUCCESSFUL in 3m
+  128 个测试类 / 937 项 / 0 失败 / 0 错误 / 0 跳过
+  基线 T06117/T06119 为 128 类 / 935 项；本轮新增：
+    - SessionControlTest.audio silent notice round trips without touching the ceiling（1）
+    - ErrorNoticeTest.protected content notice is conditional and points at the source（1）
+  Robolectric 临时目录清理告警不影响测试结果（Gradle 退出码 0）。
+
+未覆盖：
+  真实 AudioTrack/MediaCodec 播放、真实 WASAPI 回环、DRM 样本、30 分钟 A/V 偏差与静音切换现场指标。

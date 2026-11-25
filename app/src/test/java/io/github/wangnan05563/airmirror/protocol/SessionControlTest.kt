@@ -36,6 +36,13 @@ class SessionControlTest {
     }
 
     @Test
+    fun `audio silent notice round trips without touching the ceiling`() {
+        assertEquals(SessionControl.OP_AUDIO_SILENT, SessionControl.decode(SessionControl.audioSilent()).op)
+        // 老接收端把未知 op 直接忽略；这里保证它不会被误读成画质上限
+        assertTrue(Limit.decode(SessionControl.audioSilent()).isEmpty)
+    }
+
+    @Test
     fun `a ceiling payload is not mistaken for a signal`() {
         val decoded = SessionControl.decode(Limit.encode(Limit.Ceiling(1920, 1080, 60, 12_000, "1080p60")))
         assertTrue(decoded.isEmpty)

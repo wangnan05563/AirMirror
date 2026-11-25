@@ -714,6 +714,13 @@ class ReceiverSession(
                     onNotice("${hello.deviceName} 已打开声音")
                 }
             }
+            SessionControl.OP_AUDIO_SILENT -> {
+                // 发送端只报「连续静音」这一事实，是否 DRM 由用户结合片源判断：
+                // 接收端不把条件提示说成已检测到受保护内容。
+                perfEvent(PerfTrace.Event.AUDIO_GAP, mapOf("reason" to "silent"))
+                Log.w(TAG, "peer reports continuous silent audio, possible DRM or exclusive mode")
+                onNotice("${hello.deviceName} · ${ErrorNotice.textFor(ErrorNotice.Cause.AUDIO_PROTECTED)}")
+            }
             else -> Unit
         }
     }

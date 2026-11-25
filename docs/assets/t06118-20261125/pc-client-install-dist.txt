@@ -1,0 +1,9 @@
+T06118 PC 分发包证据（2026-11-25，VM Linux / JDK17 / Gradle 8.9）
+命令：
+  JAVA_HOME=/home/user/jdk-17.0.21.1+2 ANDROID_HOME=/home/user/android-sdk \
+  /home/user/gradle-8.9/bin/gradle :pc-client:installDist --no-daemon --console=plain
+
+结果：
+  BUILD SUCCESSFUL in 53s
+  :protocol-core:jar、:pc-client:jar、:pc-client:installDist 均成功
+  产物目录：release/build/pc-client/install/pc-client/lib

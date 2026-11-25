@@ -1,0 +1,17 @@
+T06118 PC 单测证据（2026-11-25，VM Linux / JDK17 / Gradle 8.9）
+命令：
+  JAVA_HOME=/home/user/jdk-17.0.21.1+2 ANDROID_HOME=/home/user/android-sdk \
+  /home/user/gradle-8.9/bin/gradle :pc-client:test --no-daemon --console=plain
+
+结果：
+  BUILD SUCCESSFUL in 1m 20s
+  12 个测试类 / 36 项 / 0 失败 / 0 错误 / 0 跳过
+  基线 T06117 为 11 类 / 31 项；本轮新增 AudioSilenceWatchTest 5 项
+
+新增覆盖：
+  AudioSilenceWatchTest
+    - 静音未到 10 秒不提示
+    - 连续静音达到阈值只提示一次
+    - 单个有声包清零计时
+    - reset 同时清计时与一次性标记
+    - silentForMs 可观测，供诊断/日志使用

@@ -173,6 +173,7 @@ class SenderEngine(
             initialVolume = config.volumePercent,
             epochNanos = mediaEpochNanos,
             onStatus = onStatus,
+            onNotice = onStatus,
             onError = { message -> onStatus("音频：$message") },
         )
         audioSender = sender

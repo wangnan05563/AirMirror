@@ -120,4 +120,15 @@ class ErrorNoticeTest {
     fun `the 4K unstable wording matches the PRD exception table`() {
         assertEquals("当前网络或设备不足以稳定播放 4K", ErrorNotice.tierUnstable("4K"))
     }
+
+    @Test
+    fun `protected content notice is conditional and points at the source`() {
+        val notice = ErrorNotice.noticeFor(ErrorNotice.Cause.AUDIO_PROTECTED)
+        assertEquals(ErrorNotice.Category.SESSION, notice.category)
+        // Windows 不提供 DRM 判定 API，文案只能写“可能/若”，不能写成已检测到受保护内容
+        assertTrue(notice.headline, notice.headline.contains("可能"))
+        assertTrue(notice.nextStep, notice.nextStep.contains("DRM"))
+        assertTrue(notice.nextStep, notice.actions.contains(ErrorNotice.Action.CHANGE_SOURCE))
+        assertTrue(notice.nextStep, notice.actions.contains(ErrorNotice.Action.AUTO_RECOVER))
+    }
 }

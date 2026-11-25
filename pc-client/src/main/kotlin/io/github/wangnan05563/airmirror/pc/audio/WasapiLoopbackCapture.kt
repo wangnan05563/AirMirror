@@ -17,6 +17,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 class WasapiLoopbackCapture(
     private val onPcm: (ByteArray) -> Unit,
     private val onFormat: (Format) -> Unit = {},
+    /** 系统标记为静音（`AUDCLNT_BUFFERFLAGS_SILENT`）或本次没有可读数据时回调。 */
+    private val onSilent: () -> Unit = {},
     private val onError: (String) -> Unit = {},
 ) : AutoCloseable {
     data class Format(
@@ -109,10 +111,15 @@ class WasapiLoopbackCapture(
                     val data = dataOut.getPointer(0)
                     val frames = framesOut.getInt(0)
                     val flags = flagsOut.getInt(0)
-                    if (data != null && frames > 0 && (flags and AUDCLNT_BUFFERFLAGS_SILENT) == 0) {
+                    val silent = (flags and AUDCLNT_BUFFERFLAGS_SILENT) != 0
+                    if (data != null && frames > 0 && !silent) {
                         val bytes = ByteArray(frames * blockAlign)
                         data.read(0, bytes, 0, bytes.size)
                         if (running.get()) onPcm(bytes)
+                    } else if (running.get()) {
+                        // 静音包没有 PCM，但仍是「系统此刻没有可转发声音」的事实；
+                        // 交给上层做连续静音计时，不能把这一段直接当成正常数据。
+                        onSilent()
                     }
                     call(captureClient, 4, frames)
                     packet = nextPacketSize(captureClient)
