@@ -158,6 +158,10 @@ object A11yCopy {
     fun diagnostics(enabled: Boolean): String =
         "崩溃日志，当前${if (enabled) "开" else "关"}，双击${if (enabled) "关闭" else "开启"}，仅本机"
 
+    fun metrics(): String = "诊断指标，查看最近一次会话，默认不显示，双击打开"
+
+    fun metricsExport(): String = "导出诊断摘要，已脱敏，只含本机聚合指标"
+
     fun clearData(count: Int): String = "清除本地日志与缓存，共 $count 条，双击清除"
 
     fun finish(): String = "完成，关闭显示设置"

@@ -57,7 +57,9 @@ class DeviceStore(context: Context) {
     fun firstLaunch(): Boolean = prefs.getBoolean(KEY_FIRST_LAUNCH, true)
 
     fun setFirstLaunch(done: Boolean) {
-        prefs.edit().putBoolean(KEY_FIRST_LAUNCH, done).apply()
+        // 引导结束会立即改 UI；用 commit 而不是 apply，保证随后读到的就是新值，
+        // 避免同一进程内调用方/测试在磁盘队列落地前读到旧标记。
+        prefs.edit().putBoolean(KEY_FIRST_LAUNCH, done).commit()
     }
 
     /**

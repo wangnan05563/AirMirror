@@ -24,6 +24,8 @@ object PerfTrace {
         const val AUTH = "auth"
         const val CONFIG = "config"
         const val FIRST_FRAME = "first_frame"
+        /** 每秒一行的 SLO 采样（P90/P95、偏差、丢帧、音频帧），供诊断看板汇总最近一次会话。 */
+        const val METRICS = "metrics"
         const val DROP = "drop"
         const val AUDIO_OPEN = "audio_open"
         const val AUDIO_GAP = "audio_gap"

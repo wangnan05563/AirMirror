@@ -28,6 +28,22 @@ class PerfLog private constructor(context: Context) {
 
     fun files(): List<File> = sink.list()
 
+    /**
+     * 诊断看板读最近一段 JSONL；只取文件尾部 [limit] 行，避免把 8×512KB 全读进内存。
+     * 解析失败的行由 [PerfSummaryReader] 跳过，不在这里中断读取。
+     */
+    fun lines(limit: Int = 1500): List<String> {
+        val max = limit.coerceAtLeast(0)
+        val out = ArrayList<String>(max)
+        for (file in sink.list().takeLast(4)) {
+            val rows = runCatching { file.readLines(Charsets.UTF_8) }.getOrDefault(emptyList())
+            val tail = rows.takeLast((max - out.size).coerceAtLeast(0))
+            out.addAll(tail)
+            if (out.size >= max) break
+        }
+        return out
+    }
+
     companion object {
         private const val TAG = "PerfLog"
 

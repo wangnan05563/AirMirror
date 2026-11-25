@@ -1,0 +1,10 @@
+Command: ./gradlew :app:testDebugUnitTest
+Result: BUILD SUCCESSFUL in 2m 44s
+Classes: 130
+Tests: 945
+Failures: 0
+Errors: 0
+Skipped: 0
+New: PerfSummaryTest (6 tests), MetricsBoardUiTest (2 tests), A11y manifest guard updated
+Also: DeviceStore.setFirstLaunch now commits synchronously; ReceiverHost/PerfLog test singletons reset by MetricsBoardUiTest.
+Note: Robolectric temp-dir cleanup warning is non-fatal; task exit code 0.

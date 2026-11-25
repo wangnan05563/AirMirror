@@ -1,0 +1,71 @@
+> Task :protocol-core:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :protocol-core:compileKotlin UP-TO-DATE
+> Task :protocol-core:compileJava NO-SOURCE
+> Task :protocol-core:processResources NO-SOURCE
+> Task :protocol-core:classes UP-TO-DATE
+> Task :protocol-core:jar UP-TO-DATE
+> Task :app:checkDebugAarMetadata UP-TO-DATE
+> Task :app:generateDebugResValues UP-TO-DATE
+> Task :app:mapDebugSourceSetPaths UP-TO-DATE
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :app:mergeDebugResources UP-TO-DATE
+> Task :app:packageDebugResources UP-TO-DATE
+> Task :app:parseDebugLocalResources UP-TO-DATE
+> Task :app:createDebugCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksDebug UP-TO-DATE
+> Task :app:processDebugMainManifest UP-TO-DATE
+> Task :app:processDebugManifest UP-TO-DATE
+> Task :app:processDebugManifestForPackage UP-TO-DATE
+> Task :app:processDebugResources UP-TO-DATE
+> Task :app:compileDebugKotlin UP-TO-DATE
+> Task :app:javaPreCompileDebug UP-TO-DATE
+> Task :app:compileDebugJavaWithJavac NO-SOURCE
+> Task :app:bundleDebugClassesToRuntimeJar UP-TO-DATE
+> Task :app:bundleDebugClassesToCompileJar UP-TO-DATE
+> Task :app:preDebugUnitTestBuild UP-TO-DATE
+> Task :app:javaPreCompileDebugUnitTest UP-TO-DATE
+> Task :app:mergeDebugShaders UP-TO-DATE
+> Task :app:compileDebugShaders NO-SOURCE
+> Task :app:generateDebugAssets UP-TO-DATE
+> Task :app:mergeDebugAssets UP-TO-DATE
+> Task :app:packageDebugUnitTestForUnitTest UP-TO-DATE
+> Task :app:generateDebugUnitTestConfig UP-TO-DATE
+> Task :app:processDebugJavaRes UP-TO-DATE
+> Task :app:compileDebugUnitTestKotlin
+w: file:///home/user/AirMirror/app/src/test/java/io/github/wangnan05563/airmirror/ui/SenderEmptyNetworkUiTest.kt:7:8 'class NetworkInfo : Any, Parcelable' is deprecated. Deprecated in Java.
+w: file:///home/user/AirMirror/app/src/test/java/io/github/wangnan05563/airmirror/ui/SenderEmptyNetworkUiTest.kt:51:38 'static fun newInstance(p0: NetworkInfo.DetailedState!, p1: Int, p2: Int, p3: Boolean, p4: Boolean): NetworkInfo!' is deprecated. Deprecated in Java.
+w: file:///home/user/AirMirror/app/src/test/java/io/github/wangnan05563/airmirror/ui/SenderEmptyNetworkUiTest.kt:52:13 'class NetworkInfo : Any, Parcelable' is deprecated. Deprecated in Java.
+w: file:///home/user/AirMirror/app/src/test/java/io/github/wangnan05563/airmirror/ui/SenderEmptyNetworkUiTest.kt:52:25 'enum class DetailedState : Enum<NetworkInfo.DetailedState!>' is deprecated. Deprecated in Java.
+w: file:///home/user/AirMirror/app/src/test/java/io/github/wangnan05563/airmirror/ui/SenderEmptyNetworkUiTest.kt:53:33 'static field TYPE_WIFI: Int' is deprecated. Deprecated in Java.
+w: file:///home/user/AirMirror/app/src/test/java/io/github/wangnan05563/airmirror/ui/TrustSettingsUiTest.kt:117:51 Unchecked cast of 'kotlin.Any' to 'kotlin.collections.Map<io.github.wangnan05563.airmirror.pairing.AccessMode, android.widget.TextView>'.
+w: file:///home/user/AirMirror/app/src/test/java/io/github/wangnan05563/airmirror/ui/TrustSettingsUiTest.kt:217:47 Unchecked cast of 'kotlin.Any' to 'kotlin.collections.Map<io.github.wangnan05563.airmirror.pairing.AccessMode, android.widget.TextView>'.
+w: file:///home/user/AirMirror/app/src/test/java/io/github/wangnan05563/airmirror/ui/TvFocusUiTest.kt:141:11 'fun onBackPressed(): Unit' is deprecated. Activity's back callback; keeps the app free of AndroidX.
+w: file:///home/user/AirMirror/app/src/test/java/io/github/wangnan05563/airmirror/ui/TvFocusUiTest.kt:162:11 'fun onBackPressed(): Unit' is deprecated. Activity's back callback; keeps the app free of AndroidX.
+w: file:///home/user/AirMirror/app/src/test/java/io/github/wangnan05563/airmirror/ui/TvFocusUiTest.kt:182:11 'fun onBackPressed(): Unit' is deprecated. Activity's back callback; keeps the app free of AndroidX.
+w: file:///home/user/AirMirror/app/src/test/java/io/github/wangnan05563/airmirror/ui/TvFocusUiTest.kt:209:11 'fun onBackPressed(): Unit' is deprecated. Activity's back callback; keeps the app free of AndroidX.
+w: file:///home/user/AirMirror/app/src/test/java/io/github/wangnan05563/airmirror/ui/UiFlowTest.kt:168:11 'fun onBackPressed(): Unit' is deprecated. Deprecated in Java.
+
+> Task :app:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :app:processDebugUnitTestJavaRes UP-TO-DATE
+> Task :app:testDebugUnitTest
+
+ERROR: Failed to destroy temp directory
+java.nio.file.DirectoryNotEmptyException: /home/user/AirMirror/release/build/app/test-tmp/robolectric-nativeruntime14051966931072055215/fonts
+	at java.base/sun.nio.fs.UnixFileSystemProvider.implDelete(UnixFileSystemProvider.java:246)
+	at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+	at java.base/java.nio.file.Files.delete(Files.java:1152)
+	at org.robolectric.util.TempDirectory$1.postVisitDirectory(TempDirectory.java:174)
+	at org.robolectric.util.TempDirectory$1.postVisitDirectory(TempDirectory.java:160)
+	at java.base/java.nio.file.Files.walkFileTree(Files.java:2828)
+	at java.base/java.nio.file.Files.walkFileTree(Files.java:2882)
+	at org.robolectric.util.TempDirectory.clearDirectory(TempDirectory.java:158)
+	at org.robolectric.util.TempDirectory.destroy(TempDirectory.java:141)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
+	at java.base/java.lang.Thread.run(Thread.java:840)
+
+BUILD SUCCESSFUL in 2m 44s
+28 actionable tasks: 2 executed, 26 up-to-date

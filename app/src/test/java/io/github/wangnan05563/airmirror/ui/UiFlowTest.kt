@@ -77,6 +77,7 @@ class UiFlowTest {
     fun `receiver onboarding advances three steps and persists completion`() {
         val store = DeviceStore(ApplicationProvider.getApplicationContext<Context>())
         store.setFirstLaunch(true)
+        assertEquals("首启标记未写入", true, store.firstLaunch())
         val a = setup(ReceiverActivity::class.java)
         val root = a.window.decorView
         assertTrue("首启引导未显示", hasText(root, "第 1 / 3 步"))

@@ -133,6 +133,8 @@ class ReceiverSession(
     private var perfSessionId = ""
     private var perfDroppedUntilKey = 0
     private var perfDroppedLate = 0
+    /** 诊断看板的采样节拍：只写最近一秒的 P90/P95/丢帧，不对每 30 帧都落一行。 */
+    private var perfMetricsAtMs = 0L
 
     /** 同步状态机与调整节拍器按会话重建：上一场留下的次数不该影响新一场（PRD「连续三次」的口径） */
     private var avSync = AvSync.Tracker()
@@ -491,6 +493,7 @@ class ReceiverSession(
         avDowngrades = 0
         perfDroppedUntilKey = 0
         perfDroppedLate = 0
+        perfMetricsAtMs = 0L
     }
 
     /** 收流主循环；返回 true 表示对端发了 BYE（正常收尾）。 */
@@ -645,6 +648,26 @@ class ReceiverSession(
         pollLatency(codec, hello.deviceName)
         reportQuality(codec)
         watchAudioInterrupt(hello.deviceName)
+        // T06120：每秒落一条最近窗口的 SLO 采样，供设置页「诊断指标看板」汇总。
+        // 只存数字与编码名，不写设备名/地址；P90/P95 无有效样本时记 -1，界面显示「未采集」。
+        val now = System.currentTimeMillis()
+        if (now - perfMetricsAtMs >= 1_000L) {
+            perfMetricsAtMs = now
+            val sampled = latency?.takeIf { it.samples > 0 }
+            perfEvent(
+                PerfTrace.Event.METRICS,
+                mapOf(
+                    "p90_ms" to (sampled?.percentile(90) ?: -1L),
+                    "p95_ms" to (sampled?.percentile(95) ?: -1L),
+                    "drift_ms" to lastDriftMs,
+                    "received" to stats.received,
+                    "decoded" to stats.decoded,
+                    "rendered" to rendered,
+                    "dropped" to (stats.droppedUntilKey + stats.droppedLate),
+                    "audio_frames" to stats.audioFrames,
+                ),
+            )
+        }
         if (stats.droppedUntilKey > perfDroppedUntilKey || stats.droppedLate > perfDroppedLate) {
             perfDroppedUntilKey = stats.droppedUntilKey
             perfDroppedLate = stats.droppedLate

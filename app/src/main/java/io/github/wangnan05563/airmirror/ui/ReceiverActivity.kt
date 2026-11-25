@@ -1,6 +1,7 @@
 package io.github.wangnan05563.airmirror.ui
 
 import android.app.Activity
+import android.content.Intent
 import android.graphics.Bitmap
 import android.os.Build
 import android.os.Bundle
@@ -40,7 +41,10 @@ import io.github.wangnan05563.airmirror.pairing.DeviceStore
 import io.github.wangnan05563.airmirror.pairing.Pairing
 import io.github.wangnan05563.airmirror.pairing.PinCode
 import io.github.wangnan05563.airmirror.privacy.Diagnostics
+import io.github.wangnan05563.airmirror.perf.DiagnosticReport
 import io.github.wangnan05563.airmirror.perf.PerfLog
+import io.github.wangnan05563.airmirror.perf.PerfSummary
+import io.github.wangnan05563.airmirror.perf.PerfSummaryReader
 import io.github.wangnan05563.airmirror.perf.PerfTrace
 import io.github.wangnan05563.airmirror.protocol.ProtocolBoundary
 import io.github.wangnan05563.airmirror.receiver.ReceiverHost
@@ -133,6 +137,8 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
     /** 隐私分组（PRD FS-11）：诊断默认关、可清除，说明与清理入口都在设置页里。 */
     private lateinit var diagnostics: Diagnostics
     private lateinit var diagnosticsRow: TextView
+    /** T06120：诊断指标看板入口；设置页只是一行入口，指标本身默认不显示。 */
+    private lateinit var metricsRow: TextView
     private lateinit var clearDataRow: TextView
     /** T06113 访问控制：三档模式与信任设备列表；列表内容随关闭/改名/撤销动态重建。 */
     private val accessModeRows = LinkedHashMap<AccessMode, TextView>()
@@ -987,6 +993,14 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             UiKit.touchTarget(this)
         }
         settingsPanel.addView(diagnosticsRow, matchWidth())
+        metricsRow = TextView(this).apply {
+            textSize = FocusPolicy.bodySp(isTv)
+            setTextColor(Theme.TEXT_PRIMARY)
+            setPadding(0, Theme.dp(this@ReceiverActivity, 10), 0, Theme.dp(this@ReceiverActivity, 10))
+            setOnClickListener { showMetricsBoard() }
+            UiKit.touchTarget(this)
+        }
+        settingsPanel.addView(metricsRow, matchWidth())
         clearDataRow = TextView(this).apply {
             textSize = FocusPolicy.bodySp(isTv)
             setTextColor(Theme.TEXT_PRIMARY)
@@ -1439,6 +1453,8 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
         diagnosticsRow.text = "崩溃日志：${if (diagnosticsOn) "开（仅本机 · 7 天自动清除）" else "关（默认）"}"
         A11y.describe(diagnosticsRow, A11yCopy.diagnostics(diagnosticsOn))
         A11y.switchRow(diagnosticsRow, diagnosticsOn)
+        metricsRow.text = "诊断指标：查看最近一次会话（默认不显示）"
+        A11y.describe(metricsRow, A11yCopy.metrics())
         val count = diagnostics.count()
         clearDataRow.text = "清除本地日志与缓存（$count 条）"
         A11y.describe(clearDataRow, A11yCopy.clearData(count))
@@ -1485,6 +1501,63 @@ class ReceiverActivity : Activity(), SurfaceHolder.Callback {
             }
             .setNegativeButton("取消", null)
             .show()
+    }
+
+    /**
+     * T06120：看板默认不显示，只有用户在设置页点这一行才弹窗。
+     * 只读本机 JSONL 的最近一次会话；旧文件没有 metrics 事件时显示「未采集」，不补 0。
+     */
+    private fun showMetricsBoard() {
+        val summary = runCatching { PerfSummaryReader.latest(PerfLog.get(this).lines()) }.getOrNull()
+        val body = TextView(this).apply {
+            text = DiagnosticReport.summaryText(summary)
+            textSize = FocusPolicy.bodySp(isTv)
+            setTextColor(Theme.TEXT_PRIMARY)
+            setLineSpacing(0f, 1.25f)
+            setPadding(
+                Theme.dp(this@ReceiverActivity, Theme.SPACE_XL_DP),
+                0,
+                Theme.dp(this@ReceiverActivity, Theme.SPACE_XL_DP),
+                Theme.dp(this@ReceiverActivity, Theme.SPACE_MD_DP),
+            )
+        }
+        val scroll = ScrollView(this).apply {
+            addView(body, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ))
+        }
+        val dialog = UiKit.dialog(this)
+            .setTitle("诊断指标（最近一次会话）")
+            .setView(scroll)
+            .setPositiveButton("导出摘要（已脱敏）", null)
+            .setNegativeButton("关闭", null)
+            .create()
+        dialog.setOnShowListener {
+            UiKit.styleDialogButtons(dialog)
+            val export = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+            export.isEnabled = summary != null
+            A11y.describe(export, A11yCopy.metricsExport())
+            export.setOnClickListener { exportMetrics(summary) }
+        }
+        dialog.show()
+        TvFocus.applyTree(scroll)
+    }
+
+    /** 导出的是聚合摘要而不是原始 JSONL；导出前再走一遍 Redactor。 */
+    private fun exportMetrics(summary: PerfSummary?) {
+        val payload = DiagnosticReport.exportText(summary, Build.MODEL)
+        val send = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, "AirMirror 诊断摘要")
+            putExtra(Intent.EXTRA_TEXT, payload)
+        }
+        runCatching {
+            startActivity(Intent.createChooser(send, "导出诊断摘要（已脱敏）"))
+        }.onFailure {
+            Log.w(TAG, "diagnostics export unavailable", it)
+            showCornerHint("没有可用的导出应用")
+        }
     }
 
     /** PRD FS-11「用户清理缓存：二次确认；清空后不影响已授权设备」。 */
