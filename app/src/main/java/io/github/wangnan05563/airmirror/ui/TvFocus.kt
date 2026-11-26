@@ -5,6 +5,8 @@ import android.content.res.Configuration
 import android.graphics.drawable.GradientDrawable
 import android.view.View
 import android.view.ViewGroup
+import android.widget.TextView
+import androidx.core.graphics.drawable.DrawableCompat
 import io.github.wangnan05563.airmirror.device.DeviceProbe
 import java.util.Collections
 import java.util.WeakHashMap
@@ -129,13 +131,24 @@ object TvFocus {
         // MaterialButton 的背景着色会盖在焦点描边层上，把 2dp 高对比环染成按钮底色；
         // 聚焦时先摘掉 tint，失焦再原样装回。
         val originalTint = view.backgroundTintList
+        // 主按钮的文字色是深色（buttonPrimaryFg=background），而焦点态背景是深蓝半透明；
+        // 若只换背景不换字色，TV 1080p 首焦点会出现“只剩两条青色描边”的隐形按钮。
+        // 焦点时统一用亮色文字，失焦恢复调用方原色。
+        val originalTextColors = (view as? TextView)?.textColors
         view.setOnFocusChangeListener { target, focused ->
             if (focused) {
                 target.backgroundTintList = null
                 target.background = outline(target.context)
+                (target as? TextView)?.setTextColor(Theme.TEXT_PRIMARY)
             } else {
                 target.background = originalBackground
-                target.backgroundTintList = originalTint
+                // MaterialButton 的 backgroundTintList setter 在换回原背景后可能来不及
+                // 重新着色（1080p 实测会退回黑色默认底），直接给 Drawable 上 tint 更稳。
+                val background = target.background
+                if (background != null && originalTint != null) {
+                    DrawableCompat.setTintList(background, originalTint)
+                }
+                originalTextColors?.let { (target as? TextView)?.setTextColor(it) }
             }
             val scale = FocusPolicy.focusScale(animationsEnabled, focused)
             val duration = FocusPolicy.focusAnimMs(animationsEnabled)
