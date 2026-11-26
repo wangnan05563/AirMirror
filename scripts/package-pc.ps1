@@ -7,13 +7,16 @@
     Produces release\release\AirMirror-PC-<version>-win-x64.zip with:
       AirMirror-PC.bat, app\lib, app\runtime (jlink), scripts\install/uninstall/firewall,
       ffmpeg\ (optional), README.txt, VERSION and BUILD-INFO.json.
-    The package is unsigned by design (REQ-004); no EXE wrapper is fabricated.
+    Also compiles an unsigned NSIS per-user setup EXE. The EXE is intentionally
+    unsigned because the project has no Windows code-signing certificate yet;
+    no fake signature or system security-policy bypass is applied.
 #>
 param(
     [string]$VersionPatch = '',
     [switch]$SkipBuild,
     [switch]$Online,
     [switch]$SkipRuntime,
+    [switch]$SkipInstaller,
     [string]$FfmpegDir = ''
 )
 
@@ -220,16 +223,46 @@ if (Test-Path -LiteralPath $zipPath) { Remove-Item -LiteralPath $zipPath -Force 
 Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zipPath -CompressionLevel Optimal
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $zipPath)) { Fail 'Compress-Archive failed.' }
 
+$installerItem = $null
+$installerHash = ''
+if ($SkipInstaller) {
+    Write-Host '[WARN] -SkipInstaller: 未生成 PC setup EXE' -ForegroundColor Yellow
+} else {
+    $nsis = @(
+        (Join-Path $env:ProgramFiles 'NSIS\makensis.exe'),
+        (Join-Path ${env:ProgramFiles(x86)} 'NSIS\makensis.exe')
+    ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+    if (-not $nsis) { Fail '未找到 NSIS makensis.exe；安装 NSIS 3.x，或用 -SkipInstaller 跳过 EXE。' }
+    $nsi = Join-Path $PSScriptRoot 'AirMirror-PC-installer.nsi'
+    if (-not (Test-Path -LiteralPath $nsi)) { Fail "缺少 NSIS 脚本：$nsi" }
+    $exeName = "AirMirror-PC-$version-win-x64-setup.exe"
+    $exePath = Join-Path $outDir $exeName
+    if (Test-Path -LiteralPath $exePath) { Remove-Item -LiteralPath $exePath -Force }
+    & $nsis /V2 "/DSTAGE_DIR=$stage" "/DOUTFILE=$exePath" "/DVERSION=$version" $nsi
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $exePath)) {
+        Fail "NSIS 编译失败（exit=$LASTEXITCODE）：$exePath"
+    }
+    $installerItem = Get-Item -LiteralPath $exePath
+    $installerHash = (Get-FileHash -LiteralPath $exePath -Algorithm SHA256).Hash.ToLowerInvariant()
+}
+
 $item = Get-Item -LiteralPath $zipPath
 $hash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
 Write-Host ''
 Write-Host "PC package: $($item.FullName)" -ForegroundColor Green
 Write-Host ("  {0:N0} B  SHA-256 {1}" -f $item.Length, $hash) -ForegroundColor Cyan
+if ($installerItem) {
+    Write-Host "PC installer (未签名): $($installerItem.FullName)" -ForegroundColor Green
+    Write-Host ("  {0:N0} B  SHA-256 {1}" -f $installerItem.Length, $installerHash) -ForegroundColor Cyan
+}
 Write-Host "  stage: $stage"
 [pscustomobject]@{
-    version = $version
-    zip     = $item.FullName
-    bytes   = $item.Length
-    sha256  = $hash
-    stage   = $stage
+    version      = $version
+    zip          = $item.FullName
+    bytes        = $item.Length
+    sha256       = $hash
+    installer    = if ($installerItem) { $installerItem.FullName } else { $null }
+    installerBytes = if ($installerItem) { $installerItem.Length } else { $null }
+    installerSha256 = if ($installerItem) { $installerHash } else { $null }
+    stage        = $stage
 } | ConvertTo-Json -Depth 4

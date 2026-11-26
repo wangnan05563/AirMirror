@@ -308,13 +308,16 @@ if ($apks.Count -eq 0) {
 
 Step '构建 PC 安装包'
 $pcZip = ''
+$pcInstaller = ''
 if ($SkipPc) {
-    Ok '按 -SkipPc 跳过 PC ZIP'
+    Ok '按 -SkipPc 跳过 PC ZIP/setup EXE'
 } else {
     $pcZipName = "AirMirror-PC-$expectedVersionName-win-x64.zip"
+    $pcInstallerName = "AirMirror-PC-$expectedVersionName-win-x64-setup.exe"
     $pcZip = Join-Path $root ("release\release\" + $pcZipName)
+    $pcInstaller = Join-Path $root ("release\release\" + $pcInstallerName)
     if ($DryRun) {
-        Ok "将执行：scripts\package-pc.ps1 -VersionPatch $tagPatch"
+        Ok "将执行：scripts\package-pc.ps1 -VersionPatch $tagPatch（ZIP + unsigned setup EXE）"
     } else {
         $pkgParams = @{ VersionPatch = $tagPatch }
         if ($SkipBuild) { $pkgParams['SkipBuild'] = $true }
@@ -340,6 +343,24 @@ if ($SkipPc) {
     } else {
         Fail "PC ZIP 未生成：$pcZip"
     }
+    if (Test-Path -LiteralPath $pcInstaller) {
+        $pcInstallerItem = Get-Item -LiteralPath $pcInstaller
+        Ok ("{0} ({1:N0} B, unsigned)" -f $pcInstallerItem.Name, $pcInstallerItem.Length)
+        if ($SkipBuild) {
+            $headEpochText = ((& git -C $root show -s --format=%ct HEAD) -join '').Trim()
+            if ($headEpochText -match '^\d+$') {
+                $headTime = [DateTimeOffset]::FromUnixTimeSeconds([int64]$headEpochText).UtcDateTime
+                if ($pcInstallerItem.LastWriteTimeUtc -lt $headTime) {
+                    $msg = "复用 PC setup EXE 早于 HEAD 提交（EXE $($pcInstallerItem.LastWriteTimeUtc.ToString('u')), HEAD $($headTime.ToString('u'))）：不是当前提交构建的包，不能发布。"
+                    if ($DryRun) { Warn $msg } else { Fail $msg }
+                }
+            }
+        }
+    } elseif ($DryRun) {
+        Warn "PC setup EXE 尚未生成（DryRun 允许）：$pcInstaller"
+    } else {
+        Fail "PC setup EXE 未生成：$pcInstaller"
+    }
 }
 
 Step '检查 tag 是否已存在'
@@ -353,6 +374,7 @@ if (-not (Test-Path $recordScript)) { Fail "缺少发布记录生成器：$recor
 $apkPaths = @($apks | ForEach-Object { $_.FullName })
 $artifactPaths = @($apkPaths)
 if ($pcZip -and (Test-Path -LiteralPath $pcZip)) { $artifactPaths += $pcZip }
+if ($pcInstaller -and (Test-Path -LiteralPath $pcInstaller)) { $artifactPaths += $pcInstaller }
 
 Step '发布计划'
 Write-Host "   git tag $Tag"
