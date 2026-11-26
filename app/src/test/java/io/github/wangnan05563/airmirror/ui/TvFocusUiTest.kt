@@ -72,7 +72,7 @@ class TvFocusUiTest {
 
     /**
      * Robolectric 没有真实 ViewRootImpl，`Activity.currentFocus` 恒为 null；
-     * 直接读 decor 树的 focus 标记，才能区分“requestFocus 落空”和“窗口没接管”。
+     * 直接读 decor 树的 focus 标记，才能区分"requestFocus 落空"和"窗口没接管"。
      */
     private fun focusedId(a: Activity): Int? = a.window.decorView.findFocus()?.id
 
@@ -214,6 +214,30 @@ class TvFocusUiTest {
 
     @Test
     @Config(qualifiers = "w960dp-h540dp-320dpi")
+    fun primaryButtonRestoresFillAndTextAfterFocusLeaves() {
+        val a = Robolectric.buildActivity(MainActivity::class.java).setup().get()
+        layout(a)
+        val root = a.findViewById<ViewGroup>(android.R.id.content).getChildAt(0) as LinearLayout
+        val send = root.getChildAt(2) as android.widget.TextView
+        val receive = root.getChildAt(3) as View
+        assertEquals("首焦点主按钮文字必须亮色", Theme.TEXT_PRIMARY, send.currentTextColor)
+        capture(a, "t06129-main-1080p-focus-20261126")
+
+        receive.requestFocus()
+        ShadowLooper.idleMainLooper()
+        assertEquals("失焦后文字必须恢复主按钮原色", Theme.component.buttonPrimaryFg, send.currentTextColor)
+        capture(a, "t06129-main-1080p-primary-unfocused-20261126")
+        val bitmap = Bitmap.createBitmap(send.width, send.height, Bitmap.Config.ARGB_8888)
+        send.draw(Canvas(bitmap))
+        assertEquals(
+            "失焦后主按钮必须恢复品牌青绿底，不能退回黑色默认底",
+            Theme.component.buttonPrimaryBg,
+            bitmap.getPixel(send.width / 4, send.height / 2),
+        )
+    }
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-320dpi")
     fun mainEntryFollowsVisualChain() {
         val a = Robolectric.buildActivity(MainActivity::class.java).setup().get()
         layout(a)
@@ -225,5 +249,12 @@ class TvFocusUiTest {
         assertEquals("投屏→下→接收", receive.id, send.nextFocusDownId)
         assertEquals("接收→下→数据边界", privacy.id, receive.nextFocusDownId)
         assertEquals("数据边界→下→关于", about.id, privacy.nextFocusDownId)
+        // TV 首焦点会把主按钮背景换成深蓝焦点层；文字必须切到亮色，
+        // 否则 buttonPrimaryFg（background）与焦点底色同色，按钮文字不可见（T06129 1080p 实测）。
+        assertEquals(
+            "TV 焦点主按钮必须使用亮色文字",
+            Theme.TEXT_PRIMARY,
+            (send as android.widget.TextView).currentTextColor,
+        )
     }
 }
