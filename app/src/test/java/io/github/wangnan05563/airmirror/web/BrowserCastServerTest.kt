@@ -19,7 +19,10 @@ import org.junit.Test
 
 class BrowserCastServerTest {
 
-    private val dir = File(System.getProperty("java.io.tmpdir"), "airmirror-browser-cast-test").apply {
+    private val dir = File(
+        System.getProperty("java.io.tmpdir"),
+        "airmirror-browser-cast-test-" + java.util.UUID.randomUUID(),
+    ).apply {
         deleteRecursively()
         mkdirs()
     }

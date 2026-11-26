@@ -13,7 +13,10 @@ import org.junit.Test
 
 class ApkDownloadTest {
 
-    private val temp = File(System.getProperty("java.io.tmpdir"), "airmirror-update-test").apply {
+    private val temp = File(
+        System.getProperty("java.io.tmpdir"),
+        "airmirror-update-test-" + java.util.UUID.randomUUID(),
+    ).apply {
         deleteRecursively()
         mkdirs()
     }
